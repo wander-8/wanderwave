@@ -3678,14 +3678,22 @@ function onIntensityFilterInput(value){
 
 function onSearchInput(){
   state.query = document.getElementById('search-input').value.trim();
-  document.getElementById('search-clear-btn').style.display = state.query ? 'flex' : 'none';
-  renderResults();
+  renderResults(); // ×の表示・非表示もここで一括して面倒を見る
 }
 
+// キーワードだけでなく、感情タグ・ジャンル・国も含めて絞り込みを
+// まるごとリセットする。個別に1つだけ外したい時は各チップをもう一度
+// タップすれば消えるので(感情タグ・ジャンル・国はすでにその作り)、
+// この×は「最初の画面に戻る」ための一括リセット役に徹する。
 function clearSearch(){
   state.query = "";
   document.getElementById('search-input').value = "";
-  document.getElementById('search-clear-btn').style.display = 'none';
+  state.activeTags.clear();
+  state.activeGenres.clear();
+  state.activeCountries.clear();
+  renderTagCloud(); // activeTagsが空になったのでintensityFilterも内部でリセットされる
+  renderGenreCloud();
+  renderCountryCloud();
   renderResults();
 }
 
@@ -4224,6 +4232,11 @@ function renderResults(){
 
   const isActiveSearch = state.query.trim() !== "" || state.activeTags.size > 0
     || state.activeGenres.size > 0 || state.activeCountries.size > 0;
+
+  // 検索欄の×は、以前はキーワードを打った時だけ出ていたが、感情タグや
+  // ジャンル・国だけで絞り込んでいる時も同じように「全部まとめて消す」
+  // 入り口が欲しいので、何か1つでも絞り込んでいれば出す。
+  document.getElementById('search-clear-btn').style.display = isActiveSearch ? 'flex' : 'none';
 
   if(!isActiveSearch){
     // 検索・タグ選択をしてない間は、おすすめの棚だけを見せる
