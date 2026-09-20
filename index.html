@@ -662,21 +662,32 @@
     margin-top: 3px; white-space:nowrap;
   }
   .heart-single-btn{
-    width: 56px; height: 56px; border-radius: 50%;
+    width: 88px; height: 88px; border-radius: 50%;
     border: 1px solid var(--line); background: var(--surface);
     cursor:pointer; display:flex; align-items:center; justify-content:center;
-    color: var(--ink-soft); transition: background .2s ease, border-color .2s ease;
+    color: var(--love); transition: background .2s ease, border-color .2s ease;
     position: relative;
+    animation: heartRestBreathe 2.8s ease-in-out infinite;
+  }
+  /* 押しやすいよう大きくし(56→88px)、押す前から「これは愛を送るボタンだ」と
+     一目でわかるよう、静止時からハート自体を愛の色にした(以前は容器の色に
+     合わせてink-softの控えめな色で、タップするまでハートだと気づきにくかった)。
+     呼吸するような光り方は「きょうの贈り物」の玉と好評だった演出を流用しつつ、
+     派手な塗りつぶしにはせず、容器自体は今までどおり静かなダークトーンのまま
+     残す(「わかりやすさ」と「Wanderの静けさ」のバランスを取った案)。 */
+  @keyframes heartRestBreathe{
+    0%,100%{ box-shadow: 0 0 0 rgba(232,137,158,0); }
+    50%{ box-shadow: 0 0 18px 1px rgba(232,137,158,.28); }
   }
   .heart-single-btn .heart-icon{
-    width: 24px; height: 23px;
+    width: 38px; height: 36px;
     transition: transform .2s ease, color .2s ease;
   }
-  .heart-single-btn.lv1{ border-color: var(--love); background: rgba(232,137,158,0.08); color: var(--love); }
+  .heart-single-btn.lv1{ border-color: var(--love); background: rgba(232,137,158,0.08); color: var(--love); animation: none; }
   .heart-single-btn.lv1 .heart-icon{ transform: scale(0.85); filter: drop-shadow(0 0 4px rgba(232,137,158,0.5)); }
-  .heart-single-btn.lv2{ border-color: var(--love); background: rgba(232,137,158,0.16); color: var(--love); }
+  .heart-single-btn.lv2{ border-color: var(--love); background: rgba(232,137,158,0.16); color: var(--love); animation: none; }
   .heart-single-btn.lv2 .heart-icon{ transform: scale(1.05); filter: drop-shadow(0 0 6px rgba(232,137,158,0.6)); }
-  .heart-single-btn.lv3{ border-color: var(--love); background: rgba(232,137,158,0.24); color: var(--love); }
+  .heart-single-btn.lv3{ border-color: var(--love); background: rgba(232,137,158,0.24); color: var(--love); animation: none; }
   .heart-single-btn.lv3 .heart-icon{ transform: scale(1.25); filter: drop-shadow(0 0 9px rgba(232,137,158,0.75)); }
 
   .heart-single-btn.pop-1{ animation: heartBeat1 0.35s ease; }
