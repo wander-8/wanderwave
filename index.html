@@ -4254,6 +4254,32 @@ function matchesVibeAlias(m, normalizedQuery){
   });
 }
 
+// 「マーベル」で検索した時だけ関連作品がふわっと出てくるための、緩い検索
+// エイリアス。TMDbのkeywords(marvel cinematic universe (mcu))だけに頼ると
+// 抜け漏れが出る(例:「スパイダーマン ノー・ウェイ・ホーム」はMCU本編
+// 扱いのはずなのに、なぜかこのキーワードが付いていない)。配給元・権利関係の
+// 正確さは追わず、「マーベルコミック原作のヒーロー映画」という緩いくくりで
+// 手動リストにしている(完璧な網羅は狙わない)。
+const MARVEL_SERIES_NAMES = new Set([
+  'アイアンマン シリーズ', 'アベンジャーズ シリーズ', 'アントマン シリーズ',
+  'ヴェノム シリーズ', 'ウルヴァリン シリーズ', 'ガーディアンズ・オブ・ギャラクシー シリーズ',
+  'キャプテン・アメリカ シリーズ', 'キャプテン・マーベル',
+  'スパイダーマン (MCU) シリーズ', 'スパイダーマン (アメイジング) シリーズ', 'スパイダーマン (初代) シリーズ',
+  'Spider-Man: Spider-Verse',
+  'デッドプール シリーズ', 'ドクター・ストレンジ シリーズ', 'ファンタスティック・フォー シリーズ',
+  'マイティ・ソー シリーズ', 'X-MEN シリーズ', 'ブラック・パンサー シリーズ', 'ブレイド シリーズ'
+]);
+// seriesが空の単発作品(ハルク単体、シャン・チーなど)はidで個別に拾う
+const MARVEL_STANDALONE_IDS = new Set([241, 265, 264, 1054, 1426, 3736, 5359, 272]);
+const MARVEL_QUERY_ALIASES = ['マーベル', 'marvel'];
+
+function matchesMarvelAlias(m, normalizedQuery){
+  if(!normalizedQuery) return false;
+  const isMarvelMovie = (m.series && MARVEL_SERIES_NAMES.has(m.series)) || MARVEL_STANDALONE_IDS.has(m.id);
+  if(!isMarvelMovie) return false;
+  return MARVEL_QUERY_ALIASES.some(alias => normalizedQuery.includes(normalizeForSearch(alias)));
+}
+
 // 検索/タグ絞り込みの結果は、件数が増えても一度にDOMへ描画する枚数が
 // 増えすぎないよう、RESULTS_PAGE_SIZEずつ段階的に描画する。
 // (作品を数千本規模に増やす予定があり、絞り込みが緩いと一致件数が
@@ -4308,7 +4334,8 @@ function renderResults(){
       // 英単語のまま探す人にもそのまま応えられるようにしておく。
       || (m.keywords && m.keywords.some(k => normalizeForSearch(k).includes(q)))
       || matchesCountryAlias(m, q)
-      || matchesVibeAlias(m, q);
+      || matchesVibeAlias(m, q)
+      || matchesMarvelAlias(m, q);
     const matchTags = state.activeTags.size === 0 || [...state.activeTags].every(t => m.tags.includes(t));
     // 表現度フィルターは、タグを選んでいるかどうかに関係なく、選択中の
     // バンドだけで判定する(以前はactiveTags.size===0の時に無条件で
