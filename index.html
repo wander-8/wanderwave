@@ -196,12 +196,12 @@
   }
   .featured-love .heart-icon{ width: 13px; height: 12px; color: var(--love); }
 
-  /* 今はまだ評価がついていない作品も多く、ホーム画面のハート表示が寂しく/
-     不揃いに見えるため、当面ホーム画面だけハートを非表示にする。データが
-     十分に集まってきたら、このブロックごと削除すれば元に戻る。 */
-  #featured-love-text,
-  #home-rows .interest-row,
-  #home-rows .interest-count{
+  /* 特集バナーの「愛されている作品」文言は、featured側の1本だけを見て
+     決まるため今はまだ空振り(0人)で寂しく見えがちなので当面非表示にする。
+     カード側のハートバーは、buildCardHTML内でloveCount>0の時だけ描画する
+     ようにしたので(データが増えた作品から自然に表示される)、ここで
+     一括では隠さない。 */
+  #featured-love-text{
     display: none;
   }
 
@@ -3729,11 +3729,13 @@ function buildCardHTML(m, opts){
       <div class="poster-thumb" style="background:${m.posterColor}">${posterImg}${initialOrTitle}</div>
       ${overlayTitle ? '' : `<div class="result-title">${m.title}</div>`}
       <div class="result-year">${m.year}</div>
+      ${m.loveCount > 0 ? `
       <div class="interest-row">
         <div class="interest-bar-track"><div class="interest-bar-fill" style="width:${(avg/5)*100}%"></div></div>
         <span class="interest-pct">${HEART_ICON} ${loveScoreText(m)}</span>
       </div>
       <div class="interest-count">${loveCountText(m)}</div>
+      ` : ''}
     </div>
   `;
 }
