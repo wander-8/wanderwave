@@ -4293,8 +4293,8 @@ function renderResults(){
   homeRowsEl.style.display = 'none';
   root.style.display = 'grid';
 
+  const q = normalizeForSearch(state.query.trim());
   resultsFiltered = MOVIES.filter(m => {
-    const q = normalizeForSearch(state.query.trim());
     const matchQuery = q === ""
       || normalizeForSearch(m.title).includes(q)
       || String(m.year).includes(q)
@@ -4322,6 +4322,24 @@ function renderResults(){
     const matchCountry = state.activeCountries.size === 0
       || (m.country && [...state.activeCountries].some(c => m.country.includes(c)));
     return matchQuery && matchTags && matchIntensity && matchGenre && matchCountry && !matchesExcludedWord(m);
+  });
+
+  // 以前は並び順を一切指定しておらず、DBから返ってきた順(≒追加順)のまま
+  // 表示していたため「バラバラで法則性が無い」と感じられていた。タイトルが
+  // 検索語に近いものを上に、同じ近さの中では愛度が高いものを上に、という
+  // 説明できる順番に揃える。文字検索が無くタグ・ジャンル・国だけで絞り込んで
+  // いる時はrankが全件0になるので、そのまま愛度順になる。
+  function titleRelevanceRank(m){
+    if(!q) return 0;
+    const title = normalizeForSearch(m.title);
+    if(title === q || title.startsWith(q)) return 0;
+    if(title.includes(q)) return 1;
+    return 2;
+  }
+  resultsFiltered.sort((a, b) => {
+    const rankDiff = titleRelevanceRank(a) - titleRelevanceRank(b);
+    if(rankDiff !== 0) return rankDiff;
+    return loveAverage(b) - loveAverage(a);
   });
 
   // 検索条件が変わるたびに最初のRESULTS_PAGE_SIZE件から表示し直す
