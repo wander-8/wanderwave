@@ -1988,6 +1988,16 @@
   }
   .modal-actions{ display:flex; flex-direction:column; gap:8px; }
 
+  /* burstGiftSparks()が%指定の絶対配置で花火を散らすため、位置の基準にする */
+  #hitokoto-box{ position: relative; }
+  .hitokoto-skip{
+    display:block; width:100%; margin-top:12px;
+    background:none; border:none; font-family:inherit;
+    font-size:12.5px; color:var(--ink-soft);
+    text-decoration: underline; text-decoration-style: dotted; text-underline-offset:3px;
+    cursor:pointer;
+  }
+
   .mascot-wrap{
     display:flex; justify-content:center;
     margin-bottom: 12px;
@@ -2823,6 +2833,13 @@
       <button class="primary-btn" onclick="closeInfo()">わかった</button>
     </div>
   </div>
+</div>
+
+<!-- 「ひとこと便り」: サイトそのものへの感想をそっと聞くモーダル。ステップごとに
+     hitokoto-boxの中身をJSで丸ごと差し替える(info-modal等と違い、質問→任意コメント→
+     お礼、と中身の構造自体が変わるため)。 -->
+<div class="modal-overlay" id="hitokoto-modal">
+  <div class="modal-box" id="hitokoto-box"></div>
 </div>
 
 <div class="diagnosis-history-overlay" id="diagnosis-history-overlay" style="display:none;" onclick="if(event.target===this) closeDiagnosisHistoryModal()">
@@ -4418,7 +4435,98 @@ function switchView(id){
   if(id !== 'view-home') clearInterval(featuredTimer);
 }
 
-function goHome(){ renderFeaturedBanner(); renderHomeRows(); switchView('view-home'); }
+function goHome(){ renderFeaturedBanner(); renderHomeRows(); switchView('view-home'); maybeOfferHitokoto(); }
+
+// 「ひとこと便り」: 映画のレビューとは別に、サイトそのものへの感想を負担なく
+// そっと集めるための仕組み。開けてすぐ一覧に戻っただけの人には聞かず、実際に
+// 何本か見て回った人が一覧に戻ってきたタイミングだけで聞く。答えてもスキップ
+// しても、しばらくは再表示しない(せっかくの「軽さ」を、催促で壊したくない)。
+// site_feedbackにはSELECTポリシーを与えていないので、送った本人にも見返せない
+// ―― 開発者だけがダッシュボード経由で読む、ヒント集めのための一言。
+const HITOKOTO_COOLDOWN_DAYS = 10;
+const HITOKOTO_LAST_SHOWN_KEY = 'wander_hitokoto_last_shown';
+let detailViewsThisSession = 0;
+let hitokotoShownThisSession = false;
+let hitokotoPendingReaction = null;
+
+function hitokotoOnCooldown(){
+  const last = localStorage.getItem(HITOKOTO_LAST_SHOWN_KEY);
+  if(!last) return false;
+  const elapsedDays = (Date.now() - Number(last)) / (1000 * 60 * 60 * 24);
+  return elapsedDays < HITOKOTO_COOLDOWN_DAYS;
+}
+
+function maybeOfferHitokoto(){
+  if(detailViewsThisSession < 2) return;
+  if(hitokotoShownThisSession) return;
+  // 匿名サインインがまだ済んでいない場合、ここで待たせてまで出す必要は無い
+  // (今回は諦め、次にホームへ戻ってきた時にまた条件を見直す)。
+  if(!hasSupabaseSession) return;
+  if(hitokotoOnCooldown()) return;
+  hitokotoShownThisSession = true;
+  setTimeout(showHitokotoAsk, 500);
+}
+
+function markHitokotoShown(){
+  localStorage.setItem(HITOKOTO_LAST_SHOWN_KEY, String(Date.now()));
+}
+
+function showHitokotoAsk(){
+  hitokotoPendingReaction = null;
+  document.getElementById('hitokoto-box').innerHTML = `
+    <div class="modal-title">今日の探し物、<br>見つかりましたか?</div>
+    <div class="modal-actions">
+      <button class="primary-btn" onclick="hitokotoChooseReaction('good')">しっくりきた</button>
+      <button class="ghost-btn" onclick="hitokotoChooseReaction('meh')">うーん、まだかな</button>
+    </div>
+    <button class="hitokoto-skip" onclick="closeHitokoto()">また今度</button>
+  `;
+  document.getElementById('hitokoto-modal').style.display = 'flex';
+}
+
+function hitokotoChooseReaction(reaction){
+  hitokotoPendingReaction = reaction;
+  document.getElementById('hitokoto-box').innerHTML = `
+    <div class="modal-title">よかったら、<br>ひとことだけ</div>
+    <div class="modal-body" style="margin-bottom:12px;">書かなくても大丈夫です</div>
+    <textarea id="hitokoto-comment" maxlength="140" rows="2" placeholder="例: もう少し新しい映画も知りたいかも" style="margin-bottom:14px;"></textarea>
+    <div class="modal-actions">
+      <button class="primary-btn" onclick="submitHitokoto(false)">送る</button>
+    </div>
+    <button class="hitokoto-skip" onclick="submitHitokoto(true)">このまま閉じる</button>
+  `;
+}
+
+async function submitHitokoto(skipComment){
+  const box = document.getElementById('hitokoto-box');
+  const commentEl = document.getElementById('hitokoto-comment');
+  const comment = (!skipComment && commentEl) ? commentEl.value.trim().slice(0, 140) : '';
+  markHitokotoShown();
+  try{
+    const userId = await currentUserId();
+    if(userId){
+      await supabase.from('site_feedback').insert({
+        user_id: userId,
+        reaction: hitokotoPendingReaction,
+        comment: comment || null
+      });
+    }
+  }catch(err){
+    // 開発者だけが読む軽い感想収集なので、通信に失敗してもユーザーには見せない
+    // (「ありがとう」の空気を、通信エラーの文言で壊したくない)。
+    console.error('ひとこと便りの送信に失敗しました', err);
+  }
+  box.innerHTML = `
+    <div class="modal-title">届きました。</div>
+    <div class="modal-body">ありがとうございます。そっと読ませてもらいます。</div>
+  `;
+  burstGiftSparks(box, 6);
+  setTimeout(closeHitokoto, 1600);
+}
+
+function closeHitokoto(){
+  document.getElementById('hitokoto-modal').style.display = 'none';
+}
 
 
 const THANKS_MESSAGES = [
@@ -4837,6 +4945,7 @@ function goDetailBack(){
 }
 
 async function goDetail(id){
+  detailViewsThisSession++; // 「ひとこと便り」を出すかどうかの判定に使う
   detailReturn = pendingDetailReturn;
   pendingDetailReturn = null;
   document.getElementById('d-back-btn').textContent = detailReturn
