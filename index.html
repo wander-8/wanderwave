@@ -7830,14 +7830,19 @@ async function init(){
   // ため、安全側に倒してスキップする。ここで誤って匿名サインインすると、
   // 実際には登録済みのセッションがあるのに新しい匿名アカウントで上書きされ、
   // 「登録したのに開くとゲスト扱いになる」事故につながる。
-  // 匿名サインインはTurnstileの読み込み・実行を待つため数百ms〜数秒かかることが
-  // あるが、映画データなどの読み込みはこれを待つ必要が無い(新規の匿名セッション
-  // にはどのみち既存データが無く、空の結果を返すだけ)。以前はこれをawaitしてから
-  // データ読み込みを開始していたため、その分だけ表示が遅くなっていた。並列化する。
+  // 匿名サインインはTurnstileの読み込み・実行を待つため数百ms〜数秒(Turnstileが
+  // ボット判定で可視チャレンジに切り替わった場合はさらに長く)かかることがあるが、
+  // 映画データなどの読み込みはこれを待つ必要が無い(新規の匿名セッションにはどのみち
+  // 既存データが無く、空の結果を返すだけ)。以前はこれをawaitしてからデータ読み込みを
+  // 開始していたため表示が遅くなっており、その後↓のPromise.allに含める形で並列化
+  // したつもりだったが、同じPromise.allで待っている以上、サインインが遅れれば
+  // renderTagCloud以降の描画も道連れで遅れてしまい(=検索欄・感情タグ・ジャンル/国の
+  // 絞り込みが軒並み動かないまま固まって見える)、狙った並列化になっていなかった。
+  // サインインの完了を待たずに描画へ進めるよう、Promise.allの外に出す。
   const signInPromise = (!hasSupabaseSession && !sessionCheckFailed && !looksLikeAuthRedirect())
     ? autoSignInAnonymously()
     : Promise.resolve();
-  await Promise.all([signInPromise, loadMovies(), loadMyReviews(), loadMyTagVotes(), loadMyWatchLater(), loadMyPocket(), loadMyLists(), loadProfile(), loadMyLogs(), loadMySubmittedMovies(), loadLastSubmissionDate(), loadDiagnosisHistory(), loadRecentReviews()]);
+  await Promise.all([loadMovies(), loadMyReviews(), loadMyTagVotes(), loadMyWatchLater(), loadMyPocket(), loadMyLists(), loadProfile(), loadMyLogs(), loadMySubmittedMovies(), loadLastSubmissionDate(), loadDiagnosisHistory(), loadRecentReviews()]);
 
   renderTagCloud();
   renderGenreCloud();
