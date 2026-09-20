@@ -3637,17 +3637,8 @@ function renderTagCloud(){
     };
     el.appendChild(chip);
   });
-
-  const showFilter = state.activeTags.size > 0;
-  document.getElementById('intensity-filter').style.display = showFilter ? 'block' : 'none';
-  if(showFilter){
-    onIntensityFilterInput(document.getElementById('intensity-filter-slider').value);
-  } else {
-    // フィルターごと隠すので、値も「こだわらない」に戻しておく。そうしないと、
-    // フィルターが見えない状態でも古い選択が検索結果に効き続けてしまう。
-    state.intensityFilter = 0;
-    document.getElementById('intensity-filter-slider').value = 0;
-  }
+  // 表現度フィルターの表示・非表示はrenderResults()側で一括して面倒を見る
+  // (感情タグに限らず、映画名検索やジャンル・国だけの絞り込みでも出したいため)。
 }
 
 // ジャンル・国は感情タグと違い「作品を分類するための客観的な属性」なので、
@@ -3703,8 +3694,10 @@ function movieIntensityBand(m){
   return riskCategoryUpperBound(intensityAverage(m));
 }
 
-function onIntensityFilterInput(value){
-  state.intensityFilter = parseInt(value, 10);
+// スライダーの見た目(ラベル・色・注釈)だけを今のstate.intensityFilterに
+// 合わせて更新する。renderResults()からも呼ぶため、renderResults()を
+// 呼び返さない(呼ぶとonIntensityFilterInput⇄renderResultsの無限再帰になる)。
+function updateIntensityFilterDisplay(){
   const off = state.intensityFilter === 0;
   const color = off ? 'var(--plum-btn)' : riskCategoryColor(state.intensityFilter);
   const label = document.getElementById('intensity-filter-value');
@@ -3716,7 +3709,11 @@ function onIntensityFilterInput(value){
   caption.textContent = off
     ? 'こだわらず全ての作品を表示します'
     : `${riskLabel(state.intensityFilter)}(${riskCategoryDescription(state.intensityFilter)})の作品だけが表示されます`;
+}
 
+function onIntensityFilterInput(value){
+  state.intensityFilter = parseInt(value, 10);
+  updateIntensityFilterDisplay();
   renderResults();
 }
 
@@ -4307,6 +4304,20 @@ function renderResults(){
   // ジャンル・国だけで絞り込んでいる時も同じように「全部まとめて消す」
   // 入り口が欲しいので、何か1つでも絞り込んでいれば出す。
   document.getElementById('search-clear-btn').style.display = isActiveSearch ? 'flex' : 'none';
+
+  // 表現度フィルターは、以前は感情タグを選んだ時だけ出していたが、映画名や
+  // ジャンル・国だけで調べている時にも使いたいという声を受け、何かしら
+  // 絞り込みが有効な間はずっと出しておく(何も検索していない間だけ隠す)。
+  const intensityFilterEl = document.getElementById('intensity-filter');
+  intensityFilterEl.style.display = isActiveSearch ? 'block' : 'none';
+  if(isActiveSearch){
+    updateIntensityFilterDisplay();
+  } else {
+    // 検索欄ごと隠れるので、値も「こだわらない」に戻しておく。そうしないと、
+    // 次に検索を始めた時、見えないまま古い選択が結果に効き続けてしまう。
+    state.intensityFilter = 0;
+    document.getElementById('intensity-filter-slider').value = 0;
+  }
 
   if(!isActiveSearch){
     // 検索・タグ選択をしてない間は、おすすめの棚だけを見せる
