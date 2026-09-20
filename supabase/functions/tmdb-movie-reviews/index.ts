@@ -146,9 +146,14 @@ async function searchTmdbId(title: string, year: number | null): Promise<number 
   return candidates[0].id;
 }
 
-// この映画カタログはTMDbの映画IDを常設で持っていない(poster_pathの取得時に
-// 都度検索しているだけ)ので、ここで初めて必要になった時に検索し、
-// movies.tmdb_idへ書き戻しておく(次回以降は検索し直さずに済む)。
+// 翻訳済みレビューはtmdb_review_cacheにservice roleで保存し、この日数以内
+// なら再取得・再翻訳せずそのまま返す。開くたびに毎回同じ翻訳待ち(無料APIを
+// チャンクごとに間を置いて叩くため数秒〜十数秒かかることがある)を強いて
+// いたのが「レビューが遅れて出る」不満の実体だったため、2回目以降は
+// キャッシュから即座に返す。TMDBのレビュー自体が高頻度に増減するものでは
+// ないので、30日という長めの期間で十分。
+const CACHE_FRESH_DAYS = 30;
+
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   if (req.method !== "POST") return json({ error: "Method not allowed" }, 405);
@@ -164,6 +169,24 @@ Deno.serve(async (req: Request) => {
   if (!Number.isFinite(movieId)) return json({ error: "movie_idが不正です" }, 400);
 
   const supabase = createClient(SUPABASE_URL, SERVICE_ROLE);
+
+  const { data: cached } = await supabase
+    .from("tmdb_review_cache")
+    .select("tmdb_id, reviews, fetched_at")
+    .eq("movie_id", movieId)
+    .maybeSingle();
+
+  if (cached) {
+    const ageDays = (Date.now() - new Date(cached.fetched_at).getTime()) / (1000 * 60 * 60 * 24);
+    if (ageDays < CACHE_FRESH_DAYS) {
+      return json({
+        movie_id: movieId,
+        tmdb_matched: cached.tmdb_id != null,
+        tmdb_id: cached.tmdb_id,
+        reviews: cached.reviews,
+      });
+    }
+  }
 
   const { data: movie, error: movieErr } = await supabase
     .from("movies")
@@ -181,6 +204,9 @@ Deno.serve(async (req: Request) => {
   }
 
   if (!tmdbId) {
+    await supabase.from("tmdb_review_cache").upsert({
+      movie_id: movieId, tmdb_id: null, reviews: [], fetched_at: new Date().toISOString(),
+    });
     return json({ movie_id: movieId, tmdb_matched: false, reviews: [] });
   }
 
@@ -206,6 +232,10 @@ Deno.serve(async (req: Request) => {
       return { ...r, content: await translateToJa(r.content) };
     }),
   );
+
+  await supabase.from("tmdb_review_cache").upsert({
+    movie_id: movieId, tmdb_id: tmdbId, reviews, fetched_at: new Date().toISOString(),
+  });
 
   return json({ movie_id: movieId, tmdb_matched: true, tmdb_id: tmdbId, reviews });
 });

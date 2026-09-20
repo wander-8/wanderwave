@@ -2228,8 +2228,8 @@
       <div id="post-panel-body" style="display:none;">
         <div class="post-block">
           <div class="post-kicker">レビュー</div>
-          <div class="post-block-label">ひとこと感想</div>
-          <textarea id="review-text" maxlength="200" rows="3" placeholder="200字まで書けます(例: 泣けるけど元気が出る話でした)"></textarea>
+          <div class="post-block-label">ひとこと感想(任意)</div>
+          <textarea id="review-text" maxlength="200" rows="3" placeholder="200字まで書けます・感情タグや表現度だけでもOK(例: 泣けるけど元気が出る話でした)"></textarea>
           <div class="slider-value" id="review-count">0 / 200</div>
         </div>
 
@@ -5244,21 +5244,29 @@ async function submitReview(force){
   if(!requireVerifiedUser()) return;
 
   const text = document.getElementById('review-text').value.trim();
-  if(!text){ showToast('レビュー内容を入力してください'); return; }
-
-  if(hasSevereContent(text)){
-    showToast('この内容は投稿できません');
+  // 文章を書かず、感情タグや表現度だけ送りたい時もあるので、本文が空でも
+  // それ以外に送るものが無い時だけ止める(文章だけを必須にしない)。
+  const hasMoodTagSelection = pendingMoodTags.size > 0;
+  if(!text && !pendingIntensityTouched && !hasMoodTagSelection){
+    showToast('感情タグ・表現度・レビュー本文のいずれかを入力してください');
     return;
   }
 
-  if(!force && hasNegativeTone(text)){
-    showReconsiderModal();
-    return;
-  }
+  if(text){
+    if(hasSevereContent(text)){
+      showToast('この内容は投稿できません');
+      return;
+    }
 
-  if(!reviewTurnstileToken){
-    showToast('CAPTCHA認証を完了してください');
-    return;
+    if(!force && hasNegativeTone(text)){
+      showReconsiderModal();
+      return;
+    }
+
+    if(!reviewTurnstileToken){
+      showToast('CAPTCHA認証を完了してください');
+      return;
+    }
   }
 
   const m = MOVIES.find(x => x.id === state.currentMovieId);
@@ -5273,27 +5281,31 @@ async function submitReview(force){
 
   try{
     // review_text(自由記述)の投稿だけは、submit-review エッジ関数を経由させ、
-    // Cloudflare Turnstileのトークン検証を通過した場合だけ書き込む。
+    // Cloudflare Turnstileのトークン検証を通過した場合だけ書き込む。本文が
+    // 空(=感情タグ・表現度だけを送りたいケース)の時は、この関数自体が
+    // 「レビュー内容を入力してください」で弾く作りなので、そもそも呼ばない。
     // 関数の中では呼び出しユーザー自身のJWTでmovie_reviewsに書き込むため、
     // RLS(1人1映画1行・レート制限・review_countゲート)はそのまま有効。
     // getSession()にもタイムアウトを付け、gotrue-jsが希にハングする既知の
     // 不具合で「送信ボタンを押したまま何も起きない」まま止まらないようにする。
-    const { data: { session } } = await withTimeout(supabase.auth.getSession(), 6000);
-    const { data, error } = await supabase.functions.invoke('submit-review', {
-      body: { movie_id: m.id, review_text: text, captcha_token: reviewTurnstileToken },
-      headers: session ? { Authorization: `Bearer ${session.access_token}` } : undefined
-    });
-    if(error){
-      // functions.invoke()は非2xxのとき、本文で返した{error: "..."}をerror.messageに
-      // 乗せてくれないので、レスポンス本体を読み直して分かりやすいメッセージを取り出す。
-      let serverMessage = null;
-      try{ serverMessage = (await error.context.json()).error; }catch(e){ /* 本文が読めなければ諦める */ }
-      throw Object.assign(new Error(serverMessage || error.message), { code: 'P0001' });
-    }
-    if(data && data.error) throw Object.assign(new Error(data.error), { code: 'P0001' });
+    if(text){
+      const { data: { session } } = await withTimeout(supabase.auth.getSession(), 6000);
+      const { data, error } = await supabase.functions.invoke('submit-review', {
+        body: { movie_id: m.id, review_text: text, captcha_token: reviewTurnstileToken },
+        headers: session ? { Authorization: `Bearer ${session.access_token}` } : undefined
+      });
+      if(error){
+        // functions.invoke()は非2xxのとき、本文で返した{error: "..."}をerror.messageに
+        // 乗せてくれないので、レスポンス本体を読み直して分かりやすいメッセージを取り出す。
+        let serverMessage = null;
+        try{ serverMessage = (await error.context.json()).error; }catch(e){ /* 本文が読めなければ諦める */ }
+        throw Object.assign(new Error(serverMessage || error.message), { code: 'P0001' });
+      }
+      if(data && data.error) throw Object.assign(new Error(data.error), { code: 'P0001' });
 
-    state.hasReviewed[m.id] = true;
-    state.myReviewsById[m.id] = text;
+      state.hasReviewed[m.id] = true;
+      state.myReviewsById[m.id] = text;
+    }
 
     // 表現度・当てはまるもの・感情タグは、以前は触るたびに個別送信していたが、
     // 今はレビュー本文と同じこのタイミングでまとめて1回で送信する。
@@ -5335,23 +5347,29 @@ async function submitReview(force){
     renderPosterMood(m);
     renderTagVoteChips();
 
-    // 視聴記録に、今書いたレビューをその場で反映する(次の全読み込みを待たない)
-    const existingRowIdx = state.myReviewRows.findIndex(r => r.movieId === m.id);
-    if(existingRowIdx !== -1) state.myReviewRows[existingRowIdx] = { ...state.myReviewRows[existingRowIdx], body: text };
-    else state.myReviewRows.push({ movieId: m.id, body: text, createdAt: new Date().toISOString() });
+    if(text){
+      // 視聴記録に、今書いたレビューをその場で反映する(次の全読み込みを待たない)
+      const existingRowIdx = state.myReviewRows.findIndex(r => r.movieId === m.id);
+      if(existingRowIdx !== -1) state.myReviewRows[existingRowIdx] = { ...state.myReviewRows[existingRowIdx], body: text };
+      else state.myReviewRows.push({ movieId: m.id, body: text, createdAt: new Date().toISOString() });
 
-    if(wasEditing){
-      editingMovieId = null;
-      showToast('レビューを更新しました');
+      if(wasEditing){
+        editingMovieId = null;
+        showToast('レビューを更新しました');
+      } else {
+        showToast(`レビューを投稿しました。${randomThanks()}`);
+      }
     } else {
-      showToast(`レビューを投稿しました。${randomThanks()}`);
+      showToast('送信しました。ありがとうございます');
     }
     celebrateSubmission(document.getElementById('review-submit-wrap'), 'ありがとうございます');
 
     document.getElementById('review-text').value = "";
-    await loadProfile(); // 初めてのレビューならreview_countが増え、称号や表現度投票の可否に反映される
-    updateHeader();
-    await loadMovieReviews(m);
+    if(text){
+      await loadProfile(); // 初めてのレビューならreview_countが増え、称号や表現度投票の可否に反映される
+      updateHeader();
+      await loadMovieReviews(m);
+    }
   }catch(err){
     console.error('レビューの投稿に失敗しました', err);
     showToast(friendlyErrorMessage(err, '投稿に失敗しました。通信環境を確認してください。'));
