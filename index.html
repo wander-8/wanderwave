@@ -2022,7 +2022,11 @@
   .modal-actions{ display:flex; flex-direction:column; gap:8px; }
 
   /* burstGiftSparks()が%指定の絶対配置で花火を散らすため、位置の基準にする */
-  #hitokoto-box{ position: relative; }
+  #hitokoto-box{ position: relative; animation: hitokotoModalIn 0.35s cubic-bezier(.22,.8,.32,1); }
+  @keyframes hitokotoModalIn{
+    from{ opacity: 0; transform: scale(0.96) translateY(6px); }
+    to{ opacity: 1; transform: scale(1) translateY(0); }
+  }
   .hitokoto-skip{
     display:block; width:100%; margin-top:12px;
     background:none; border:none; font-family:inherit;
@@ -4496,10 +4500,17 @@ function goHome(){ renderFeaturedBanner(); renderHomeRows(); switchView('view-ho
 // そっと集めるための仕組み。開けてすぐ一覧に戻っただけの人には聞かず、実際に
 // 何本か見て回った人が一覧に戻ってきたタイミングだけで聞く。答えてもスキップ
 // しても、しばらくは再表示しない(せっかくの「軽さ」を、催促で壊したくない)。
+// 10日という最初のクールダウンは根拠のない仮の数字で、実際に「使ってすぐ
+// 飛んできた」という指摘を受けた。App Storeのレビュー依頼が年3回までしか
+// 出せない制限や、他社のフィードバック系ツールが30〜90日間隔を置くのが
+// 一般的なことにならい、間隔を60日に伸ばし、さらに生涯で聞く回数そのものにも
+// 上限を設ける(何度断っても永遠に聞かれ続ける状態を防ぐ)。
 // site_feedbackにはSELECTポリシーを与えていないので、送った本人にも見返せない
 // ―― 開発者だけがダッシュボード経由で読む、ヒント集めのための一言。
-const HITOKOTO_COOLDOWN_DAYS = 10;
+const HITOKOTO_COOLDOWN_DAYS = 60;
+const HITOKOTO_MAX_TIMES = 3;
 const HITOKOTO_LAST_SHOWN_KEY = 'wander_hitokoto_last_shown';
+const HITOKOTO_SHOWN_COUNT_KEY = 'wander_hitokoto_shown_count';
 let detailViewsThisSession = 0;
 let hitokotoShownThisSession = false;
 let hitokotoPendingReaction = null;
@@ -4511,6 +4522,10 @@ function hitokotoOnCooldown(){
   return elapsedDays < HITOKOTO_COOLDOWN_DAYS;
 }
 
+function hitokotoShownCount(){
+  return Number(localStorage.getItem(HITOKOTO_SHOWN_COUNT_KEY) || 0);
+}
+
 function maybeOfferHitokoto(){
   if(detailViewsThisSession < 2) return;
   if(hitokotoShownThisSession) return;
@@ -4518,16 +4533,25 @@ function maybeOfferHitokoto(){
   // (今回は諦め、次にホームへ戻ってきた時にまた条件を見直す)。
   if(!hasSupabaseSession) return;
   if(hitokotoOnCooldown()) return;
+  if(hitokotoShownCount() >= HITOKOTO_MAX_TIMES) return;
   hitokotoShownThisSession = true;
-  setTimeout(showHitokotoAsk, 500);
+  // 一覧に戻った直後すぐに出すと「操作した反応で割り込まれた」ように感じて
+  // 唐突だった、という指摘を受け、間を空けて「アプリ側から静かに聞いてきた」
+  // 空気になるよう待ち時間を伸ばした。
+  setTimeout(showHitokotoAsk, 1500);
 }
 
+// 「また今度」で即座に閉じた場合も含めて、モーダルを閉じた時点で必ず1回だけ
+// 呼ぶ(closeHitokoto経由)。以前は投稿完了時にしか呼んでおらず、「また今度」で
+// 見送った人には次のクールダウンが一切効かないまま、次にホームへ戻った瞬間
+// すぐ再表示されてしまうバグがあった。
 function markHitokotoShown(){
   localStorage.setItem(HITOKOTO_LAST_SHOWN_KEY, String(Date.now()));
 }
 
 function showHitokotoAsk(){
   hitokotoPendingReaction = null;
+  localStorage.setItem(HITOKOTO_SHOWN_COUNT_KEY, String(hitokotoShownCount() + 1));
   document.getElementById('hitokoto-box').innerHTML = `
     <div class="modal-title">今日の探し物、<br>見つかりましたか?</div>
     <div class="modal-actions">
@@ -4580,6 +4604,7 @@ async function submitHitokoto(skipComment){
 }
 
 function closeHitokoto(){
+  markHitokotoShown(); // 「また今度」で見送った場合もここでクールダウンに入る
   document.getElementById('hitokoto-modal').style.display = 'none';
 }
 
