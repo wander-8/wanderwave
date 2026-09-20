@@ -3554,6 +3554,14 @@ function loveCountText(m){
   return m.loveCount > 0 ? `${m.loveCount}人が愛を送っています` : '';
 }
 
+// 一覧カードでは、1〜49人のような小さい人数もむしろ寂しく見える(0人を隠した
+// のと同じ理由)という指摘を受け、50人に届くまでは人数表示そのものを出さない。
+// 詳細ページ(loveCountTextをそのまま使う側)は、自分がまさに投票しようとしている
+// 作品向けの表示なので「一番乗り」的な少人数表示のままにしておく。
+function loveCountTextForCard(m){
+  return m.loveCount >= 50 ? loveCountText(m) : '';
+}
+
 // 数字の「0.0」も「0人」と同じくらい寂しく見えるので、実際に1人以上の
 // データがある時だけ数値を出す(無い場合はハートマークだけ、または「-」)。
 function loveScoreText(m){
@@ -3783,7 +3791,7 @@ function buildCardHTML(m, opts){
         <div class="interest-bar-track"><div class="interest-bar-fill" style="width:${(avg/5)*100}%"></div></div>
         <span class="interest-pct">${HEART_ICON} ${loveScoreText(m)}</span>
       </div>
-      <div class="interest-count">${loveCountText(m)}</div>
+      <div class="interest-count">${loveCountTextForCard(m)}</div>
       ` : ''}
     </div>
   `;
