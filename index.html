@@ -891,6 +891,39 @@
   }
   .poster-info-btn:active{ background: rgba(5,8,15,0.75); }
   .poster-info-btn svg{ width:18px; height:18px; }
+
+  .trailer-btn{
+    position: absolute; left: 12px; bottom: 12px;
+    z-index: 6;
+    display: flex; align-items: center; gap: 7px;
+    padding: 8px 14px 8px 10px;
+    border-radius: 999px;
+    background: rgba(5,8,15,0.55);
+    border: 1px solid rgba(255,255,255,0.3);
+    backdrop-filter: blur(4px);
+    color: #fff;
+    font-family: inherit;
+    font-size: 12.5px;
+    cursor: pointer;
+  }
+  .trailer-btn:active{ background: rgba(5,8,15,0.75); }
+  .trailer-play-ico{
+    width: 16px; height: 16px; border-radius: 50%;
+    background: var(--love);
+    display: flex; align-items: center; justify-content: center;
+    flex: none;
+  }
+  .trailer-play-ico::after{
+    content: ''; width: 0; height: 0;
+    border-style: solid; border-width: 4px 0 4px 6px;
+    border-color: transparent transparent transparent #fff;
+    margin-left: 1.5px;
+  }
+  .trailer-embed{
+    position: absolute; inset: 0; z-index: 5;
+    background: #000;
+  }
+  .trailer-embed iframe{ width: 100%; height: 100%; border: 0; }
   .movie-info-panel{
     background: var(--surface); border:1px solid var(--line);
     border-radius: 12px; padding: 14px; margin-top: 10px;
@@ -2136,6 +2169,13 @@
       <button class="poster-info-btn" onclick="toggleMovieInfoPanel()" title="作品情報">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M12 11v5.5" stroke-linecap="round"/><circle cx="12" cy="7.8" r="0.75" fill="currentColor" stroke="none"/></svg>
       </button>
+      <!-- 予告編: 押すまではポスターの見た目を一切変えない、静かな追加要素。
+           押すとこの箱の中身だけがiframeに差し替わる(周りのレイアウトは動かない)。
+           自動再生はせず、閉じたらiframe自体を消して再生を止める。 -->
+      <button class="trailer-btn" id="trailer-btn" style="display:none;" onclick="toggleTrailer()">
+        <span class="trailer-play-ico"></span><span id="trailer-btn-label">予告編を見る</span>
+      </button>
+      <div class="trailer-embed" id="trailer-embed" style="display:none;"></div>
     </div>
 
     <div id="movie-info-panel" class="movie-info-panel" style="display:none;">
@@ -4924,6 +4964,35 @@ function toggleMovieInfoPanel(){
   panel.style.display = panel.style.display === 'block' ? 'none' : 'block';
 }
 
+// 予告編があるか(TMDbから取れなかった作品も多い)によって、ボタンごと
+// 出し分ける。別の作品に移動した時は、前の作品の予告編を開いたままに
+// しない(音が鳴り続けたり、違う作品のiframeが残ったりしないように)。
+function resetTrailerUI(m){
+  const btn = document.getElementById('trailer-btn');
+  btn.style.display = m.trailerKey ? 'flex' : 'none';
+  document.getElementById('trailer-btn-label').textContent = '予告編を見る';
+  const embed = document.getElementById('trailer-embed');
+  embed.style.display = 'none';
+  embed.innerHTML = ''; // src付きiframeを消して再生を止める
+}
+
+function toggleTrailer(){
+  const m = MOVIES.find(x => x.id === state.currentMovieId);
+  if(!m || !m.trailerKey) return;
+  const embed = document.getElementById('trailer-embed');
+  const label = document.getElementById('trailer-btn-label');
+  const isOpen = embed.style.display !== 'none';
+  if(isOpen){
+    embed.style.display = 'none';
+    embed.innerHTML = ''; // iframeごと消して再生を止める
+    label.textContent = '予告編を見る';
+  } else {
+    embed.innerHTML = `<iframe src="https://www.youtube.com/embed/${m.trailerKey}?autoplay=1" title="予告編" allow="autoplay; encrypted-media; picture-in-picture" allowfullscreen></iframe>`;
+    embed.style.display = 'block';
+    label.textContent = '予告編を閉じる';
+  }
+}
+
 // シリーズ棚・シリーズ一覧モーダル・診断結果などから別作品を開いたときだけ、
 // その詳細ページの「戻る」ボタンを一覧ページではなく元の場所に向ける。
 // 戻り先は「別の作品の詳細ページ」(type:'movie')と「特定の画面」
@@ -4987,6 +5056,7 @@ async function goDetail(id){
   renderCommunityTags(m);
   renderPosterMood(m);
   renderMovieInfoPanel(m);
+  resetTrailerUI(m);
 
   tagVoteOpen = false;
   document.getElementById('tag-vote-select').style.display = 'none';
@@ -5622,7 +5692,7 @@ async function selectAllRows(table, columns){
 async function loadMovies(){
   try{
     const [moviesData, statsRes, estimatesData] = await Promise.all([
-      selectAllRows('movies', 'id, title, release_year, emotion_tags, genre, director, cast_members, country, synopsis, poster_path, japan_release_date, keywords, series'),
+      selectAllRows('movies', 'id, title, release_year, emotion_tags, genre, director, cast_members, country, synopsis, poster_path, japan_release_date, keywords, series, trailer_key'),
       supabase.from('movie_review_stats').select('*'),
       selectAllRows('movie_expression_estimates', 'movie_id, expression_level, reason_tags')
     ]);
@@ -5660,6 +5730,7 @@ async function loadMovies(){
         japanReleaseDate: row.japan_release_date || null,
         keywords: row.keywords || [],
         series: row.series || null,
+        trailerKey: row.trailer_key || null,
         platforms: [],
         tagVotes: {},
         reviews: [],
