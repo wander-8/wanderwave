@@ -3710,6 +3710,12 @@ function toggleFilterDisclosure(){
 // なってしまい、意図がわかりにくかった。バー自体は残しつつ、選んだ表現度
 // 「そのもの」だけに絞り込む(0=こだわらない、25/50/75/100=それぞれの表現度のみ)。
 function movieIntensityBand(m){
+  // 投票もAI推定も無い作品はintensityAverageが0を返すため、そのまま
+  // バンド化すると「控えめ」と確認済みであるかのように扱われてしまう
+  // (実際は単に未評価なだけ)。未評価はどのバンドにも属さない扱いにし、
+  // 表現度で絞り込んだ時にだけ結果から外れるようにする
+  // (「こだわらない」を選んでいる間は今まで通り表示される)。
+  if(!m.intensityWeight) return null;
   return riskCategoryUpperBound(intensityAverage(m));
 }
 
@@ -4246,6 +4252,48 @@ const VIBE_QUERY_ALIASES = {
   "parallel universe": ["パラレルワールド"],
   "haunted house": ["幽霊屋敷"],
 
+  // 実際のDBに入っているTMDbキーワードの出現頻度を確認し、まだ日本語の
+  // 言い方に対応していなかった中から検索されそうなものを追加。
+  "based on novel or book": ["原作小説", "小説原作"],
+  "based on comic": ["アメコミ原作"],
+  "duringcreditsstinger": ["エンドクレジット後の映像", "本編後の映像"],
+  "aftercreditsstinger": ["エンドクレジット後の映像", "本編後の映像"],
+  "murder": ["殺人事件"],
+  "friendship": ["友情"],
+  "woman director": ["女性監督"],
+  "female protagonist": ["女性主人公"],
+  "villain": ["悪役"],
+  "superhero": ["スーパーヒーロー"],
+  "biography": ["伝記映画"],
+  "remake": ["リメイク"],
+  "halloween": ["ハロウィン"],
+  "parent child relationship": ["親子関係"],
+  "magic": ["魔法"],
+  "loss of loved one": ["死別", "大切な人を失う"],
+  "sibling relationship": ["兄弟", "姉妹"],
+  "black and white": ["白黒映画", "モノクロ映画"],
+  "dark comedy": ["ダークコメディ"],
+  "police": ["刑事もの"],
+  "supernatural": ["超自然現象"],
+  "sports": ["スポーツもの"],
+  "survival": ["サバイバル"],
+  "lgbt": ["LGBTQ", "性的マイノリティ"],
+  "super power": ["超能力"],
+  "gangster": ["ギャング映画"],
+  "monster": ["怪獣映画", "モンスター映画"],
+  "demon": ["悪魔"],
+  "romcom": ["ラブコメ"],
+  "psychological thriller": ["サイコスリラー"],
+  "conspiracy": ["陰謀"],
+  "betrayal": ["裏切り"],
+  "corruption": ["汚職"],
+  "on the run": ["逃亡劇"],
+  "bullying": ["いじめ"],
+  "infidelity": ["不倫"],
+  "drugs": ["薬物", "ドラッグ"],
+  "escape": ["脱出劇"],
+  "airplane": ["飛行機"],
+
   // 過激な表現を積極的に求める人も静かに迎えたい、という方針での追加。
   // 表には専用のタグや棚を出さず、検索した人にだけそっと結果が返る形にする
   // (他のvibeエイリアスと全く同じ仕組みの延長)。
@@ -4259,6 +4307,8 @@ const VIBE_QUERY_ALIASES = {
   "mutilation": ["身体切断"],
   "grindhouse": ["グラインドハウス"],
   "gruesome": ["凄惨"],
+  "rape": ["性暴力", "レイプ"],
+  "suicide": ["自殺"],
 };
 
 function matchesVibeAlias(m, normalizedQuery){
