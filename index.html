@@ -3709,14 +3709,35 @@ function toggleFilterDisclosure(){
 // 「控えめだけ見たい」と思っても実際には「控えめ以下(=控えめ含む全部)」に
 // なってしまい、意図がわかりにくかった。バー自体は残しつつ、選んだ表現度
 // 「そのもの」だけに絞り込む(0=こだわらない、25/50/75/100=それぞれの表現度のみ)。
+// TMDbのキーワードとして「レイプ」「自殺」「拷問」等が付いている作品は、
+// 全体の雰囲気を平均するAI推定/投票の結果が低く出ることがあっても、
+// 「目立った刺激的な描写はほぼ報告されていません」(控えめ)とまで言い切る
+// のは看板に偽りありになる。この一群のキーワードが付いている作品は、
+// 表現度の絞り込みでは最低でも「軽度」以上として扱う(作品詳細ページの
+// 実際のゲージ・数値はそのまま本当の推定値を表示し続けるので、平均自体を
+// 書き換えているわけではない。絞り込みの分類だけの下駄履き)。
+const EXTREME_CONTENT_KEYWORDS = [
+  'gore', 'splatter', 'slasher', 'torture', 'cannibal', 'body horror',
+  'serial killer', 'mutilation', 'grindhouse', 'gruesome', 'rape', 'suicide',
+  'terrorism', 'dying and death'
+];
+
+function hasExtremeContentKeyword(m){
+  if(!m.keywords || m.keywords.length === 0) return false;
+  const kws = m.keywords.map(k => k.toLowerCase());
+  return EXTREME_CONTENT_KEYWORDS.some(keyword => kws.some(k => k.includes(keyword)));
+}
+
 function movieIntensityBand(m){
   // 投票もAI推定も無い作品はintensityAverageが0を返すため、そのまま
   // バンド化すると「控えめ」と確認済みであるかのように扱われてしまう
   // (実際は単に未評価なだけ)。未評価はどのバンドにも属さない扱いにし、
   // 表現度で絞り込んだ時にだけ結果から外れるようにする
   // (「こだわらない」を選んでいる間は今まで通り表示される)。
-  if(!m.intensityWeight) return null;
-  return riskCategoryUpperBound(intensityAverage(m));
+  if(!m.intensityWeight) return hasExtremeContentKeyword(m) ? 50 : null;
+  const band = riskCategoryUpperBound(intensityAverage(m));
+  if(band === 25 && hasExtremeContentKeyword(m)) return 50;
+  return band;
 }
 
 // スライダーの見た目(ラベル・色・注釈)だけを今のstate.intensityFilterに
@@ -4294,6 +4315,121 @@ const VIBE_QUERY_ALIASES = {
   "escape": ["脱出劇"],
   "airplane": ["飛行機"],
 
+  // さらに検索頻度がありそうなものを追加(第2弾)。
+  "robbery": ["強盗"],
+  "organized crime": ["組織犯罪"],
+  "undercover": ["潜入捜査"],
+  "bounty hunter": ["賞金稼ぎ"],
+  "bank robbery": ["銀行強盗"],
+  "drug dealer": ["麻薬密売人"],
+  "drug trafficking": ["麻薬密輸"],
+  "drug addiction": ["薬物依存"],
+  "alcoholism": ["アルコール依存症"],
+  "police corruption": ["警察の汚職"],
+  "vigilante": ["自警団"],
+  "hostage": ["人質"],
+  "fugitive": ["逃亡者"],
+  "home invasion": ["強盗侵入"],
+  "stalking": ["ストーカー"],
+  "assassination": ["暗殺"],
+  "car accident": ["交通事故"],
+  "explosion": ["爆発"],
+  "bomb": ["爆弾"],
+  "shootout": ["銃撃戦"],
+  "sniper": ["狙撃手"],
+  "kung fu": ["カンフー"],
+  "sword fight": ["殺陣", "剣劇"],
+  "world war i": ["第一次世界大戦"],
+  "vietnam war": ["ベトナム戦争"],
+  "cold war": ["冷戦"],
+  "nazi": ["ナチス"],
+  "slavery": ["奴隷制"],
+  "racism": ["人種差別"],
+  "resistance": ["レジスタンス"],
+  "war veteran": ["復員兵"],
+  "royalty": ["王室もの"],
+  "werewolf": ["人狼", "狼男"],
+  "wizard": ["魔法使い"],
+  "dragon": ["ドラゴン"],
+  "fairy": ["妖精"],
+  "curse": ["呪い"],
+  "possession": ["憑依"],
+  "exorcism": ["エクソシズム", "悪魔祓い"],
+  "occult": ["オカルト"],
+  "cult": ["カルト"],
+  "afterlife": ["死後の世界"],
+  "immortality": ["不老不死"],
+  "giant robot": ["巨大ロボット"],
+  "android": ["アンドロイド"],
+  "cyborg": ["サイボーグ"],
+  "mutant": ["ミュータント"],
+  "alien invasion": ["侵略もの"],
+  "space opera": ["スペースオペラ"],
+  "cyberpunk": ["サイバーパンク"],
+  "steampunk": ["スチームパンク"],
+  "virtual reality": ["バーチャルリアリティ"],
+  "hacker": ["ハッカー"],
+  "virus": ["ウイルス", "パンデミック"],
+  "apocalypse": ["終末もの"],
+  "forbidden love": ["禁断の恋"],
+  "love triangle": ["三角関係"],
+  "first love": ["初恋"],
+  "marriage crisis": ["夫婦の危機"],
+  "adultery": ["不倫"],
+  "extramarital affair": ["不倫"],
+  "dysfunctional family": ["機能不全家族"],
+  "orphan": ["孤児"],
+  "adoption": ["養子縁組"],
+  "widow": ["未亡人"],
+  "widower": ["未亡人"],
+  "grief": ["喪失感"],
+  "depression": ["うつ病"],
+  "mental illness": ["精神疾患"],
+  "child abuse": ["児童虐待"],
+  "terminal illness": ["余命宣告"],
+  "cancer": ["がん"],
+  "post-traumatic stress disorder (ptsd)": ["PTSD"],
+  "trauma": ["トラウマ"],
+  "film noir": ["フィルムノワール"],
+  "found footage": ["疑似ドキュメンタリー", "モキュメンタリー"],
+  "whodunit": ["推理もの"],
+  "anthology": ["オムニバス"],
+  "slice of life": ["日常系"],
+  "teen movie": ["ティーン映画"],
+  "buddy cop": ["バディ刑事もの"],
+  "disaster": ["災害映画"],
+  "historical fiction": ["歴史フィクション"],
+  "dark fantasy": ["ダークファンタジー"],
+  "gothic": ["ゴシック"],
+  "fantasy world": ["異世界"],
+  "based on video game": ["ゲーム原作"],
+  "based on play or musical": ["舞台原作"],
+  "based on tv series": ["ドラマ原作"],
+  "based on short story": ["短編小説原作"],
+  "based on memoir or autobiography": ["自伝原作"],
+  "live action remake": ["実写化"],
+  "spin off": ["スピンオフ"],
+  "reboot": ["リブート"],
+  "prequel": ["前日譚"],
+  "sequel": ["続編"],
+  "basketball": ["バスケットボール"],
+  "shark": ["サメ"],
+  "dinosaur": ["恐竜"],
+  "wolf": ["オオカミ"],
+  "horse": ["馬"],
+  "dog": ["犬"],
+  "cat": ["猫"],
+  "teacher": ["教師"],
+  "nurse": ["看護師"],
+  "author": ["作家"],
+  "musician": ["ミュージシャン"],
+  "singer": ["歌手"],
+  "photographer": ["写真家"],
+  "priest": ["神父"],
+  "nun": ["修道女"],
+  "politician": ["政治家"],
+  "secret society": ["秘密結社"],
+
   // 過激な表現を積極的に求める人も静かに迎えたい、という方針での追加。
   // 表には専用のタグや棚を出さず、検索した人にだけそっと結果が返る形にする
   // (他のvibeエイリアスと全く同じ仕組みの延長)。
@@ -4309,6 +4445,8 @@ const VIBE_QUERY_ALIASES = {
   "gruesome": ["凄惨"],
   "rape": ["性暴力", "レイプ"],
   "suicide": ["自殺"],
+  "terrorism": ["テロ"],
+  "dying and death": ["死", "死にゆく"],
 };
 
 function matchesVibeAlias(m, normalizedQuery){
