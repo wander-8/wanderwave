@@ -2969,6 +2969,19 @@ function withTimeout(promise, ms){
   ]);
 }
 
+// gotrue-jsの一時的なハング/ネットワークの揺らぎでタイムアウトすると、
+// ログイン中のユーザーでも1回のリロードだけでヘッダーが「ゲスト」表示に
+// なってしまう(セッションは実在するのに、確認できなかっただけで「無し」
+// 扱いされてしまうため)。ここで諦める前にもう1回だけ取り直すことで、
+// 単発の揺らぎがそのままログアウト状態の誤表示に直結しないようにする。
+async function withTimeoutRetry(makePromise, ms){
+  try{
+    return await withTimeout(makePromise(), ms);
+  }catch(err){
+    return await withTimeout(makePromise(), ms);
+  }
+}
+
 // getSession()がタイムアウト/エラーになった場合は「本当にセッションが無い」のか
 // 「確認できなかっただけ」なのか区別がつかない。区別せずfalse扱いにすると、
 // 実際にはセッションがある(=登録済み)状態でも自動匿名サインインが走って
@@ -2977,7 +2990,7 @@ let sessionCheckFailed = false;
 
 async function checkExistingSession(){
   try{
-    const { data: { session } } = await withTimeout(supabase.auth.getSession(), 6000);
+    const { data: { session } } = await withTimeoutRetry(() => supabase.auth.getSession(), 6000);
     hasSupabaseSession = !!session;
     sessionCheckFailed = false;
   }catch(err){
@@ -3023,7 +3036,7 @@ async function currentAuthUser(){
   if(!authUserRequest){
     authUserRequest = (async () => {
       try{
-        const { data: { user } } = await withTimeout(supabase.auth.getUser(), 6000);
+        const { data: { user } } = await withTimeoutRetry(() => supabase.auth.getUser(), 6000);
         return user || null;
       }catch(err){
         console.error('ユーザー情報の取得に失敗しました', err);
@@ -3349,6 +3362,16 @@ supabase.auth.onAuthStateChange((event, session) => {
     } else {
       lastKnownAuthUserId = newUserId;
     }
+  } else if(event === 'USER_UPDATED'){
+    // 匿名ユーザーがメール確認して本登録に格上げされた時は、ユーザーIDは
+    // 変わらずis_anonymous/email_confirmed_atだけが変わるため'SIGNED_IN'では
+    // 拾えず、こちらの'USER_UPDATED'で発火する。ここを見ていないと、
+    // state.profile.emailVerifiedが古いfalseのまま固まり、実際には確認済みの
+    // ユーザーが「メール登録が必要です」と言われ続ける事故になる
+    // (画面遷移が起きるgoProfile()は呼ばず、今の画面のまま静かに更新する)。
+    setTimeout(() => {
+      loadProfile().then(() => updateHeader());
+    }, 0);
   }
 });
 
