@@ -3910,9 +3910,24 @@ function renderHomeRows(){
   // (検索だけ除けても、棚から見えてしまうと意味が薄いため)。
   const visibleMovies = MOVIES.filter(m => !matchesExcludedWord(m));
 
+  const todayStr = new Date().toISOString().slice(0, 10);
+
+  // 「今話題の新作」以外の発見系の棚(気分の棚・隠れた名作)から、公開年が
+  // 最近なのに日本でまだ公開されていない(公開日が無い、または未来の予定日の
+  // ままの)作品を除いておく。せっかく見つけても観る手段が無く、がっかり
+  // させてしまうため。「今話題の新作」棚は公開日で厳密に絞っているので元々
+  // 影響を受けないし、タイトルで直接探しに来た場合(検索)はここでは絞らない
+  // (存在を確認したいだけのこともあるため)。
+  const currentYear = new Date().getFullYear();
+  function isUnreleasedInJapanYet(m){
+    if(!m.year || m.year < currentYear) return false;
+    return !m.japanReleaseDate || m.japanReleaseDate > todayStr;
+  }
+  const discoveryMovies = visibleMovies.filter(m => !isUnreleasedInJapanYet(m));
+
   // タグごとの作品数を数えて、多い順に上位4つを「気分の棚」として使う
   const tagCounts = {};
-  visibleMovies.forEach(m => m.tags.forEach(t => { tagCounts[t] = (tagCounts[t] || 0) + 1; }));
+  discoveryMovies.forEach(m => m.tags.forEach(t => { tagCounts[t] = (tagCounts[t] || 0) + 1; }));
   const topTags = Object.keys(tagCounts).sort((a, b) => tagCounts[b] - tagCounts[a]).slice(0, 4);
 
   let html = "";
@@ -3920,7 +3935,6 @@ function renderHomeRows(){
   // 「今話題の新作」を一番上に。日本で未公開の作品(公開日が無い、または
   // 公開日がまだ来ていない予定作品)が混ざると不自然なので、公開日が判明していて、
   // かつ今日以前の作品だけを対象に、公開日が新しい順に選ぶ。
-  const todayStr = new Date().toISOString().slice(0, 10);
   const newReleases = visibleMovies.filter(m => m.japanReleaseDate && m.japanReleaseDate <= todayStr)
     .sort((a, b) => b.japanReleaseDate.localeCompare(a.japanReleaseDate) || (b.id - a.id))
     .slice(0, 12);
@@ -3932,12 +3946,16 @@ function renderHomeRows(){
   }
 
   topTags.forEach(tag => {
-    // 常に同じ上位12本が固定で出続けると単調なので、ある程度評価の高い
-    // プール(上位30本)から、日替わりで12本をピックアップする。
-    const pool = visibleMovies.filter(m => m.tags.includes(tag))
-      .sort((a, b) => loveAverage(b) - loveAverage(a))
-      .slice(0, 30);
-    const list = seededShuffle(pool, `tag:${tag}`).slice(0, 12);
+    const tagMovies = discoveryMovies.filter(m => m.tags.includes(tag));
+    // 有名な(=愛が集まっている)作品を軸にしつつ、上位勢だけで固めると
+    // いつも同じ顔ぶれで「見たことない作品」に出会えないという声を受け、
+    // まだ愛が集まっていない(=珍しい)けど作品情報が揃っている作品も
+    // 少し混ぜる。日替わりで入れ替わるよう、どちらもseededShuffleを通す。
+    const famous = [...tagMovies].sort((a, b) => loveAverage(b) - loveAverage(a)).slice(0, 20);
+    const famousIds = new Set(famous.map(m => m.id));
+    const rarePool = tagMovies.filter(m => !famousIds.has(m.id) && (m.synopsis || m.genre));
+    const rarePicks = seededShuffle(rarePool, `tag-rare:${tag}`).slice(0, 8);
+    const list = seededShuffle([...famous, ...rarePicks], `tag:${tag}`).slice(0, 12);
     if(list.length === 0) return;
     html += `
       <div class="mood-row-header">
@@ -3951,7 +3969,7 @@ function renderHomeRows(){
   // 「隠れた名作」棚: まだあまり愛が集まっていない(=埋もれがちな)作品を、
   // 日替わりでランダムに紹介する。ある程度情報が揃っている作品に限定して、
   // データが薄すぎる行が混ざらないようにする。
-  const hiddenGemsPool = visibleMovies.filter(m => m.loveCount <= 1 && (m.synopsis || m.genre));
+  const hiddenGemsPool = discoveryMovies.filter(m => m.loveCount <= 1 && (m.synopsis || m.genre));
   const hiddenGems = seededShuffle(hiddenGemsPool, 'hidden-gems').slice(0, 12);
   if(hiddenGems.length){
     html += `
