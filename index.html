@@ -3745,10 +3745,27 @@ const EXTREME_CONTENT_KEYWORDS = [
   'terrorism', 'dying and death'
 ];
 
+// 単純な部分文字列一致(includes)だと、"rape"が"grape"や"skyscraper"
+// ("...sc-RAPE-r")、"trapeze"の中の文字列としてもヒットしてしまい、
+// 全く無関係な作品(高層ビル物のアクション映画など)が性暴力キーワード
+// 判定に巻き込まれる。マッチ位置の直前が英数字でない(=単語の先頭)場合
+// のみ一致とみなすことで、"cannibalism"のような語尾違いはそのまま拾い
+// つつ、単語の途中に紛れ込むケースは弾く。
+function keywordContainsWord(haystack, needle){
+  let start = 0;
+  while(true){
+    const idx = haystack.indexOf(needle, start);
+    if(idx === -1) return false;
+    const prevChar = idx > 0 ? haystack[idx - 1] : '';
+    if(!/[a-z0-9]/i.test(prevChar)) return true;
+    start = idx + 1;
+  }
+}
+
 function hasExtremeContentKeyword(m){
   if(!m.keywords || m.keywords.length === 0) return false;
   const kws = m.keywords.map(k => k.toLowerCase());
-  return EXTREME_CONTENT_KEYWORDS.some(keyword => kws.some(k => k.includes(keyword)));
+  return EXTREME_CONTENT_KEYWORDS.some(keyword => kws.some(k => keywordContainsWord(k, keyword)));
 }
 
 function movieIntensityBand(m){
@@ -4641,7 +4658,7 @@ function matchesVibeAlias(m, normalizedQuery){
   if(!m.keywords || m.keywords.length === 0 || !normalizedQuery) return false;
   const kws = m.keywords.map(k => k.toLowerCase());
   return Object.entries(VIBE_QUERY_ALIASES).some(([keyword, aliases]) => {
-    if(!kws.some(k => k.includes(keyword))) return false;
+    if(!kws.some(k => keywordContainsWord(k, keyword))) return false;
     return aliases.some(alias => normalizedQuery.includes(normalizeForSearch(alias)));
   });
 }
