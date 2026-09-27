@@ -448,6 +448,13 @@
   .filter-group:last-child{ margin-bottom:0; }
   .filter-group-label{ font-size:12px; color: var(--ink-soft); margin:0 0 8px; letter-spacing:.03em; }
   .genre-cloud, .country-cloud{ display:flex; flex-wrap:wrap; gap:8px; }
+  /* ジャンル/国チップは選択が変わるたびに(押した本人以外も含めて)クラウド
+     全体を作り直しているため、押した瞬間だけでなく再描画のたびに小さく
+     ポップして現れるようにする(結果カードの登場演出と同じ言語)。 */
+  @keyframes chipPopIn{
+    from{ opacity: 0; transform: scale(0.88); }
+    to{ opacity: 1; transform: scale(1); }
+  }
   .genre-chip, .country-chip{
     border:1px solid var(--line);
     background: transparent;
@@ -456,8 +463,10 @@
     font-size: 13px;
     color: var(--ink-soft);
     cursor:pointer;
-    transition: all .18s ease;
+    transition: all .18s ease, transform .12s ease;
+    animation: chipPopIn .2s ease-out both;
   }
+  .genre-chip:active, .country-chip:active{ transform: scale(0.92); }
   .genre-chip.active{
     border-color: var(--ink-soft);
     color: var(--ink);
@@ -477,9 +486,11 @@
     font-size: 14px;
     cursor:pointer;
     color: var(--ink-soft);
-    transition: all .15s ease;
+    transition: all .15s ease, transform .12s ease;
     display:inline-flex; align-items:center; gap:6px;
+    animation: chipPopIn .2s ease-out both;
   }
+  .tagchip:active{ transform: scale(0.92); }
   .tag-dot{
     width: 8px; height: 8px; border-radius: 50%;
     display:inline-block; flex-shrink:0;
@@ -610,15 +621,42 @@
   .result-card, .review-card, .history-item, .list-card, .diagnosis-history-card, .diagnosis-picker-item{
     animation: cardFadeIn 0.4s ease-out both;
   }
+  /* 一覧に並ぶカードが一枚ずつ少し遅れて現れる「連なり」を出すための
+     段差(先頭に近いカードほど早く、後ろほど少し遅れる)。件数が多い一覧でも
+     待たされた印象にならないよう、11枚目以降は同じ遅延に揃える。 */
+  .result-card:nth-child(1),.review-card:nth-child(1),.list-card:nth-child(1),.diagnosis-history-card:nth-child(1),.diagnosis-picker-item:nth-child(1){ animation-delay: 0ms; }
+  .result-card:nth-child(2),.review-card:nth-child(2),.list-card:nth-child(2),.diagnosis-history-card:nth-child(2),.diagnosis-picker-item:nth-child(2){ animation-delay: 30ms; }
+  .result-card:nth-child(3),.review-card:nth-child(3),.list-card:nth-child(3),.diagnosis-history-card:nth-child(3),.diagnosis-picker-item:nth-child(3){ animation-delay: 60ms; }
+  .result-card:nth-child(4),.review-card:nth-child(4),.list-card:nth-child(4),.diagnosis-history-card:nth-child(4),.diagnosis-picker-item:nth-child(4){ animation-delay: 90ms; }
+  .result-card:nth-child(5),.review-card:nth-child(5),.list-card:nth-child(5),.diagnosis-history-card:nth-child(5),.diagnosis-picker-item:nth-child(5){ animation-delay: 120ms; }
+  .result-card:nth-child(6),.review-card:nth-child(6),.list-card:nth-child(6),.diagnosis-history-card:nth-child(6),.diagnosis-picker-item:nth-child(6){ animation-delay: 150ms; }
+  .result-card:nth-child(7),.review-card:nth-child(7),.list-card:nth-child(7),.diagnosis-history-card:nth-child(7),.diagnosis-picker-item:nth-child(7){ animation-delay: 180ms; }
+  .result-card:nth-child(8),.review-card:nth-child(8),.list-card:nth-child(8),.diagnosis-history-card:nth-child(8),.diagnosis-picker-item:nth-child(8){ animation-delay: 210ms; }
+  .result-card:nth-child(n+9),.review-card:nth-child(n+9),.list-card:nth-child(n+9),.diagnosis-history-card:nth-child(n+9),.diagnosis-picker-item:nth-child(n+9){ animation-delay: 230ms; }
 
   .result-card{
     flex: 0 0 148px;
     scroll-snap-align: start;
     cursor: pointer;
-    transition: transform 0.15s ease;
+    transition: transform 0.15s ease, box-shadow 0.15s ease;
   }
   .result-card:active{
     transform: scale(0.96);
+  }
+  /* ホバーが実際に使える環境(マウス等)でだけ、カードにポインタを重ねると
+     持ち上がる演出を出す。タッチ端末でタップ後にホバー状態が残って
+     浮いたまま固まる、といった事故を避けるため@media(hover:hover)で絞る。 */
+  @media (hover:hover){
+    .result-card:hover{
+      transform: translateY(-4px);
+      box-shadow: 0 10px 20px -8px rgba(0,0,0,0.28);
+    }
+    .result-card:hover .poster-thumb img{
+      transform: scale(1.04);
+    }
+  }
+  .poster-thumb img{
+    transition: transform 0.2s ease;
   }
   .review-feed-card{
     flex: 0 0 180px;
@@ -987,12 +1025,16 @@
   }
 
   /* ---- detail view ---- */
-  .view{ display:none; }
+  .view{ display:none; transition: opacity .18s ease; }
   .view.active{ display:block; animation: viewEnter 0.65s cubic-bezier(.22,.8,.32,1); }
   @keyframes viewEnter{
     from{ opacity: 0; transform: translateY(20px); }
     to{ opacity: 1; transform: translateY(0); }
   }
+  /* 映画⇔アニメ等のモード切り替えは、既にホーム画面を表示中のまま棚の
+     内容だけ一斉に入れ替わるため(viewEnterが再生されない)、切り替え中は
+     一瞬だけ不透明度を落として「入れ替わった」感を出す。 */
+  .view.mode-switch-fade{ opacity: 0; }
 
   .back-btn{
     background:none; border:none; color: var(--plum-deep);
@@ -3655,7 +3697,7 @@ const TAG_COLORS = {
 
 // 「詳しく絞り込む」に出すジャンル・国の候補。moviesテーブル全体を集計した際に
 // 件数の多い主要なものだけに絞ってあり、表記ゆれ的な少数派(「犯罪」「伝記」等)は含めない。
-const FILTER_GENRES = ["ドラマ","コメディ","アクション","スリラー","アドベンチャー","クライム","恋愛","ホラー","SF","ファンタジー","ミステリー","アニメーション","ファミリー","歴史","戦争","音楽","ドキュメンタリー","西部劇","特撮"];
+const FILTER_GENRES = ["ドラマ","コメディ","アクション","スリラー","アドベンチャー","クライム","恋愛","ホラー","SF","ファンタジー","ミステリー","アニメーション","ファミリー","歴史","戦争","音楽","ドキュメンタリー","西部劇","特撮","TVムービー"];
 const FILTER_COUNTRIES = ["アメリカ","イギリス","フランス","ドイツ","日本","カナダ","イタリア","スペイン","中国","香港","韓国","インド","オーストラリア","ベルギー","メキシコ","スウェーデン","デンマーク","ブラジル","ロシア","アイルランド","オランダ","ポーランド","スイス","アルゼンチン","トルコ","ノルウェー","フィンランド","オーストリア","ルクセンブルク","ルーマニア","チェコ","台湾","ハンガリー","南アフリカ","タイ","ニュージーランド","ポルトガル"];
 
 function tagColor(tag){
@@ -6338,10 +6380,19 @@ function setCatalogMode(mode){
   // 切り替えるたびに検索・絞り込み状態をリセットして、片方のモードで選んだ
   // 条件がもう片方に持ち越されて「0件」になる事故を防ぐ。
   clearSearch();
-  renderFeaturedBanner();
-  renderHomeRows();
-  switchView('view-home');
-  updateCatalogModeToggleUI();
+  // 既にホーム画面を見ている状態でモードを切り替える場合、view側の
+  // active/非activeは変わらないためviewEnterアニメーションが再生されない。
+  // 一旦フェードアウトしてから中身を差し替え、フェードインすることで、
+  // 棚が一斉に入れ替わったことがひと目で伝わるようにする。
+  const homeView = document.getElementById('view-home');
+  homeView.classList.add('mode-switch-fade');
+  setTimeout(() => {
+    renderFeaturedBanner();
+    renderHomeRows();
+    switchView('view-home');
+    updateCatalogModeToggleUI();
+    requestAnimationFrame(() => homeView.classList.remove('mode-switch-fade'));
+  }, 150);
 }
 
 // 選択肢(映画/アニメ/ドラマ/漫画/小説)はこの配列に追記していく。
