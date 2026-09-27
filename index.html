@@ -1445,6 +1445,26 @@
     transition: transform .15s cubic-bezier(.22,.8,.32,1), border-color .2s ease;
   }
 
+  .oauth-btn{
+    display:flex; align-items:center; justify-content:center; gap:10px;
+    width:100%;
+    background: var(--surface); border:1px solid var(--line); color: var(--ink);
+    border-radius:10px; padding: 12px 20px; font-size:14.5px; font-weight:600; cursor:pointer;
+    font-family: inherit;
+    transition: transform .15s cubic-bezier(.22,.8,.32,1), border-color .2s ease, background .2s ease;
+  }
+  .oauth-btn:hover{ border-color: var(--ink-soft); }
+  .oauth-btn svg{ flex-shrink:0; }
+  .oauth-login-row{ display:flex; flex-direction:column; gap:10px; margin-bottom: 18px; }
+  .oauth-login-divider{
+    display:flex; align-items:center; gap:12px;
+    color: var(--ink-soft); font-size:12.5px;
+    margin: 4px 0 18px;
+  }
+  .oauth-login-divider::before, .oauth-login-divider::after{
+    content:""; flex:1; height:1px; background: var(--line);
+  }
+
   /* 触った時のモーションを、主要な操作系パーツ全体にまとめて適用 */
   .ghost-btn:active,
   .tagchip:active,
@@ -2873,8 +2893,20 @@
     <button class="back-btn" onclick="goHome()">← 一覧に戻る</button>
     <div class="detail-head">
       <h2>新規登録・ログイン</h2>
-      <div class="sub">診断・ポケット・レビューを使うには、メールアドレスの登録が必要です。初めての方も、登録済みの方も、同じ手順で進めます。パスワードは不要です。</div>
+      <div class="sub">診断・ポケット・レビューを使うには登録が必要です。初めての方も、登録済みの方も、同じ手順で進めます。パスワードは不要です。</div>
     </div>
+
+    <div class="oauth-login-row">
+      <button class="oauth-btn" onclick="signInWithProvider('google')">
+        <svg width="18" height="18" viewBox="0 0 18 18"><path fill="#4285F4" d="M17.64 9.2c0-.64-.06-1.25-.16-1.84H9v3.48h4.84c-.21 1.13-.84 2.09-1.8 2.73v2.27h2.91c1.7-1.57 2.69-3.88 2.69-6.64z"/><path fill="#34A853" d="M9 18c2.43 0 4.47-.8 5.96-2.18l-2.91-2.27c-.8.54-1.84.86-3.05.86-2.35 0-4.34-1.59-5.05-3.72H.98v2.34C2.47 15.98 5.48 18 9 18z"/><path fill="#FBBC05" d="M3.95 10.69A5.4 5.4 0 0 1 3.68 9c0-.59.1-1.16.27-1.69V4.97H.98A9 9 0 0 0 0 9c0 1.45.35 2.83.98 4.03l2.97-2.34z"/><path fill="#EA4335" d="M9 3.58c1.32 0 2.51.45 3.44 1.35l2.58-2.58C13.46.89 11.43 0 9 0 5.48 0 2.47 2.02.98 4.97l2.97 2.34C4.66 5.17 6.65 3.58 9 3.58z"/></svg>
+        <span>Googleで続ける</span>
+      </button>
+      <button class="oauth-btn" onclick="signInWithProvider('twitter')">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>
+        <span>X(Twitter)で続ける</span>
+      </button>
+    </div>
+    <div class="oauth-login-divider">またはメールアドレスで</div>
 
     <div class="field">
       <label>メールアドレス</label>
@@ -3510,6 +3542,24 @@ async function autoSignInAnonymously(){
 
 function emailAuthRedirectUrl(){
   return window.location.origin + window.location.pathname;
+}
+
+// Google・X(Twitter)ログイン: signInWithOAuth()はプロバイダの認可画面へ
+// 遷移させる(このページ自体を離れる)ため、成功/失敗はこの関数の戻り値では
+// なくリダイレクト後にonAuthStateChangeの'SIGNED_IN'側で拾われる。ここで
+// 拾うのは「認可画面に遷移する前」に失敗するケース(プロバイダがSupabase側で
+// 有効化されていない等)だけ。
+async function signInWithProvider(provider){
+  try{
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider,
+      options: { redirectTo: emailAuthRedirectUrl() }
+    });
+    if(error) throw error;
+  }catch(err){
+    console.error('OAuthログインに失敗しました', err);
+    showToast('ログインに失敗しました。時間をおいて再度お試しください。');
+  }
 }
 
 function confirmLogout(){
