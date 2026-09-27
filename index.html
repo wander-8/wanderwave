@@ -6192,11 +6192,23 @@ async function selectAllRows(table, columns){
   for(let from = PAGE_SIZE; from < total; from += PAGE_SIZE) remainingStarts.push(from);
   if(remainingStarts.length === 0) return first.data || [];
 
-  const rest = await Promise.all(remainingStarts.map(async from => {
-    const { data, error } = await supabase.from(table).select(columns).range(from, from + PAGE_SIZE - 1);
-    if(error) throw error;
-    return data || [];
-  }));
+  // 残り全ページを一度に並列で投げていたが、カタログが5万件を超えたところ、
+  // 同時接続数がSupabase側の接続プール上限を超え、「Timed out acquiring
+  // connection from connection pool」「canceling statement due to statement
+  // timeout」で一部ページが500になり、映画一覧がまるごと読み込み失敗扱いに
+  // なる事故が実際に起きた。同時に投げる本数の上限を固定することで、
+  // テーブルがどれだけ増えても同時接続数が際限なく増えないようにする。
+  const CONCURRENCY = 6;
+  const rest = [];
+  for(let i = 0; i < remainingStarts.length; i += CONCURRENCY){
+    const batch = remainingStarts.slice(i, i + CONCURRENCY);
+    const batchResults = await Promise.all(batch.map(async from => {
+      const { data, error } = await supabase.from(table).select(columns).range(from, from + PAGE_SIZE - 1);
+      if(error) throw error;
+      return data || [];
+    }));
+    rest.push(...batchResults);
+  }
   return (first.data || []).concat(...rest);
 }
 
