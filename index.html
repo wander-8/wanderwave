@@ -5,17 +5,17 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="google-site-verification" content="WBGLlgHQZ3BErZu6rBw-IZLlIY0CSek6CSNZVIE6MCY" />
 <title>Wander ― 気になるものを拾いに行こう</title>
-<meta name="description" content="気分やムードから映画を探せる、あなたのための映画発見サイト。感情タグや雰囲気で検索して、今の気分にぴったりの一本を見つけよう。">
+<meta name="description" content="気分やムードから作品を探せる、あなたのための作品発見サイト。感情タグや雰囲気で検索して、今の気分にぴったりの一本を見つけよう。">
 <link rel="canonical" href="https://wander-8.site/">
 <link rel="icon" type="image/png" href="https://wander-8.site/og-image.png">
 <meta property="og:title" content="Wander ― 気になるものを拾いに行こう">
-<meta property="og:description" content="気分で映画を見つける、あなたのためのサイト">
+<meta property="og:description" content="気分で作品を見つける、あなたのためのサイト">
 <meta property="og:type" content="website">
 <meta property="og:url" content="https://wander-8.site/">
 <meta property="og:image" content="https://wander-8.site/og-image.png">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="Wander ― 気になるものを拾いに行こう">
-<meta name="twitter:description" content="気分で映画を見つける、あなたのためのサイト">
+<meta name="twitter:description" content="気分で作品を見つける、あなたのためのサイト">
 <meta name="twitter:image" content="https://wander-8.site/og-image.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -300,6 +300,150 @@
      値にしておく。 */
   .filter-disclosure-body.open{ max-height:700px; }
   .filter-disclosure-inner{ padding-top:14px; }
+
+  /* 話数一覧は長期シリーズ(1000話超もありうる)だと通常の700pxでは全部
+     開ききってページが際限なく伸びてしまうため、専用に高さを決めて
+     内部スクロールにする(展開ボタン自体は他の折りたたみ欄と揃えたまま)。 */
+  .episodes-disclosure-body.open{ max-height:640px; overflow-y:auto; }
+  .episodes-sticky-bar{
+    position: sticky; top: 0; margin: -14px -2px 8px; padding: 8px 2px 6px;
+    background: var(--bg); z-index: 5; display:flex; justify-content:flex-end;
+  }
+  .episodes-close-btn{
+    background: var(--plum-btn); color:#fff; border:none; border-radius:999px;
+    padding:6px 14px; font-size:12px; cursor:pointer; font-family:inherit;
+  }
+  /* PCの広い画面でも2列のままだと1枚1枚が間延びして大きくなりすぎるため、
+     画面が広がるにつれて列数を増やし、カード自体の大きさは頭打ちにする
+     (.appの幅にサイズを追従させず、列数で埋める既存の方針と同じ考え方)。 */
+  .episodes-grid{
+    display:grid; grid-template-columns: 1fr 1fr; gap:10px; margin-top:12px;
+  }
+  @media (min-width: 700px){
+    .episodes-grid{ grid-template-columns: repeat(3, 1fr); }
+  }
+  @media (min-width: 1000px){
+    .episodes-grid{ grid-template-columns: repeat(4, 1fr); }
+  }
+  .episode-card{
+    background: var(--surface); border:1px solid var(--line); border-radius:12px;
+    overflow:hidden; display:flex; flex-direction:column;
+  }
+  .episode-thumb{
+    width:100%; aspect-ratio:16/9; background:#20202a;
+    display:flex; align-items:center; justify-content:center;
+    color: var(--ink-soft); font-size:11px;
+  }
+  .episode-thumb img{ width:100%; height:100%; object-fit:cover; display:block; }
+  .episode-meta{ padding:8px 10px 10px; display:flex; flex-direction:column; gap:4px; }
+  .episode-num{ font-size:11px; color:var(--ink-soft); }
+  .episode-name{
+    font-size:12.5px; font-weight:600; line-height:1.35;
+    display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden;
+  }
+  .episode-love-row{ display:flex; align-items:center; gap:6px; margin-top:4px; }
+  .episode-love-hint{ font-size:10.5px; color:var(--ink-soft); }
+  .episodes-loading{ text-align:center; color:var(--ink-soft); font-size:12.5px; padding:14px 0; }
+
+  /* 話数カードは一覧なので、詳細ページ本体のハートボタンより小さく
+     控えめにする(呼吸アニメーションは目立ちすぎるのでここでは止める)。
+     押した時の演出(バースト等)自体は使い回すので大きさだけ変える。 */
+  .heart-single-btn.mini{
+    width:32px; height:32px; animation:none; flex-shrink:0;
+  }
+  .heart-single-btn.mini .heart-icon{ width:15px; height:14px; }
+
+  /* 表示切り替え(映画/アニメ、将来的に漫画・小説・ドラマも増える予定)。
+     PCの広い画面と、アプリ版(狭い画面)とで置き場所だけ変えてあるが、
+     どちらもトリガーは同じ「ただのハンバーガーアイコン」(文字ラベルは
+     出さない):
+       - PC: .appの外の左余白にハンバーガーアイコン+小さいドロップダウン
+         (catalog-mode-toggle-side)。
+       - アプリ版: ヘッダーのハンバーガーボタンをタップすると、左から
+         スライドインするドロワー(catalog-mode-drawer)に選択肢が並ぶ。
+     どちらも#view-home(画面切り替えのたびにtransformを使うアニメーションが
+     付いており、position:fixedの基準点をすり替えて本文と重なる不具合の
+     原因になった)の外側に置いてある。今後の選択肢追加は両方のリストに
+     項目を足すだけで済む。 */
+  .topbar-left{ display:flex; align-items:center; gap:12px; }
+  .catalog-mode-toggle{ display:none; }
+  .catalog-mode-toggle.enabled{ display:block; }
+  .catalog-mode-toggle-side{ display:none; position:relative; }
+  .catalog-mode-drawer-backdrop{ display:none; }
+  .catalog-mode-drawer{ display:none; }
+  @media (min-width: 1360px){
+    /* 広い画面ではアプリ版(ハンバーガー)を隠し、PC版だけを出す。
+       画面の本当の左端に寄せて余白を活かす(28px)。要素の幅は「映画」
+       「アニメ」で多少変わるが、左端基準なら右にしか伸びないので.appの
+       左端(1180px以降は常に50% - 550px、この閾値1360pxでの最小値は130px)
+       まで最低でも十分な余裕があり重ならない。 */
+    .catalog-mode-toggle.enabled{ display:none; }
+    .catalog-mode-toggle-side.enabled{
+      display:block; position:fixed; top:170px; left:28px; z-index:40;
+    }
+  }
+  .catalog-mode-menu{
+    display:none; flex-direction:column; gap:3px;
+    position:absolute; top:40px; left:0; z-index:50;
+    background: var(--surface); border:1px solid var(--line); border-radius:12px;
+    padding:6px; min-width:108px;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.35);
+  }
+  .catalog-mode-menu.open{ display:flex; }
+  .catalog-mode-menu-item{
+    background:none; border:none; border-radius:8px;
+    padding:8px 10px; color:var(--ink-soft); font-size:12.5px; text-align:left;
+    cursor:pointer; font-family:inherit;
+  }
+  .catalog-mode-menu-item:hover{ background: rgba(255,255,255,0.06); color: var(--ink); }
+  .catalog-mode-menu-item.active{ background: var(--plum-btn); color:#fff; }
+  /* PC版だけ、ハンバーガーで開閉する形をやめて常時表示のラベル列にする
+     (.catalog-mode-menuの display:none/絶対配置を上書き)。 */
+  .catalog-mode-inline-list{
+    display:flex; flex-direction:column; gap:6px;
+    position:static; min-width:96px;
+  }
+
+  /* アプリ版: ヘッダーの小さいハンバーガーアイコンと、そこから左に
+     出てくるドロワー(ラン)。触ってから選択肢が展開されるまでの
+     見た目を、ページ本体とは別レイヤーとしてはっきり分ける。 */
+  /* ヘッダーのロゴ(高さ28px)・右側のアバター(26px)と並んだ時に浮いて
+     見えないよう、それらに合わせたサイズにしてある。 */
+  .catalog-mode-hamburger-btn{
+    width:68px; height:40px; border-radius:10px;
+    background: var(--surface); border:1px solid var(--line); color:var(--ink-soft);
+    display:flex; align-items:center; justify-content:center;
+    cursor:pointer; padding:0; flex-shrink:0;
+  }
+  .catalog-mode-hamburger-btn:hover{ border-color: var(--plum); color: var(--plum-deep); }
+  .catalog-mode-hamburger-btn.open{ background: var(--plum-btn); border-color: var(--plum-btn); color:#fff; }
+  .catalog-mode-drawer-backdrop.enabled{ display:block; }
+  .catalog-mode-drawer-backdrop{
+    position:fixed; inset:0; z-index:60;
+    background: rgba(10,8,16,0.55);
+    opacity:0; pointer-events:none; transition: opacity .25s ease;
+  }
+  .catalog-mode-drawer-backdrop.open{ opacity:1; pointer-events:auto; }
+  .catalog-mode-drawer.enabled{ display:flex; }
+  .catalog-mode-drawer{
+    flex-direction:column; gap:8px;
+    position:fixed; top:0; left:0; height:100%; width:220px; max-width:78vw;
+    background: var(--bg); border-right:1px solid var(--line);
+    z-index:61; padding:26px 18px; box-sizing:border-box;
+    transform: translateX(-100%); transition: transform .28s cubic-bezier(.22,.8,.32,1);
+    box-shadow: 12px 0 30px rgba(0,0,0,0.35);
+  }
+  .catalog-mode-drawer.open{ transform: translateX(0); }
+  .catalog-mode-drawer-heading{
+    font-size:12.5px; color: var(--ink-soft); margin-bottom:2px; letter-spacing:.03em;
+  }
+  .catalog-mode-drawer-item{
+    background:none; border:1px solid var(--line); border-radius:12px;
+    padding:13px 14px; color:var(--ink-soft); font-size:14px; text-align:left;
+    cursor:pointer; font-family:inherit;
+  }
+  .catalog-mode-drawer-item:hover{ border-color: var(--plum); color: var(--ink); }
+  .catalog-mode-drawer-item.active{ background: var(--plum-btn); border-color: var(--plum-btn); color:#fff; }
   .filter-group{ margin-bottom:16px; }
   .filter-group:last-child{ margin-bottom:0; }
   .filter-group-label{ font-size:12px; color: var(--ink-soft); margin:0 0 8px; letter-spacing:.03em; }
@@ -2112,7 +2256,38 @@
     </div>
     <img src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==" alt="Wander" class="splash-logo-img">
   </div>
-  <div class="splash-tag">気分で見つける、あなたのための映画ガイド</div>
+  <div class="splash-tag">気分で見つける、あなたのための作品ガイド</div>
+</div>
+
+<!-- 映画⇔アニメ切り替え(PCの左余白版)。#view-home(画面切り替え
+     アニメーションでtransformが付く)の外側に置くことで、position:fixedの
+     基準点がすり替わって本文と重なる不具合を避けている。狭い画面(アプリ版)
+     向けのヘッダー内ハンバーガー+ドロワーとは別要素(見た目・動きはJS側で同期)。 -->
+<div class="catalog-mode-toggle-side" id="catalog-mode-toggle-side">
+  <!-- PCはハンバーガーを挟まず、映画/アニメ/ドラマ/漫画/小説のラベルを
+       そのまま常時表示する(catalog-mode-inline-listが.catalog-mode-menuの
+       display:none/絶対配置を上書きする)。 -->
+  <div class="catalog-mode-menu catalog-mode-inline-list" id="catalog-mode-menu-side">
+    <button class="catalog-mode-menu-item active" id="catalog-mode-btn-movie-side" onclick="setCatalogMode('movie')">映画</button>
+    <button class="catalog-mode-menu-item" id="catalog-mode-btn-anime-side" onclick="setCatalogMode('anime')">アニメ</button>
+    <button class="catalog-mode-menu-item" id="catalog-mode-btn-drama-side" onclick="setCatalogMode('drama')">ドラマ</button>
+    <button class="catalog-mode-menu-item" id="catalog-mode-btn-manga-side" onclick="setCatalogMode('manga')">漫画</button>
+    <button class="catalog-mode-menu-item" id="catalog-mode-btn-novel-side" onclick="setCatalogMode('novel')">小説</button>
+  </div>
+</div>
+
+<!-- 映画⇔アニメ切り替え(アプリ版=狭い画面用)。ヘッダーのハンバーガー
+     ボタンをタップすると、左から出てくるドロワー(ラン)に選択肢が並ぶ。
+     こちらも#view-homeの外側に置いて、position:fixedの基準点がすり替わる
+     問題を避けている。 -->
+<div class="catalog-mode-drawer-backdrop" id="catalog-mode-drawer-backdrop" onclick="closeCatalogModeMenu()"></div>
+<div class="catalog-mode-drawer" id="catalog-mode-drawer">
+  <div class="catalog-mode-drawer-heading">表示を選ぶ</div>
+  <button class="catalog-mode-drawer-item active" id="catalog-mode-btn-movie" onclick="setCatalogMode('movie')">映画</button>
+  <button class="catalog-mode-drawer-item" id="catalog-mode-btn-anime" onclick="setCatalogMode('anime')">アニメ</button>
+  <button class="catalog-mode-drawer-item" id="catalog-mode-btn-drama" onclick="setCatalogMode('drama')">ドラマ</button>
+  <button class="catalog-mode-drawer-item" id="catalog-mode-btn-manga" onclick="setCatalogMode('manga')">漫画</button>
+  <button class="catalog-mode-drawer-item" id="catalog-mode-btn-novel" onclick="setCatalogMode('novel')">小説</button>
 </div>
 
 <div class="app">
@@ -2120,7 +2295,19 @@
   <!-- ============ HOME VIEW ============ -->
   <div class="view active" id="view-home">
     <div class="topbar">
-      <div class="logo logo-driftwood-header" onclick="goHome()"><img src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==" alt="Wander" class="header-logo-img"></div>
+      <div class="topbar-left">
+        <div class="logo logo-driftwood-header" onclick="goHome()"><img src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==" alt="Wander" class="header-logo-img"></div>
+        <!-- 映画⇔アニメの切り替え(アプリ版=狭い画面)。まだ方針検討中の
+             隠しプレビュー機能なので、isAnimePreviewEnabled()がtrueの端末
+             でだけJSでdisplay:flexにする。ハンバーガーボタン自体はヘッダーの
+             通常の流れの中に置き、開くドロワー本体は#view-homeの外側
+             (catalog-mode-drawer)にある。 -->
+        <div class="catalog-mode-toggle" id="catalog-mode-toggle-inline">
+          <button class="catalog-mode-hamburger-btn" id="catalog-mode-hamburger-btn" onclick="toggleCatalogModeMenu()" aria-label="表示を切り替える" title="表示を切り替える">
+            <svg viewBox="0 0 24 24" width="34" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="4" y1="7" x2="20" y2="7"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="17" x2="20" y2="17"/></svg>
+          </button>
+        </div>
+      </div>
       <div class="profile-chip" onclick="onProfileChipTap()">
         <div class="avatar" id="header-avatar">?</div>
         <span id="header-name">ゲスト</span>
@@ -2132,7 +2319,8 @@
 
     <div class="hero">
       <div class="kicker">今日はどんな気分?</div>
-      <h1>気分で映画を見つける、<br>あなたのためのサイト</h1>
+      <h1>気分で作品を見つける、<br>あなたのためのサイト</h1>
+
       <div class="search-box">
         <input type="text" id="search-input" placeholder="映画名・ジャンル・雰囲気で探す" oninput="onSearchInput()">
         <button class="search-clear-btn" id="search-clear-btn" onclick="clearSearch()" style="display:none;">×</button>
@@ -2150,7 +2338,7 @@
       </div>
 
       <button class="filter-disclosure-btn" id="filter-disclosure-btn" onclick="toggleFilterDisclosure()">
-        <span>詳しく絞り込む(ジャンル・国)</span>
+        <span>詳しく絞り込む(ジャンル・国・年代)</span>
         <span class="filter-disclosure-chev">⌄</span>
       </button>
       <div class="filter-disclosure-body" id="filter-disclosure-body">
@@ -2162,6 +2350,17 @@
           <div class="filter-group">
             <div class="filter-group-label">国</div>
             <div class="country-cloud" id="country-cloud"></div>
+          </div>
+          <!-- 年代はバー(スライダー)だと、映画とアニメで実際に作品がある
+               年代の幅が全然違う(映画は戦前から、アニメは近年に偏る)のに
+               同じ目盛りを出してしまい、選んでも0件になる年代が多くて
+               不安な見た目になっていた。ジャンル・国と同じチップ形式にし、
+               その時のモード(映画/アニメ)の中で実際に作品がある年代だけを
+               動的に出す(renderDecadeCloud参照)ことで、選んでも必ず
+               何かしら出てくるようにする。 -->
+          <div class="filter-group">
+            <div class="filter-group-label">年代</div>
+            <div class="genre-cloud" id="decade-cloud"></div>
           </div>
         </div>
       </div>
@@ -2195,7 +2394,7 @@
 
     <div id="movie-info-panel" class="movie-info-panel" style="display:none;">
       <div class="movie-info-row">
-        <div class="movie-info-label">監督</div>
+        <div class="movie-info-label" id="d-director-label">監督</div>
         <div class="movie-info-value" id="d-director">情報がまだありません</div>
       </div>
       <div class="movie-info-row">
@@ -2248,6 +2447,33 @@
       <button class="info-icon" onclick="showInfo('表現度とは', '暴力・恐怖・性的表現などを含む、作品全体の刺激の強さの目安です。下の内訳で、その刺激が何による部分が大きいか(暴力・性的・恐怖、複数該当あり)がわかります。\n\nこれはみんなの投票の平均であり、絶対的な保証ではありません。特に性的表現は感じ方に個人差が大きいため、不安な場合はレビューも合わせて確認してください。\n\nなお、使い込んできたアカウントほど投票の重みが大きくなる仕組みを取り入れています。作りたてのアカウントによる荒らし行為の影響を抑えるためです。')">ⓘ</button>
     </div>
     <div id="expr-gauges"></div>
+
+    <!-- TVアニメ作品向けの話数一覧。普段は折りたたんで隠しておき、タップで
+         展開する(1000話を超えるような長期シリーズもあるため、常時表示は避ける)。
+         各話に愛度ハートのミニボタンを置き、作品全体の既存の評価(cycleLove)を
+         そこからも操作できるようにする。話ごとの個別評価は持たない。 -->
+    <div id="episodes-wrap" style="display:none;">
+      <button class="filter-disclosure-btn" id="episodes-toggle-btn" onclick="toggleEpisodesSection()">
+        <span id="episodes-toggle-label">話数を見る</span>
+        <span class="filter-disclosure-chev" id="episodes-chev">⌄</span>
+      </button>
+      <div class="filter-disclosure-body episodes-disclosure-body" id="episodes-body">
+        <div class="filter-disclosure-inner">
+          <!-- 長期シリーズは話数だけで箱の高さいっぱいまで埋まってしまい、
+               下の「みんながよく選ぶ感情タグ」やおすすめ欄へ行きたい時に、
+               話数を全部スクロールし終えないと箱から抜け出せない問題があった。
+               閉じるボタンを箱の中の一番上にsticky固定しておき、どれだけ
+               話数をスクロールしていても常にワンタップで閉じられるようにする。 -->
+          <div class="episodes-sticky-bar">
+            <button class="episodes-close-btn" onclick="toggleEpisodesSection()">▲ 閉じる</button>
+          </div>
+          <div class="genre-cloud" id="episodes-season-tabs"></div>
+          <div class="genre-cloud" id="episodes-chunk-tabs"></div>
+          <div class="episodes-grid" id="episodes-grid"></div>
+          <div class="episodes-loading" id="episodes-loading" style="display:none;">読み込み中…</div>
+        </div>
+      </div>
+    </div>
 
     <div class="section-label">みんながよく選ぶ感情タグ</div>
     <div class="card-tags" id="d-tags"></div>
@@ -2334,8 +2560,45 @@
       <div class="results" id="d-remake-row"></div>
     </div>
 
-    <div class="section-label">こんな映画もおすすめ</div>
-    <div class="results" id="d-recommended"></div>
+    <!-- 「映画」欄はTVアニメのページでは出さない(ジャンルを跨がない方針)。
+         アニメ映画のページの時だけ、この欄にもアニメ映画を少し混ぜる
+         (映画とアニメの橋渡し役として、そのページでだけ例外的に混在させる)。 -->
+    <div id="d-recommended-movie-wrap">
+      <div class="section-label">こんな映画もおすすめ</div>
+      <div class="results" id="d-recommended"></div>
+    </div>
+
+    <!-- 「アニメ」欄はTVアニメ・アニメ映画のページでだけ出す(隠しプレビュー
+         フラグがある端末限定)。ここから開くとサイト全体のモードが自動で
+         アニメに切り替わる(goDetailWithMode参照)。 -->
+    <div id="d-recommended-anime-wrap" style="display:none;">
+      <div class="section-label">こんなアニメもおすすめ</div>
+      <div class="results" id="d-recommended-anime"></div>
+    </div>
+
+    <!-- 「ドラマ」欄はTVドラマのページでだけ出す(隠しプレビューフラグがある
+         端末限定)。ここから開くとサイト全体のモードが自動でドラマに
+         切り替わる(goDetailWithMode参照)。 -->
+    <div id="d-recommended-drama-wrap" style="display:none;">
+      <div class="section-label">こんなドラマもおすすめ</div>
+      <div class="results" id="d-recommended-drama"></div>
+    </div>
+
+    <!-- 「漫画」欄は漫画のページでだけ出す(隠しプレビューフラグがある
+         端末限定)。ここから開くとサイト全体のモードが自動で漫画に
+         切り替わる(goDetailWithMode参照)。 -->
+    <div id="d-recommended-manga-wrap" style="display:none;">
+      <div class="section-label">こんな漫画もおすすめ</div>
+      <div class="results" id="d-recommended-manga"></div>
+    </div>
+
+    <!-- 「小説」欄は小説のページでだけ出す(隠しプレビューフラグがある
+         端末限定)。ここから開くとサイト全体のモードが自動で小説に
+         切り替わる(goDetailWithMode参照)。 -->
+    <div id="d-recommended-novel-wrap" style="display:none;">
+      <div class="section-label">こんな小説もおすすめ</div>
+      <div class="results" id="d-recommended-novel"></div>
+    </div>
   </div>
 
   <!-- ============ ADD MOVIE VIEW ============ -->
@@ -3392,8 +3655,8 @@ const TAG_COLORS = {
 
 // 「詳しく絞り込む」に出すジャンル・国の候補。moviesテーブル全体を集計した際に
 // 件数の多い主要なものだけに絞ってあり、表記ゆれ的な少数派(「犯罪」「伝記」等)は含めない。
-const FILTER_GENRES = ["ドラマ","コメディ","アクション","スリラー","アドベンチャー","クライム","恋愛","ホラー","SF","ファンタジー","ミステリー","アニメーション","ファミリー","歴史","戦争","音楽"];
-const FILTER_COUNTRIES = ["アメリカ","イギリス","フランス","ドイツ","日本","カナダ","イタリア","スペイン","中国","香港","韓国","インド","オーストラリア"];
+const FILTER_GENRES = ["ドラマ","コメディ","アクション","スリラー","アドベンチャー","クライム","恋愛","ホラー","SF","ファンタジー","ミステリー","アニメーション","ファミリー","歴史","戦争","音楽","ドキュメンタリー","西部劇","特撮"];
+const FILTER_COUNTRIES = ["アメリカ","イギリス","フランス","ドイツ","日本","カナダ","イタリア","スペイン","中国","香港","韓国","インド","オーストラリア","ベルギー","メキシコ","スウェーデン","デンマーク","ブラジル","ロシア","アイルランド","オランダ","ポーランド","スイス","アルゼンチン","トルコ","ノルウェー","フィンランド","オーストリア","ルクセンブルク","ルーマニア","チェコ","台湾","ハンガリー","南アフリカ","タイ","ニュージーランド","ポルトガル"];
 
 function tagColor(tag){
   return TAG_COLORS[tag] || "#9a958f";
@@ -3525,6 +3788,12 @@ function feedbackSuccess(){
   if(navigator.vibrate) navigator.vibrate([10, 30, 10]);
 }
 
+// 作品詳細ページを開くたびに鳴るので、愛度タップや投稿成功の音より
+// ずっと控えめな音量にしてある。
+function feedbackDetailOpen(){
+  playTone(520, 0.09, 0.045, 'sine');
+}
+
 // 「きょうの贈り物」を開けた瞬間だけの、少し弾んだ音(比較用に上で用意して
 // あったC_bubbleの泡っぽい音色を採用)。1日1回きりの特別な瞬間なので、
 // 他の操作音より気持ち華やかにしてある。
@@ -3624,7 +3893,19 @@ function reasonPercentages(m){
   };
 }
 
-let state = { query: "", activeTags: new Set(), currentMovieId: null, hasReviewed: {}, myReviewsById: {}, myReviewRows: [], myReviewRowsLoaded: false, myLove: {}, myIntensity: {}, myReason: {}, myTagVotes: {}, myWatchLater: {}, myPocket: [], myLists: [], currentListId: null, profile: null, profileLoaded: false, myLogs: [], myLogsLoaded: false, mySubmittedMovieIds: [], mySubmittedMovies: [], mySubmittedMoviesLoaded: false, lastSubmissionDate: null, todaySubmissionCount: 0, intensityFilter: 0, diagnosisHistory: [], activeGenres: new Set(), activeCountries: new Set() };
+// 表現度は「実データに忠実に見せる」方針(検索・評価自体は隠さない)だが、
+// ポスター画像そのものはその方針と別物として扱う。性的・グロ表現の比重が
+// 高い作品は、ポスター画像を出さずに(既存の「ポスターが無い時」と同じ)
+// 色ブロック+頭文字の表示にフォールバックする。実際の投票/推定が無い
+// 作品はここでは何も伏せない(判断材料が無いものを一律で疑うのは行き過ぎ)。
+function shouldHidePosterForIntensity(m){
+  const avg = intensityAverage(m);
+  if(avg < 65) return false;
+  const pct = reasonPercentages(m);
+  return pct.sexual >= 40 || pct.violence >= 60;
+}
+
+let state = { query: "", activeTags: new Set(), currentMovieId: null, hasReviewed: {}, myReviewsById: {}, myReviewRows: [], myReviewRowsLoaded: false, myLove: {}, myIntensity: {}, myReason: {}, myTagVotes: {}, myWatchLater: {}, myPocket: [], myLists: [], currentListId: null, profile: null, profileLoaded: false, myLogs: [], myLogsLoaded: false, mySubmittedMovieIds: [], mySubmittedMovies: [], mySubmittedMoviesLoaded: false, lastSubmissionDate: null, todaySubmissionCount: 0, intensityFilter: 0, decadeFilter: 0, diagnosisHistory: [], activeGenres: new Set(), activeCountries: new Set(), catalogMode: 'movie' };
 
 
 function riskLabel(v){
@@ -3646,6 +3927,18 @@ function riskCategoryColor(v){
   if(v <= 50) return "#e0ac4f";
   if(v <= 75) return "#d9836a";
   return "#b8536a";
+}
+
+// 表現度スライダーはoninputがドラッグ中ずっと連発されるので、値が変わる
+// たびに鳴らすと音が洪水になる。「控えめ/軽度/やや強い/強い」の帯を
+// またいだ瞬間だけ、強さに応じて音程が上がる短い音を鳴らす。
+const intensitySoundBandByTracker = {};
+function feedbackIntensityBand(value, trackerKey){
+  const band = riskCategoryUpperBound(Number(value));
+  if(intensitySoundBandByTracker[trackerKey] === band) return;
+  intensitySoundBandByTracker[trackerKey] = band;
+  const freqs = { 25: 380, 50: 480, 75: 600, 100: 760 };
+  playTone(freqs[band] || 480, 0.09, 0.07, 'sine');
 }
 
 function riskCategoryDescription(v){
@@ -3687,10 +3980,32 @@ function renderTagCloud(){
 // 感情タグほど目立たせず「詳しく絞り込む」の折りたたみの中に控えめに置く。
 // 選択は「いずれかに一致すればOK」(OR)。感情タグの「全て一致」(AND)とは
 // 意味合いが違う(1本の映画が複数の国・ジャンルを持つのは普通なため)。
+// 年代フィルターと同じ理由(検索しても0件のまま気づけない事故を防ぐ)で、
+// ジャンル・国も今のモードのプールに実際に1本も無いものはチップごと出さない。
+function availableGenres(){
+  const mode = currentCatalogMode();
+  const pool = MOVIES.filter(m => isInCatalogMode(m, mode));
+  const set = new Set();
+  pool.forEach(m => (m.genre || []).forEach(g => set.add(g)));
+  return FILTER_GENRES.filter(g => set.has(g));
+}
+function availableCountries(){
+  const mode = currentCatalogMode();
+  const pool = MOVIES.filter(m => isInCatalogMode(m, mode));
+  const set = new Set();
+  pool.forEach(m => { if(m.country) FILTER_COUNTRIES.forEach(c => { if(m.country.includes(c)) set.add(c); }); });
+  return FILTER_COUNTRIES.filter(c => set.has(c));
+}
+
 function renderGenreCloud(){
   const el = document.getElementById('genre-cloud');
   el.innerHTML = "";
-  FILTER_GENRES.forEach(genre => {
+  const genres = availableGenres();
+  // 選択中のジャンルが、モード切り替え等で選択肢から消えてしまった場合は
+  // 選択を解除する(消えたチップの分だけ絞り込みが宙に浮いて0件のまま
+  // 気づけない、という事故を防ぐ)。
+  [...state.activeGenres].forEach(g => { if(!genres.includes(g)) state.activeGenres.delete(g); });
+  genres.forEach(genre => {
     const chip = document.createElement('div');
     const isActive = state.activeGenres.has(genre);
     chip.className = 'genre-chip' + (isActive ? ' active' : '');
@@ -3708,7 +4023,9 @@ function renderGenreCloud(){
 function renderCountryCloud(){
   const el = document.getElementById('country-cloud');
   el.innerHTML = "";
-  FILTER_COUNTRIES.forEach(country => {
+  const countries = availableCountries();
+  [...state.activeCountries].forEach(c => { if(!countries.includes(c)) state.activeCountries.delete(c); });
+  countries.forEach(country => {
     const chip = document.createElement('div');
     const isActive = state.activeCountries.has(country);
     chip.className = 'country-chip' + (isActive ? ' active' : '');
@@ -3763,9 +4080,8 @@ function keywordContainsWord(haystack, needle){
 }
 
 function hasExtremeContentKeyword(m){
-  if(!m.keywords || m.keywords.length === 0) return false;
-  const kws = m.keywords.map(k => k.toLowerCase());
-  return EXTREME_CONTENT_KEYWORDS.some(keyword => kws.some(k => keywordContainsWord(k, keyword)));
+  if(!m.keywordsLower || m.keywordsLower.length === 0) return false;
+  return EXTREME_CONTENT_KEYWORDS.some(keyword => m.keywordsLower.some(k => keywordContainsWord(k, keyword)));
 }
 
 function movieIntensityBand(m){
@@ -3803,6 +4119,53 @@ function onIntensityFilterInput(value){
   renderResults();
 }
 
+// 年代チップ。「詳しく絞り込む」のジャンル・国と同じ見た目・仕組みだが、
+// 選択肢は固定リストではなく、今のモード(映画/アニメ)の中で実際に
+// 作品がある年代だけをその都度計算して出す。映画は戦前から今日まで幅広く
+// あるのに対し、アニメ(特にTVアニメ中心のカタログ)は年代がずっと近年に
+// 偏っているため、同じ目盛りを両方に出すと「選んでも0件」が多発して
+// 不安な見た目になっていた(これが直接のきっかけ)。実際に1本でもある
+// 年代しかチップとして出さないので、選べば必ず何かしら結果が出る。
+const DECADE_FLOOR = 1900; // これより前の作品は「〜1900年代」にまとめる
+function movieDecadeBand(m){
+  if(!m.year) return null;
+  return Math.max(DECADE_FLOOR, Math.floor(m.year / 10) * 10);
+}
+function decadeLabel(d){
+  return d === DECADE_FLOOR ? `〜${d}年代` : `${d}年代`;
+}
+function availableDecades(){
+  const mode = currentCatalogMode();
+  const pool = MOVIES.filter(m => isInCatalogMode(m, mode));
+  const set = new Set();
+  pool.forEach(m => { const d = movieDecadeBand(m); if(d != null) set.add(d); });
+  return [...set].sort((a, b) => a - b);
+}
+
+function renderDecadeCloud(){
+  const el = document.getElementById('decade-cloud');
+  el.innerHTML = "";
+  // 選択中の年代が、モード切り替え等で選択肢から消えてしまった場合は
+  // 「こだわらない」に戻す(消えたチップの分だけ絞り込みが宙に浮いて
+  // 0件のまま気づけない、という事故を防ぐ)。
+  const decades = availableDecades();
+  if(state.decadeFilter !== 0 && !decades.includes(state.decadeFilter)){
+    state.decadeFilter = 0;
+  }
+  decades.forEach(d => {
+    const chip = document.createElement('div');
+    const isActive = state.decadeFilter === d;
+    chip.className = 'genre-chip' + (isActive ? ' active' : '');
+    chip.textContent = decadeLabel(d);
+    chip.onclick = () => {
+      state.decadeFilter = (state.decadeFilter === d) ? 0 : d;
+      renderDecadeCloud();
+      renderResults();
+    };
+    el.appendChild(chip);
+  });
+}
+
 function onSearchInput(){
   state.query = document.getElementById('search-input').value.trim();
   renderResults(); // ×の表示・非表示もここで一括して面倒を見る
@@ -3818,9 +4181,11 @@ function clearSearch(){
   state.activeTags.clear();
   state.activeGenres.clear();
   state.activeCountries.clear();
+  state.decadeFilter = 0;
   renderTagCloud(); // activeTagsが空になったのでintensityFilterも内部でリセットされる
   renderGenreCloud();
   renderCountryCloud();
+  renderDecadeCloud();
   renderResults();
 }
 
@@ -3849,7 +4214,7 @@ function renderMovieCards(root, list, emptyMessage, opts){
 function buildCardHTML(m, opts){
   const avg = loveDisplayValue(m);
   const overlayTitle = !!(opts && opts.overlayTitle);
-  const hasPoster = !!m.posterUrl;
+  const hasPoster = !!m.posterUrl && !shouldHidePosterForIntensity(m);
   const posterImg = hasPoster ? `<img src="${m.posterUrl}" alt="" loading="lazy" decoding="async">` : '';
   const initialOrTitle = overlayTitle
     ? `${hasPoster ? '' : `<span class="poster-thumb-initial">${m.title.charAt(0)}</span>`}<div class="poster-thumb-title">${m.title}</div>`
@@ -3858,6 +4223,8 @@ function buildCardHTML(m, opts){
     ? `goDetailWithReturn(${m.id}, ${opts.returnTo})`
     : (opts && opts.returnToView)
     ? `goDetailWithViewReturn(${m.id}, '${opts.returnToView.id}', '${opts.returnToView.label}')`
+    : (opts && opts.forceMode)
+    ? `goDetailWithMode(${m.id}, '${opts.forceMode}')`
     : `goDetail(${m.id})`;
   return `
     <div class="result-card" onclick="${clickHandler}">
@@ -3902,13 +4269,104 @@ function seededShuffle(list, salt){
   return arr;
 }
 
+// アニメ機能はまだ方針を固めたばかりの実験段階で、一般ユーザーにはまだ見せない
+// (裏側で先にオーナーだけがレビューできるようにする)。当初はlocalStorageの
+// 手動フラグだけで判定していたが、毎回コンソールで打ち込まないと端末ごとに
+// 見えなくなってしまい不便だったため、オーナー本人のアカウントでログインして
+// いれば自動でも有効になるようにした(手動フラグは自動テスト等のための
+// 保険として残す)。本番公開する際はこの判定ごと外す。
+const ANIME_PREVIEW_KEY = 'ww_anime_preview';
+const ANIME_PREVIEW_OWNER_EMAIL = 'g74197569@gmail.com';
+let animePreviewOwnerConfirmed = false;
+
+// コンソールを毎回開かなくても済むよう、URLに ?anime=1 を付けて一度開けば
+// 以降はlocalStorageに残って自動で有効になる(?anime=0で解除できる)。
+// ブックマークしておけばそこを開くだけで済む。
+(function applyAnimePreviewUrlParam(){
+  try{
+    const v = new URLSearchParams(location.search).get('anime');
+    if(v === '1') localStorage.setItem(ANIME_PREVIEW_KEY, '1');
+    else if(v === '0') localStorage.removeItem(ANIME_PREVIEW_KEY);
+  }catch{ /* URL/localStorageが使えない環境では何もしない */ }
+})();
+
+async function checkAnimePreviewOwner(){
+  try{
+    const user = await currentAuthUser();
+    if(user && user.email === ANIME_PREVIEW_OWNER_EMAIL) animePreviewOwnerConfirmed = true;
+  }catch{ /* 確認できなければ手動フラグだけに委ねる */ }
+}
+
+function isAnimePreviewEnabled(){
+  if(animePreviewOwnerConfirmed) return true;
+  try{ return localStorage.getItem(ANIME_PREVIEW_KEY) === '1'; }
+  catch{ return false; }
+}
+
+// ひらがな・カタカナ・漢字を一文字も含まないタイトルを「英語名」とみなす
+// (BLEACH・MONSTERのように公式表記が元からローマ字の作品もあるにはあるが、
+// 見分ける手立てが無いため一律この判定にする)。アニメ棚では、こうした
+// 英語名のタイトルは予告編が無いと見た目が寂しい・未整備に見えるとの声を受け、
+// 予告編が付いているものだけ表示する(予告編さえあれば英語名でも構わない)。
+function looksLikeEnglishTitle(title){
+  return !/[぀-ヿ㐀-鿿ｦ-ﾟ]/.test(title || '');
+}
+
+// 隠しプレビューフラグが無い端末ではmovie以外のモードに実際には入れない
+// (setCatalogMode側でも弾いている)が、プール絞り込みの側でも念のため
+// 二重に保険を掛けておく。
+function currentCatalogMode(){
+  return isAnimePreviewEnabled() ? state.catalogMode : 'movie';
+}
+
+// 注意: 劇場アニメ映画の判定にis_anime列は使わない。カタログには既に
+// ジブリ・名探偵コナン・ドラゴンボールZ等745本の実在するアニメ映画が
+// 「普通の映画」として(is_anime=falseのまま)入っており、実際にレビューも
+// 付いている。これらにis_anime=trueを付けると、映画モードの通常閲覧
+// (検索・ムード棚等はis_animeで絞る作り)から一般ユーザーにも見えなく
+// なってしまう事故になる(実際に一度やってしまい、レビュー付きの3本を
+// 含む745本が検索不能になったため、その場で戻した)。そのため、ここでは
+// is_anime列を書き換えず、ジャンル(アニメーション)だけを見た目の判定にする。
+// 以前は製作国が日本の作品だけに絞っていたが、白雪姫のような海外の
+// アニメーション映画もアニメ欄に出してほしいという要望を受け、国は問わず
+// ジャンルだけで判定するように広げた。
+function looksLikeAnimeFilm(m){
+  return m.mediaType === 'movie' && !m.isAnime && (m.genre || []).includes('アニメーション');
+}
+function isAnimeWork(m){
+  return m.isAnime || looksLikeAnimeFilm(m);
+}
+
+// 映画・アニメ・ドラマの3モードで共通して使う「この作品は今のモードの
+// プールに属するか」判定。TVアニメは、日本語表記のタイトルが無く予告編も
+// 無い作品を除外する追加ルールがある(見た目が中途半端になるため)。劇場版
+// アニメ映画(looksLikeAnimeFilm)は元々「映画」として整った状態でカタログに
+// 入っている作品なので、その追加ルールは適用せずそのままアニメ欄にも出す。
+// これにより、白雪姫やジブリ・コナン等の劇場アニメが映画・アニメ両方の
+// 閲覧/検索から見つけられるようになる(is_anime列自体は書き換えない)。
+// ドラマは韓国語・英語のタイトルのままでも不自然ではないため、その
+// 追加ルールは適用しない。漫画・小説も同様に、英語名のタイトルなのに
+// 表紙画像も無い(=旧AniList取り込み分の未整備データ)ものは見た目が
+// 中途半端になるため、表紙さえあれば英語名でも構わない、という同じ
+// 考え方で除外する。
+function isInCatalogMode(m, mode){
+  if(mode === 'anime') return (m.isAnime && (!looksLikeEnglishTitle(m.title) || m.trailerKey)) || looksLikeAnimeFilm(m);
+  if(mode === 'drama') return !!m.isDrama;
+  if(mode === 'manga') return !!m.isManga && (!looksLikeEnglishTitle(m.title) || !!m.posterUrl);
+  if(mode === 'novel') return !!m.isNovel && (!looksLikeEnglishTitle(m.title) || !!m.posterUrl);
+  return !m.isAnime && !m.isDrama && !m.isManga && !m.isNovel;
+}
+
 function renderHomeRows(){
   const root = document.getElementById('home-rows');
   if(MOVIES.length === 0){ root.innerHTML = ""; return; }
 
   // 個人の除外ワードに一致する作品は、ホームの棚にも出さない
   // (検索だけ除けても、棚から見えてしまうと意味が薄いため)。
-  const visibleMovies = MOVIES.filter(m => !matchesExcludedWord(m));
+  // 映画・アニメ・ドラマ、今選ばれているモードのプールだけを対象にする
+  // (混ぜない)。判定はisInCatalogMode参照。
+  const catalogMode = currentCatalogMode();
+  const visibleMovies = MOVIES.filter(m => !matchesExcludedWord(m) && isInCatalogMode(m, catalogMode));
 
   const todayStr = new Date().toISOString().slice(0, 10);
 
@@ -4006,7 +4464,7 @@ function renderHomeRows(){
       const m = visibleMovies.find(x => x.id === r.movie_id);
       if(!m) return null;
       const snippet = r.review_text.length > 60 ? r.review_text.slice(0, 60) + '…' : r.review_text;
-      const posterImg = m.posterUrl ? `<img src="${m.posterUrl}" alt="" loading="lazy" decoding="async">` : '';
+      const posterImg = (m.posterUrl && !shouldHidePosterForIntensity(m)) ? `<img src="${m.posterUrl}" alt="" loading="lazy" decoding="async">` : '';
       return `
         <div class="review-feed-card" onclick="goDetail(${m.id})">
           <div class="review-feed-poster" style="background:${m.posterColor}">${posterImg}</div>
@@ -4108,7 +4566,8 @@ function renderFeaturedBanner(){
   // (見せる→さらに票が集まる、の繰り返しで)、いつまでも同じ顔ぶれで
   // 固定化してしまう。実際に愛された実績がある作品(loveCount>0)の中から
   // 上位30本のプールを作り、そこから日替わりで5本をピックアップする。
-  const eligibleMovies = MOVIES.filter(m => !matchesExcludedWord(m));
+  const catalogMode = currentCatalogMode();
+  const eligibleMovies = MOVIES.filter(m => !matchesExcludedWord(m) && isInCatalogMode(m, catalogMode));
   const lovedPool = eligibleMovies.filter(m => m.loveCount > 0)
     .sort((a, b) => loveAverage(b) - loveAverage(a))
     .slice(0, 30);
@@ -4179,8 +4638,15 @@ function applyFeaturedContent(){
   const avg = loveDisplayValue(featured);
 
   const posterBgEl = document.getElementById('featured-poster-bg');
-  if(featured.posterPath){
-    posterBgEl.style.background = `center 20% / cover no-repeat url(${TMDB_IMAGE_BASE_LARGE}${featured.posterPath})`;
+  if(featured.posterPath && !shouldHidePosterForIntensity(featured)){
+    // 漫画・小説(楽天由来)はposterPathに既にフルURLが入っているため、
+    // 常にTMDB_IMAGE_BASE_LARGEを前置きしていると「https://...」の前に
+    // さらにTMDBのドメインが付いた壊れたURLになり、バナーの画像が
+    // 出ない不具合になっていた(posterUrl算出と同じ判定に揃える)。
+    const bannerUrl = featured.posterPath.startsWith('http')
+      ? featured.posterPath
+      : `${TMDB_IMAGE_BASE_LARGE}${featured.posterPath}`;
+    posterBgEl.style.background = `center 20% / cover no-repeat url(${bannerUrl})`;
     posterBgEl.textContent = '';
   } else {
     posterBgEl.style.background = featured.posterColor;
@@ -4246,11 +4712,19 @@ const COUNTRY_QUERY_ALIASES = {
   "ロシア": ["ロシア映画", "ロシア"]
 };
 
+// エイリアス文字列の正規化は入力(クエリ)側では毎回必要だが、エイリアス
+// 自体は不変なので、検索のたびに何万件もの作品に対して繰り返し
+// normalizeForSearch()を呼び直すのは無駄(カタログが数万件規模になり、
+// 検索1文字目で固まる原因の大半だった)。ここで一度だけ正規化しておく。
+const COUNTRY_QUERY_ALIASES_NORM = Object.fromEntries(
+  Object.entries(COUNTRY_QUERY_ALIASES).map(([country, aliases]) => [country, aliases.map(normalizeForSearch)])
+);
+
 function matchesCountryAlias(m, normalizedQuery){
   if(!m.country || !normalizedQuery) return false;
-  return Object.entries(COUNTRY_QUERY_ALIASES).some(([country, aliases]) => {
+  return Object.entries(COUNTRY_QUERY_ALIASES_NORM).some(([country, aliasesNorm]) => {
     if(!m.country.includes(country)) return false;
-    return aliases.some(alias => normalizedQuery.includes(normalizeForSearch(alias)));
+    return aliasesNorm.some(a => normalizedQuery.includes(a));
   });
 }
 
@@ -4408,6 +4882,8 @@ const VIBE_QUERY_ALIASES = {
   "royalty": ["王室もの"],
   "werewolf": ["人狼", "狼男"],
   "wizard": ["魔法使い"],
+  "isekai": ["異世界転生", "異世界もの", "異世界系"],
+  "reincarnation": ["転生", "生まれ変わり", "異世界転生"],
   "dragon": ["ドラゴン"],
   "fairy": ["妖精"],
   "curse": ["呪い"],
@@ -4672,13 +5148,27 @@ const VIBE_QUERY_ALIASES = {
   "dying and death": ["死", "死にゆく"],
 };
 
-function matchesVibeAlias(m, normalizedQuery){
-  if(!m.keywords || m.keywords.length === 0 || !normalizedQuery) return false;
-  const kws = m.keywords.map(k => k.toLowerCase());
-  return Object.entries(VIBE_QUERY_ALIASES).some(([keyword, aliases]) => {
-    if(!kws.some(k => keywordContainsWord(k, keyword))) return false;
-    return aliases.some(alias => normalizedQuery.includes(normalizeForSearch(alias)));
-  });
+// (国名エイリアスと同じ理由で)雰囲気検索のエイリアスも一度だけ正規化しておく。
+const VIBE_QUERY_ALIASES_NORM = Object.fromEntries(
+  Object.entries(VIBE_QUERY_ALIASES).map(([keyword, aliases]) => [keyword, aliases.map(normalizeForSearch)])
+);
+
+// 以前はここで「全作品 × 90個のエイリアス候補」を毎回総当たりしていた
+// (作品ごとにVIBE_QUERY_ALIASESの全エントリを見て、その都度クエリと
+// 突き合わせていたため、検索1文字打つたびに数万件×90回のkeywordContainsWord
+// 呼び出しが発生し、これが検索の固まりの主因だった)。クエリに一致する
+// エイリアスは「クエリ1つに対して」一度だけ求まる値なので、作品のループの
+// 外(呼び出し側)で1回だけ計算し、ここでは判定済みの英語キーワードの
+// リストを受け取るだけにする。
+function relevantVibeKeywords(normalizedQuery){
+  if(!normalizedQuery) return [];
+  return Object.entries(VIBE_QUERY_ALIASES_NORM)
+    .filter(([, aliasesNorm]) => aliasesNorm.some(a => normalizedQuery.includes(a)))
+    .map(([keyword]) => keyword);
+}
+function matchesVibeAlias(m, relevantKeywords){
+  if(!m.keywordsLower || m.keywordsLower.length === 0 || !relevantKeywords || relevantKeywords.length === 0) return false;
+  return relevantKeywords.some(keyword => m.keywordsLower.some(k => keywordContainsWord(k, keyword)));
 }
 
 // 「マーベル」で検索した時だけ関連作品がふわっと出てくるための、緩い検索
@@ -4699,12 +5189,13 @@ const MARVEL_SERIES_NAMES = new Set([
 // seriesが空の単発作品(ハルク単体、シャン・チーなど)はidで個別に拾う
 const MARVEL_STANDALONE_IDS = new Set([241, 265, 264, 1054, 1426, 3736, 5359, 272]);
 const MARVEL_QUERY_ALIASES = ['マーベル', 'marvel'];
+const MARVEL_QUERY_ALIASES_NORM = MARVEL_QUERY_ALIASES.map(normalizeForSearch);
 
 function matchesMarvelAlias(m, normalizedQuery){
   if(!normalizedQuery) return false;
   const isMarvelMovie = (m.series && MARVEL_SERIES_NAMES.has(m.series)) || MARVEL_STANDALONE_IDS.has(m.id);
   if(!isMarvelMovie) return false;
-  return MARVEL_QUERY_ALIASES.some(alias => normalizedQuery.includes(normalizeForSearch(alias)));
+  return MARVEL_QUERY_ALIASES_NORM.some(a => normalizedQuery.includes(a));
 }
 
 // 検索/タグ絞り込みの結果は、件数が増えても一度にDOMへ描画する枚数が
@@ -4728,7 +5219,7 @@ function renderResults(){
   const homeRowsEl = document.getElementById('home-rows');
 
   const isActiveSearch = state.query.trim() !== "" || state.activeTags.size > 0
-    || state.activeGenres.size > 0 || state.activeCountries.size > 0;
+    || state.activeGenres.size > 0 || state.activeCountries.size > 0 || state.decadeFilter !== 0;
 
   // 検索欄の×は、以前はキーワードを打った時だけ出ていたが、感情タグや
   // ジャンル・国だけで絞り込んでいる時も同じように「全部まとめて消す」
@@ -4761,21 +5252,29 @@ function renderResults(){
   root.style.display = 'grid';
 
   const q = normalizeForSearch(state.query.trim());
+  // クエリに一致する雰囲気検索のエイリアスは、作品ごとではなくクエリ1つに
+  // つき1回だけ求めれば十分(relevantVibeKeywords参照)。
+  const relevantVibeKws = relevantVibeKeywords(q);
   resultsFiltered = MOVIES.filter(m => {
+    // ここは検索1文字打つたびに全作品(数万件)に対して走る一番ホットな
+    // 経路なので、m.titleNorm等の「読み込み時に一度だけ正規化しておいた
+    // フィールド」だけを使う(normalizeForSearchをここで呼び直さない)。
+    // 以前はここで毎回normalizeForSearchを呼んでおり、あらすじ(最大400字)
+    // まで含め全作品を正規化し直していたため、検索1文字目で固まっていた。
     const matchQuery = q === ""
-      || normalizeForSearch(m.title).includes(q)
+      || m.titleNorm.includes(q)
       || String(m.year).includes(q)
-      || (m.cast && m.cast.some(actor => normalizeForSearch(actor).includes(q)))
-      || (m.director && normalizeForSearch(m.director).includes(q))
-      || (m.country && normalizeForSearch(m.country).includes(q))
-      || (m.genre && m.genre.some(g => normalizeForSearch(g).includes(q)))
-      || (m.synopsis && normalizeForSearch(m.synopsis).includes(q))
+      || (m.castNorm && m.castNorm.some(a => a.includes(q)))
+      || (m.directorNorm && m.directorNorm.includes(q))
+      || (m.countryNorm && m.countryNorm.includes(q))
+      || (m.genreNorm && m.genreNorm.some(g => g.includes(q)))
+      || (m.synopsisNorm && m.synopsisNorm.includes(q))
       // TMDbのキーワード(英語)をそのまま検索対象にする。日本語の言い方は
       // 上のVIBE_QUERY_ALIASESで別途対応するが、"gore"や"heist"のように
       // 英単語のまま探す人にもそのまま応えられるようにしておく。
-      || (m.keywords && m.keywords.some(k => normalizeForSearch(k).includes(q)))
+      || (m.keywordsNorm && m.keywordsNorm.some(k => k.includes(q)))
       || matchesCountryAlias(m, q)
-      || matchesVibeAlias(m, q)
+      || matchesVibeAlias(m, relevantVibeKws)
       || matchesMarvelAlias(m, q);
     const matchTags = state.activeTags.size === 0 || [...state.activeTags].every(t => m.tags.includes(t));
     // 表現度フィルターは、タグを選んでいるかどうかに関係なく、選択中の
@@ -4783,13 +5282,19 @@ function renderResults(){
     // スルーしてしまい、タグなしの文字検索では一切効かないバグがあった)。
     // 0(こだわらない)なら全件通す。それ以外はそのバンドの作品だけを通す。
     const matchIntensity = state.intensityFilter === 0 || movieIntensityBand(m) === state.intensityFilter;
+    const matchDecade = state.decadeFilter === 0 || movieDecadeBand(m) === state.decadeFilter;
     // ジャンル・国は「いずれか一致でOK」(OR)。1本の映画が複数のジャンル・
     // 制作国を持つのは普通なので、感情タグの「全て一致」(AND)とは別の扱い。
     const matchGenre = state.activeGenres.size === 0
       || (m.genre && m.genre.some(g => state.activeGenres.has(g)));
     const matchCountry = state.activeCountries.size === 0
       || (m.country && [...state.activeCountries].some(c => m.country.includes(c)));
-    return matchQuery && matchTags && matchIntensity && matchGenre && matchCountry && !matchesExcludedWord(m);
+    // アニメ・ドラマは専用モードからのみ見せる方針だが、隠しプレビュー
+    // フラグが立っている端末(オーナーの確認用)だけは検索からも見つけられる
+    // ようにしておく。検索も映画⇔アニメ⇔ドラマの切り替え状態に従う
+    // (isInCatalogMode参照)。
+    const matchCatalogMode = isInCatalogMode(m, currentCatalogMode());
+    return matchQuery && matchTags && matchIntensity && matchDecade && matchGenre && matchCountry && !matchesExcludedWord(m) && matchCatalogMode;
   });
 
   // 以前は並び順を一切指定しておらず、DBから返ってきた順(≒追加順)のまま
@@ -4799,7 +5304,7 @@ function renderResults(){
   // いる時はrankが全件0になるので、そのまま愛度順になる。
   function titleRelevanceRank(m){
     if(!q) return 0;
-    const title = normalizeForSearch(m.title);
+    const title = m.titleNorm;
     if(title === q || title.startsWith(q)) return 0;
     if(title.includes(q)) return 1;
     return 2;
@@ -4849,7 +5354,7 @@ const SERIES_ROW_LIMIT = 5;
 function dedupeByNormalizedTitleYear(movies){
   const bestByKey = new Map();
   movies.forEach(m => {
-    const key = normalizeForSearch(m.title) + '|' + m.year;
+    const key = m.titleNorm + '|' + m.year;
     const existing = bestByKey.get(key);
     const engagement = (m.loveCount || 0) + (m.intensityCount || 0);
     const existingEngagement = existing ? (existing.loveCount || 0) + (existing.intensityCount || 0) : -1;
@@ -4861,13 +5366,55 @@ function dedupeByNormalizedTitleYear(movies){
 function renderRecommended(currentMovie){
   const root = document.getElementById('d-recommended');
   const MIN_COUNT = 4;
-
+  const animePreview = isAnimePreviewEnabled();
   const others = MOVIES.filter(m => m.id !== currentMovie.id);
 
-  // シリーズの他の作品(公開年順)
-  const seriesSiblings = currentMovie.series
-    ? dedupeByNormalizedTitleYear(others.filter(m => m.series === currentMovie.series)).sort((a, b) => a.year - b.year)
+  // looksLikeAnimeFilm/isAnimeWorkはグローバル定義(isInCatalogMode参照)を
+  // 使う。ここでの再定義はやめた(白雪姫のような海外アニメ映画も対象にする
+  // 判定の変更を、両方で二重管理せずに済ませるため)。
+
+  // ジャンルを跨いだ「映画」⇔「アニメ」の混在は、アニメ映画(劇場アニメ)の
+  // ページの時だけ例外的に許す(両方の世界の橋渡し役になる作品なので)。
+  // 普通の実写映画のページでは映画欄だけ、普通のTVアニメのページでは
+  // アニメ欄だけを出し、互いのジャンルのおすすめは混ぜない。
+  const currentIsAnimeFilm = currentMovie.mediaType === 'movie' && isAnimeWork(currentMovie);
+  const currentIsAnimeTv = currentMovie.isAnime && currentMovie.mediaType === 'tv';
+  const currentIsAnimeWork = currentIsAnimeFilm || currentIsAnimeTv;
+
+  // アニメ作品の「シリーズの他の作品」判定。TMDbのcollection情報(series列)は
+  // 映画にしか付かず、TVシリーズには元々付与されない仕組みのため、
+  // 「鬼滅の刃」(TVアニメ)と「劇場版鬼滅の刃 無限列車編」(アニメ映画)の
+  // ようなTV↔劇場版↔OVAをまたいだ同一フランチャイズをseries列だけでは
+  // 結び付けられない。アニメ作品同士に限り、記号や「劇場版」等の接頭辞を
+  // 除いたタイトルの部分一致で簡易的に同じシリーズとみなす(短すぎる
+  // タイトル同士の誤爆を避けるため、4文字未満は対象外にする)。
+  function animeTitleKey(title){
+    return (title || '')
+      .replace(/[「」『』（）()\[\]:：\-−~〜!！?？.,、。\s　]/g, '')
+      .toLowerCase();
+  }
+  function isSameAnimeSeries(a, b){
+    if(!isAnimeWork(a) || !isAnimeWork(b)) return false;
+    const ka = animeTitleKey(a.title);
+    const kb = animeTitleKey(b.title);
+    if(ka.length < 4 || kb.length < 4) return false;
+    const shorter = ka.length <= kb.length ? ka : kb;
+    const longer = ka.length <= kb.length ? kb : ka;
+    return longer.includes(shorter);
+  }
+
+  // シリーズの他の作品(公開年順)。実写はTMDbのcollection一致(series列)、
+  // アニメはそれに加えて上のタイトル部分一致でも拾う。
+  let seriesSiblings = currentMovie.series
+    ? dedupeByNormalizedTitleYear(others.filter(m => m.series === currentMovie.series))
     : [];
+  if(currentIsAnimeWork){
+    const seen = new Set(seriesSiblings.map(m => m.id));
+    others.filter(m => isSameAnimeSeries(currentMovie, m)).forEach(m => {
+      if(!seen.has(m.id)){ seriesSiblings.push(m); seen.add(m.id); }
+    });
+  }
+  seriesSiblings = seriesSiblings.sort((a, b) => a.year - b.year);
   // リメイク・同じ物語の別バージョン
   const remakeSiblings = currentMovie.remakeGroup
     ? others.filter(m => m.remakeGroup === currentMovie.remakeGroup).sort((a, b) => a.year - b.year)
@@ -4875,16 +5422,104 @@ function renderRecommended(currentMovie){
 
   const excludeIds = new Set([...seriesSiblings, ...remakeSiblings].map(m => m.id));
 
-  const scored = others
-    .filter(m => !excludeIds.has(m.id))
-    .map(m => {
-      const sharedTags = m.tags.filter(t => currentMovie.tags.includes(t)).length;
-      return { m, sharedTags };
-    })
-    .sort((a, b) => (b.sharedTags - a.sharedTags) || (loveAverage(b.m) - loveAverage(a.m)));
+  // 感情タグの一致数→愛度の順に並べて上位を選ぶ、共通のスコアリング。
+  function scoreAndPick(pool, limit){
+    return pool
+      .filter(m => !excludeIds.has(m.id))
+      .map(m => ({ m, sharedTags: m.tags.filter(t => currentMovie.tags.includes(t)).length }))
+      .sort((a, b) => (b.sharedTags - a.sharedTags) || (loveAverage(b.m) - loveAverage(a.m)))
+      .slice(0, limit)
+      .map(x => x.m);
+  }
 
-  const list = scored.slice(0, MIN_COUNT + 2).map(x => x.m);
-  renderMovieCards(root, list, 'まだおすすめできる作品がありません。');
+  // 「ドラマ」欄(隠しプレビュー限定): TVドラマのページに加えて、普通の実写
+  // 映画のページでも出す(ドラマと実写映画は視聴者層が近く、行き来したい
+  // という要望のため)。TVアニメ・アニメ映画のページでは出さない。
+  const currentIsDrama = !!currentMovie.isDrama && currentMovie.mediaType === 'tv';
+  const currentIsRegularMovie = currentMovie.mediaType === 'movie' && !isAnimeWork(currentMovie);
+  const dramaWrap = document.getElementById('d-recommended-drama-wrap');
+  if(animePreview && (currentIsDrama || currentIsRegularMovie)){
+    const dramaPool = others.filter(m => m.isDrama);
+    const dramaList = scoreAndPick(dramaPool, MIN_COUNT + 2);
+    if(dramaList.length){
+      dramaWrap.style.display = 'block';
+      renderMovieCards(document.getElementById('d-recommended-drama'), dramaList, '', { forceMode: 'drama' });
+    } else {
+      dramaWrap.style.display = 'none';
+    }
+  } else {
+    dramaWrap.style.display = 'none';
+  }
+
+  // 「漫画」欄(隠しプレビュー限定): 漫画のページでだけ出す。ドラマと違い、
+  // 漫画は実写映画と視聴者層が近いわけではないので、映画ページには混ぜない。
+  const currentIsManga = !!currentMovie.isManga;
+  const mangaWrap = document.getElementById('d-recommended-manga-wrap');
+  if(animePreview && currentIsManga){
+    const mangaPool = others.filter(m => m.isManga);
+    const mangaList = scoreAndPick(mangaPool, MIN_COUNT + 2);
+    if(mangaList.length){
+      mangaWrap.style.display = 'block';
+      renderMovieCards(document.getElementById('d-recommended-manga'), mangaList, '', { forceMode: 'manga' });
+    } else {
+      mangaWrap.style.display = 'none';
+    }
+  } else {
+    mangaWrap.style.display = 'none';
+  }
+
+  // 「小説」欄(隠しプレビュー限定): 小説のページでだけ出す。
+  const currentIsNovel = !!currentMovie.isNovel;
+  const novelWrap = document.getElementById('d-recommended-novel-wrap');
+  if(animePreview && currentIsNovel){
+    const novelPool = others.filter(m => m.isNovel);
+    const novelList = scoreAndPick(novelPool, MIN_COUNT + 2);
+    if(novelList.length){
+      novelWrap.style.display = 'block';
+      renderMovieCards(document.getElementById('d-recommended-novel'), novelList, '', { forceMode: 'novel' });
+    } else {
+      novelWrap.style.display = 'none';
+    }
+  } else {
+    novelWrap.style.display = 'none';
+  }
+
+  // 「映画」欄: TVアニメ・TVドラマ・漫画・小説のページでは出さない。アニメ映画の
+  // ページの時だけ、実写中心の並びにアニメ映画を少し混ぜる。ここから開いた
+  // 作品はサイト全体のモードも「映画」に自動で切り替わる(forceMode → goDetailWithMode)。
+  const movieWrap = document.getElementById('d-recommended-movie-wrap');
+  if(currentIsAnimeTv || currentIsDrama || currentIsManga || currentIsNovel){
+    movieWrap.style.display = 'none';
+  } else {
+    movieWrap.style.display = 'block';
+    const liveActionPool = others.filter(m => !m.isAnime && !looksLikeAnimeFilm(m));
+    const movieList = scoreAndPick(liveActionPool, MIN_COUNT);
+    if(animePreview && currentIsAnimeFilm){
+      const animeFilmPool = others.filter(m => looksLikeAnimeFilm(m)
+        && !movieList.some(x => x.id === m.id) && !excludeIds.has(m.id));
+      const sprinkle = seededShuffle(animeFilmPool, `reco-movie-sprinkle:${currentMovie.id}`).slice(0, 2);
+      movieList.push(...sprinkle);
+    }
+    renderMovieCards(root, movieList, 'まだおすすめできる作品がありません。', { forceMode: 'movie' });
+  }
+
+  // 「アニメ」欄(隠しプレビュー限定): TVアニメ・アニメ映画のページの時だけ出す。
+  // 普通の実写映画のページには出さない。ここから開くとサイト全体のモードが
+  // 「アニメ」に自動で切り替わる。
+  const animeWrap = document.getElementById('d-recommended-anime-wrap');
+  if(animePreview && (currentIsAnimeTv || currentIsAnimeFilm)){
+    const animePool = others.filter(m =>
+      (m.isAnime && (!looksLikeEnglishTitle(m.title) || m.trailerKey)) || looksLikeAnimeFilm(m));
+    const animeList = scoreAndPick(animePool, MIN_COUNT + 2);
+    if(animeList.length){
+      animeWrap.style.display = 'block';
+      renderMovieCards(document.getElementById('d-recommended-anime'), animeList, '', { forceMode: 'anime' });
+    } else {
+      animeWrap.style.display = 'none';
+    }
+  } else {
+    animeWrap.style.display = 'none';
+  }
 
   // シリーズ・リメイクは別枠で表示
   const seriesRoot = document.getElementById('d-series-row');
@@ -5166,6 +5801,7 @@ function updateIntensityDisplay(value){
 
 function onIntensitySliderInput(value){
   updateIntensityDisplay(value);
+  feedbackIntensityBand(value, 'review');
   pendingIntensityTouched = true;
   renderReasonChips(MOVIES.find(x => x.id === state.currentMovieId));
 }
@@ -5184,6 +5820,7 @@ function togglePostPanel(){
     void body.offsetWidth;
     body.classList.add('soft-reveal');
     renderReviewTurnstile();
+    delete intensitySoundBandByTracker.review;
   }
 }
 
@@ -5277,7 +5914,7 @@ function renderPosterMood(m){
   // 色のぼかしは雰囲気付けとして残しつつ、実物のポスターがあれば
   // その上に縦横比を保ったまま1枚だけ乗せる(無ければ今まで通り色だけ)。
   const artworkEl = document.getElementById('poster-artwork');
-  if(m.posterUrl){
+  if(m.posterUrl && !shouldHidePosterForIntensity(m)){
     document.getElementById('poster-artwork-img').src = m.posterUrl;
     artworkEl.style.display = 'block';
   } else {
@@ -5325,9 +5962,13 @@ function updateLoveUI(m){
     `<span class="love-label-tag">${loveLabel(avg, m.loveCount)}</span>${loveCountText(m) ? ` ・ ${loveCountText(m)}` : ''}`;
 
   const myLevel = state.myLove[m.id] || 0;
-  const btn = document.getElementById('heart-single-btn');
-  btn.classList.remove('lv1', 'lv2', 'lv3');
-  if(myLevel > 0) btn.classList.add('lv' + myLevel);
+  // #heart-single-btn(メインのハート)に加えて、話数カードごとのミニハート
+  // (.heart-single-btn.mini)もここで同じ状態に同期する。どちらも同じ
+  // 作品全体の評価を指しているだけで、話ごとに別の値を持たせているわけではない。
+  document.querySelectorAll('#view-detail .heart-single-btn').forEach(btn => {
+    btn.classList.remove('lv1', 'lv2', 'lv3');
+    if(myLevel > 0) btn.classList.add('lv' + myLevel);
+  });
 
   document.querySelectorAll('#heart-level-dots .h-dot').forEach((dot, i) => {
     dot.classList.toggle('filled', i < myLevel);
@@ -5462,7 +6103,273 @@ async function cycleLove(evt){
   }
 }
 
+// TVアニメの「話数を見る」欄。普段は折りたたんで隠し、タップで展開する。
+// シーズン一覧はtmdb-tv-episodes関数(movie_idだけ渡す呼び出し)で取得し、
+// シーズンを選ぶたびにそのシーズンの話一覧を取りに行く(取得済みシーズンは
+// episodesCacheに残して再取得しない)。話ごとの評価は別に持たず、各話カードの
+// ミニハートは作品全体の愛度(cycleLove/state.myLove)をそのまま操作する。
+let episodesOpen = false;
+let episodesSeasons = [];
+let episodesSelectedSeason = null;
+let episodesCache = {};
+let episodesChunkIndex = 0; // 100話ごとの区切りの何番目を見ているか
+const EPISODES_CHUNK_SIZE = 100;
+let episodesLoadToken = 0; // 作品を切り替えた時、古い応答を無視するためのトークン
+
+function resetEpisodesUI(m){
+  episodesOpen = false;
+  episodesSeasons = [];
+  episodesSelectedSeason = null;
+  episodesCache = {};
+  episodesChunkIndex = 0;
+  episodesLoadToken++;
+
+  const isTvSeries = m.mediaType === 'tv' && (m.isAnime || m.isDrama);
+  document.getElementById('episodes-wrap').style.display = isTvSeries ? 'block' : 'none';
+  document.getElementById('episodes-toggle-btn').classList.remove('open');
+  document.getElementById('episodes-body').classList.remove('open');
+  document.getElementById('episodes-toggle-label').textContent = '話数を見る';
+  document.getElementById('episodes-season-tabs').innerHTML = '';
+  document.getElementById('episodes-chunk-tabs').innerHTML = '';
+  document.getElementById('episodes-grid').innerHTML = '';
+  document.getElementById('episodes-loading').style.display = 'none';
+}
+
+async function toggleEpisodesSection(){
+  episodesOpen = !episodesOpen;
+  document.getElementById('episodes-toggle-btn').classList.toggle('open', episodesOpen);
+  document.getElementById('episodes-body').classList.toggle('open', episodesOpen);
+  if(episodesOpen && episodesSeasons.length === 0){
+    await loadEpisodeSeasons(state.currentMovieId);
+  }
+}
+
+async function loadEpisodeSeasons(movieId){
+  const token = episodesLoadToken;
+  document.getElementById('episodes-loading').style.display = 'block';
+  try{
+    const { data, error } = await supabase.functions.invoke('tmdb-tv-episodes', {
+      body: { movie_id: movieId }
+    });
+    if(token !== episodesLoadToken || state.currentMovieId !== movieId) return;
+    if(error || !data || !data.seasons || !data.seasons.length){
+      document.getElementById('episodes-loading').style.display = 'none';
+      document.getElementById('episodes-grid').innerHTML = '<div class="episodes-loading">話数情報が見つかりませんでした</div>';
+      return;
+    }
+    episodesSeasons = data.seasons;
+    // 特別編(season_number 0)より、まず本編(season 1〜)を見たいはずなので
+    // season 1があればそちらをデフォルトにする。無ければ先頭のシーズンを使う。
+    const defaultSeason = episodesSeasons.find(s => s.season_number === 1) || episodesSeasons[0];
+    await selectEpisodeSeason(movieId, defaultSeason.season_number);
+  }catch(err){
+    console.error('話数情報の取得に失敗しました', err);
+    document.getElementById('episodes-loading').style.display = 'none';
+  }
+}
+
+function renderEpisodeSeasonTabs(){
+  const root = document.getElementById('episodes-season-tabs');
+  if(episodesSeasons.length <= 1){ root.innerHTML = ''; return; }
+  root.innerHTML = episodesSeasons.map(s => {
+    const label = s.season_number === 0 ? '特別編' : `シーズン${s.season_number}`;
+    const active = s.season_number === episodesSelectedSeason;
+    return `<div class="tagchip${active ? ' active' : ''}" onclick="selectEpisodeSeason(${state.currentMovieId}, ${s.season_number})">${label}</div>`;
+  }).join('');
+}
+
+async function selectEpisodeSeason(movieId, seasonNumber){
+  episodesSelectedSeason = seasonNumber;
+  episodesChunkIndex = 0;
+  renderEpisodeSeasonTabs();
+  const seasonInfo = episodesSeasons.find(s => s.season_number === seasonNumber);
+  document.getElementById('episodes-toggle-label').textContent =
+    `話数を見る${seasonInfo ? `(${seasonInfo.episode_count}話)` : ''}`;
+
+  if(episodesCache[seasonNumber]){
+    renderEpisodeChunkTabs(episodesCache[seasonNumber].length);
+    renderEpisodesChunk(episodesCache[seasonNumber]);
+    return;
+  }
+
+  const token = episodesLoadToken;
+  document.getElementById('episodes-loading').style.display = 'block';
+  document.getElementById('episodes-chunk-tabs').innerHTML = '';
+  document.getElementById('episodes-grid').innerHTML = '';
+  try{
+    const { data, error } = await supabase.functions.invoke('tmdb-tv-episodes', {
+      body: { movie_id: movieId, season_number: seasonNumber }
+    });
+    if(token !== episodesLoadToken || state.currentMovieId !== movieId || episodesSelectedSeason !== seasonNumber) return;
+    document.getElementById('episodes-loading').style.display = 'none';
+    if(error || !data) return;
+    episodesCache[seasonNumber] = data.episodes || [];
+    renderEpisodeChunkTabs(episodesCache[seasonNumber].length);
+    renderEpisodesChunk(episodesCache[seasonNumber]);
+  }catch(err){
+    console.error('話数情報の取得に失敗しました', err);
+    document.getElementById('episodes-loading').style.display = 'none';
+  }
+}
+
+// 1シーズンが100話を超える長期シリーズ(BLEACHで366話等)向けに、
+// 「1〜100話」のような区切りチップをシーズンタブの下にもう一段追加する。
+// 100話以下のシーズンではチップ自体を出さない(見た目は今まで通り)。
+function renderEpisodeChunkTabs(totalCount){
+  const root = document.getElementById('episodes-chunk-tabs');
+  if(totalCount <= EPISODES_CHUNK_SIZE){ root.innerHTML = ''; return; }
+  const chunkCount = Math.ceil(totalCount / EPISODES_CHUNK_SIZE);
+  const chips = [];
+  for(let i = 0; i < chunkCount; i++){
+    const from = i * EPISODES_CHUNK_SIZE + 1;
+    const to = Math.min((i + 1) * EPISODES_CHUNK_SIZE, totalCount);
+    const active = i === episodesChunkIndex;
+    chips.push(`<div class="tagchip${active ? ' active' : ''}" onclick="selectEpisodeChunk(${i})">${from}〜${to}話</div>`);
+  }
+  root.innerHTML = chips.join('');
+}
+
+function selectEpisodeChunk(index){
+  episodesChunkIndex = index;
+  const seasonNumber = episodesSelectedSeason;
+  const episodes = episodesCache[seasonNumber] || [];
+  renderEpisodeChunkTabs(episodes.length);
+  renderEpisodesChunk(episodes);
+  // チップは箱の上のほうにあるので、選んだら話数カードが見える位置まで
+  // 自動で少し戻す(区切りを変えた直後、直前のスクロール位置のままだと
+  // 新しい話数がどこにあるのか分かりにくいため)。
+  document.getElementById('episodes-body').scrollTop = 0;
+}
+
+function renderEpisodesChunk(episodes){
+  const start = episodesChunkIndex * EPISODES_CHUNK_SIZE;
+  renderEpisodesGrid(episodes.slice(start, start + EPISODES_CHUNK_SIZE));
+}
+
+function renderEpisodesGrid(episodes){
+  const root = document.getElementById('episodes-grid');
+  if(!episodes.length){
+    root.innerHTML = '<div class="episodes-loading">話数情報が見つかりませんでした</div>';
+    return;
+  }
+  root.innerHTML = episodes.map(e => {
+    const thumb = e.still_path
+      ? `<img src="${TMDB_IMAGE_BASE}${e.still_path}" alt="" loading="lazy" decoding="async">`
+      : '話';
+    return `
+      <div class="episode-card">
+        <div class="episode-thumb">${thumb}</div>
+        <div class="episode-meta">
+          <div class="episode-num">第${e.episode_number}話</div>
+          <div class="episode-name">${escapeHtml(e.name)}</div>
+          <div class="episode-love-row">
+            <button class="heart-single-btn mini" onclick="cycleLove(event)">
+              <svg class="heart-icon" viewBox="0 0 32 30" fill="currentColor"><path d="M16 27 C6 20 2 13 2 8.5 C2 4 5.5 1 9.5 1 C12.5 1 15 2.8 16 5.5 C17 2.8 19.5 1 22.5 1 C26.5 1 30 4 30 8.5 C30 13 26 20 16 27 Z"/></svg>
+            </button>
+            <span class="episode-love-hint">作品全体の愛度</span>
+          </div>
+        </div>
+      </div>
+    `;
+  }).join('');
+  // 新しく増えたミニハートにも、既についている愛度(lv1〜3)を反映させる
+  const m = MOVIES.find(x => x.id === state.currentMovieId);
+  if(m) updateLoveUI(m);
+}
+
+// 映画⇔アニメの切り替え。隠しプレビューフラグが立っていない一般ユーザーは
+// ボタン自体が表示されないため、ここは実質オーナー専用の経路になる。
+// PC版(左余白のラベル付きボタン+小さいドロップダウン)とアプリ版
+// (ヘッダーのハンバーガー+左スライドインのドロワー)の2つのDOM要素が
+// あり、見た目・状態は常に両方同時に更新して揃える(CSS側でどちらか
+// 一方だけが画面幅に応じて見える)。
+const CATALOG_MODE_UI_INSTANCES = [
+  { wrap: 'catalog-mode-toggle-inline', trigger: 'catalog-mode-hamburger-btn', menu: 'catalog-mode-drawer', suffix: '' },
+  { wrap: 'catalog-mode-toggle-side', trigger: 'catalog-mode-hamburger-btn-side', menu: 'catalog-mode-menu-side', suffix: '-side' },
+];
+
+let catalogModeMenuOpen = false;
+function closeCatalogModeMenu(){
+  catalogModeMenuOpen = false;
+  CATALOG_MODE_UI_INSTANCES.forEach(u => {
+    const menu = document.getElementById(u.menu);
+    if(menu) menu.classList.remove('open');
+    const trigger = document.getElementById(u.trigger);
+    if(trigger) trigger.classList.remove('open');
+  });
+  const backdrop = document.getElementById('catalog-mode-drawer-backdrop');
+  if(backdrop) backdrop.classList.remove('open');
+}
+
+function toggleCatalogModeMenu(){
+  catalogModeMenuOpen = !catalogModeMenuOpen;
+  CATALOG_MODE_UI_INSTANCES.forEach(u => {
+    const menu = document.getElementById(u.menu);
+    if(menu) menu.classList.toggle('open', catalogModeMenuOpen);
+    const trigger = document.getElementById(u.trigger);
+    if(trigger) trigger.classList.toggle('open', catalogModeMenuOpen);
+  });
+  const backdrop = document.getElementById('catalog-mode-drawer-backdrop');
+  if(backdrop) backdrop.classList.toggle('open', catalogModeMenuOpen);
+}
+
+// メニュー/ドロワーの外をタップ/クリックしたら閉じる。ドロワー本体は
+// #view-homeの外側にあり、ヘッダーのハンバーガーボタン(wrap)とは別の
+// 要素なので、ドロワー自体も「内側」として明示的に含めておく。
+document.addEventListener('click', (e) => {
+  if(!catalogModeMenuOpen) return;
+  const insideAny = CATALOG_MODE_UI_INSTANCES.some(u => {
+    const wrap = document.getElementById(u.wrap);
+    const menu = document.getElementById(u.menu);
+    return (wrap && wrap.contains(e.target)) || (menu && menu.contains(e.target));
+  });
+  if(!insideAny) closeCatalogModeMenu();
+});
+
+function setCatalogMode(mode){
+  closeCatalogModeMenu();
+  if(!isAnimePreviewEnabled() || !CATALOG_MODES.some(([m]) => m === mode)) return;
+  if(state.catalogMode === mode) return;
+  state.catalogMode = mode;
+  // モードは端末に保存しない(常に映画から始める方針のため、次に開いた時は
+  // 引き継がない。切り替え自体はこのセッション中だけ効く)。
+
+  // 映画とアニメでは絞り込みの顔ぶれ(ジャンル・感情タグ・国)がまるで違うため、
+  // 切り替えるたびに検索・絞り込み状態をリセットして、片方のモードで選んだ
+  // 条件がもう片方に持ち越されて「0件」になる事故を防ぐ。
+  clearSearch();
+  renderFeaturedBanner();
+  renderHomeRows();
+  switchView('view-home');
+  updateCatalogModeToggleUI();
+}
+
+// 選択肢(映画/アニメ/ドラマ/漫画/小説)はこの配列に追記していく。
+const CATALOG_MODES = [
+  ['movie', '映画'],
+  ['anime', 'アニメ'],
+  ['drama', 'ドラマ'],
+  ['manga', '漫画'],
+  ['novel', '小説'],
+];
+function updateCatalogModeToggleUI(){
+  const mode = state.catalogMode;
+  const current = CATALOG_MODES.find(([m]) => m === mode);
+  CATALOG_MODE_UI_INSTANCES.forEach(u => {
+    if(u.label){
+      const label = document.getElementById(u.label);
+      if(label && current) label.textContent = current[1];
+    }
+    CATALOG_MODES.forEach(([m]) => {
+      const el = document.getElementById(`catalog-mode-btn-${m}${u.suffix}`);
+      if(el) el.classList.toggle('active', m === mode);
+    });
+  });
+}
+
 function renderMovieInfoPanel(m){
+  // 漫画・小説は「監督」ではなく「作者」の方が自然なので、作品種別に応じてラベルを切り替える。
+  document.getElementById('d-director-label').textContent = (m.isManga || m.isNovel) ? '作者' : '監督';
   document.getElementById('d-director').textContent = m.director || '情報がまだありません';
   document.getElementById('d-cast').textContent = (m.cast && m.cast.length > 0) ? m.cast.join('、') : '情報がまだありません';
   document.getElementById('d-country').textContent = m.country || '情報がまだありません';
@@ -5529,6 +6436,18 @@ function goDetailWithViewReturn(id, viewId, label){
   goDetail(id);
 }
 
+// 作品詳細ページの「映画」欄・「アニメ」欄から別作品に移動した時、
+// サイト全体の映画⇔アニメモードもその作品に合わせて自動で切り替える
+// (映画欄から行けば映画に、アニメ欄から行けばアニメに)。隠しプレビュー
+// フラグが無い一般ユーザーにはそもそもこの欄・切り替え自体が出ないため無害。
+function goDetailWithMode(id, mode){
+  if(isAnimePreviewEnabled() && CATALOG_MODES.some(([m]) => m === mode)){
+    state.catalogMode = mode;
+    updateCatalogModeToggleUI();
+  }
+  goDetail(id);
+}
+
 function goDetailBack(){
   if(detailReturn){
     const ret = detailReturn;
@@ -5568,6 +6487,7 @@ async function goDetail(id){
   renderPosterMood(m);
   renderMovieInfoPanel(m);
   resetTrailerUI(m);
+  resetEpisodesUI(m);
 
   tagVoteOpen = false;
   document.getElementById('tag-vote-select').style.display = 'none';
@@ -5582,6 +6502,7 @@ async function goDetail(id){
   const mySliderVal = myPrevVote !== undefined ? myPrevVote : 0;
   document.getElementById('intensity-slider').value = mySliderVal;
   updateIntensityDisplay(mySliderVal);
+  delete intensitySoundBandByTracker.review;
 
   // 配信サービスの表示は一旦停止(内容が頻繁に変わるため、正確なデータ連携ができるまで非表示にする)
   const watchLabel = document.getElementById('d-watch-label');
@@ -5598,6 +6519,7 @@ async function goDetail(id){
 
   renderRecommended(m);
   switchView('view-detail');
+  feedbackDetailOpen();
 
   // TMDBレビューは主役のWander本体レビューを待たせてまで表示する必要が無い
   // (賑わい・補足目的の薄い付加情報)ので、await せず裏で読み込む。
@@ -6103,7 +7025,7 @@ async function submitMovie(){
   // エイジ・オブ・ウルトロン」と「アベンジャーズ／エイジ・オブ・ウルトロン」)は
   // 完全一致では素通りしてしまっていたため、検索と同じ正規化をかけてから比較する。
   const normalizedNewTitle = normalizeForSearch(escapeHtml(title));
-  const duplicate = MOVIES.some(m => normalizeForSearch(m.title) === normalizedNewTitle && m.year === year);
+  const duplicate = MOVIES.some(m => m.titleNorm === normalizedNewTitle && m.year === year);
   if(duplicate){ showToast('同じタイトル・公開年の映画が既に登録されています'); return; }
 
   if(!addMovieTurnstileToken){
@@ -6179,26 +7101,24 @@ async function submitMovie(){
 // select()では新しく追加した分(特にTMDb一括取り込み分)が黙って切り捨てられ、
 // 「本数を増やしたのにアプリ側では見えない」事故になっていた。上限に関わらず
 // 全件取得できるよう、1000件ずつページ送りして結合する。
+// 以前は最初に件数(count: 'exact')を取ってから残りページ数を逆算していたが、
+// is_anime/is_manga等のフィルター付きでcount: 'exact'を使うと、対応する
+// インデックスが無いため件数計算だけでPostgres側のstatement_timeoutに
+// 引っかかり、1ページ目からいきなり500になる事故が起きた。件数を先に
+// 知る必要は無いので、短い(PAGE_SIZE未満の)ページが返ってくるまで
+// 単純にページ送りを続ける方式にする。
 // ページ送りを1件ずつ直列に待つと、本数が増えるほど(1000件ごとに1往復)
-// 読み込みが遅くなる(5000件超で6往復分が積み重なる)。1ページ目の取得と
-// 同時に件数(count: 'exact')も受け取り、残りのページは並列にまとめて取りに行く。
+// 読み込みが遅くなる。かといって残り全ページを一度に並列で投げると、
+// カタログが5万件を超えたところで同時接続数がSupabase側の接続プール上限を
+// 超え、「Timed out acquiring connection from connection pool」
+// 「canceling statement due to statement timeout」で一部ページが500に
+// なり、映画一覧がまるごと読み込み失敗扱いになる事故も起きた。そのため
+// 同時に投げる本数の上限(CONCURRENCY)を固定したページ束を順番に処理する。
 async function selectAllRows(table, columns, applyFilterFn){
   const PAGE_SIZE = 1000;
   const CONCURRENCY = 6;
   const withFilter = (q) => applyFilterFn ? applyFilterFn(q) : q;
 
-  // 以前は最初に件数(count: 'exact')を取ってから残りページ数を逆算していたが、
-  // is_anime等のフィルター付きでcount: 'exact'を使うと、対応するインデックスが
-  // 無いため件数計算だけでPostgres側のstatement_timeoutに引っかかり、1ページ目
-  // からいきなり500になる事故が起きた。件数を先に知る必要は無いので、短い
-  // (PAGE_SIZE未満の)ページが返ってくるまで単純にページ送りを続ける方式にする。
-  // ページ送りを1件ずつ直列に待つと、本数が増えるほど読み込みが遅くなる。
-  // かといって残り全ページを一度に並列で投げると、カタログが5万件を超えた
-  // ところで同時接続数がSupabase側の接続プール上限を超え、「Timed out
-  // acquiring connection from connection pool」「canceling statement due to
-  // statement timeout」で一部ページが500になり、一覧がまるごと読み込み失敗
-  // 扱いになる事故も起きた。そのため同時に投げる本数の上限(CONCURRENCY)を
-  // 固定したページ束を順番に処理する。
   let rows = [];
   let pageStart = 0;
   let reachedEnd = false;
@@ -6220,18 +7140,24 @@ async function selectAllRows(table, columns, applyFilterFn){
 
 async function loadMovies(){
   try{
-    // moviesテーブルには今、通常の映画に加えてアニメ・ドラマ・漫画・小説の
-    // データも同居している(準備中で、まだ画面側には出す機能を用意していない)。
-    // ここで絞り込まずに全件取得すると、その未公開データまで検索結果や
-    // おすすめに紛れ込んで見えてしまう上、件数が増えるほど読み込みも遅くなる
-    // ため、公開する準備が整うまでは通常の映画(is_anime/is_drama/is_manga/
-    // is_novelが全てfalseの行)だけを取得する。
+    // 隠しプレビューフラグが無い端末は、isAnimePreviewEnabled()の判定を
+    // 待つまでもなくmovieモードでしか閲覧できない(currentCatalogMode
+    // 参照)。それなのに今までは毎回、表示すらされないアニメ・ドラマ・
+    // 漫画・小説のデータまでまるごと取得しており、カタログが5万件を
+    // 超えたことで読み込みが遅い最大の原因になっていた。
+    // checkAnimePreviewOwner()(オーナー本人かどうかの確認)は非同期で
+    // 完了を待つと並列読み込みの意味が薄れるため、代わりに(一度でも
+    // ?anime=1で有効化されていれば残る)localStorageのフラグだけを
+    // 同期的に見て判定する。オーナーが真っさらな端末で最初に開いた
+    // 回だけ映画のみで表示され、モード切替時に漫画・小説等が別途
+    // 取得される(この一度きりの取りこぼしは許容する)。
+    const broadFetch = (() => {
+      try{ return localStorage.getItem(ANIME_PREVIEW_KEY) === '1'; }
+      catch{ return false; }
+    })();
+    const moviesFilter = broadFetch ? null : (q) => q.match({ is_anime: false, is_drama: false, is_manga: false, is_novel: false });
     const [moviesData, statsRes, estimatesData] = await Promise.all([
-      selectAllRows(
-        'movies',
-        'id, title, release_year, emotion_tags, genre, director, cast_members, country, synopsis, poster_path, japan_release_date, keywords, series, trailer_key',
-        (q) => q.match({ is_anime: false, is_drama: false, is_manga: false, is_novel: false })
-      ),
+      selectAllRows('movies', 'id, title, release_year, emotion_tags, genre, director, cast_members, country, synopsis, poster_path, japan_release_date, keywords, series, trailer_key, media_type, is_anime, is_drama, is_manga, is_novel', moviesFilter),
       supabase.from('movie_review_stats').select('*'),
       selectAllRows('movie_expression_estimates', 'movie_id, expression_level, reason_tags')
     ]);
@@ -6251,25 +7177,53 @@ async function loadMovies(){
       // 実際の投票が集まった時点で、通常通りその集計が優先される。
       const useEstimate = intensityCount === 0 && !!estimate;
 
+      const titleEsc = escapeHtml(row.title);
+      const genreArr = row.genre || undefined;
+      const castArr = row.cast_members || undefined;
+      const keywordsArr = row.keywords || [];
+
       return {
         id: row.id,
         // titleはこの後、色々なテンプレート内でinnerHTMLとしてそのまま差し込まれる。
         // moviesテーブルは「誰でも追加可能」なので、ここで一度だけエスケープしておく。
-        title: escapeHtml(row.title),
+        title: titleEsc,
+        // 検索は数万件規模の全作品に対して1文字打つたびに走る一番ホットな
+        // 経路なので、normalizeForSearch()の結果はここで一度だけ計算して
+        // 持っておく(検索のたびに毎回呼び直すと、あらすじ等の長い文字列も
+        // 含めて全作品を正規化し直すことになり、1文字目の入力で固まっていた)。
+        titleNorm: normalizeForSearch(titleEsc),
+        castNorm: castArr ? castArr.map(normalizeForSearch) : undefined,
+        directorNorm: row.director ? normalizeForSearch(row.director) : undefined,
+        countryNorm: row.country ? normalizeForSearch(row.country) : undefined,
+        genreNorm: genreArr ? genreArr.map(normalizeForSearch) : undefined,
+        synopsisNorm: row.synopsis ? normalizeForSearch(row.synopsis) : undefined,
+        keywordsNorm: keywordsArr.map(normalizeForSearch),
+        keywordsLower: keywordsArr.map(k => k.toLowerCase()),
+        excludedWordHaystack: normalizeForSearch(
+          [titleEsc, row.synopsis, ...(genreArr || []), ...keywordsArr].filter(Boolean).join(' ')
+        ),
         year: row.release_year,
         tags: row.emotion_tags || [],
-        genre: row.genre || undefined,
+        genre: genreArr,
         director: row.director || undefined,
-        cast: row.cast_members || undefined,
+        cast: castArr,
         country: row.country || undefined,
         synopsis: row.synopsis || undefined,
         posterColor: POSTER_PALETTE[row.id % POSTER_PALETTE.length],
-        posterUrl: row.poster_path ? `${TMDB_IMAGE_BASE}${row.poster_path}` : null,
+        // 漫画(AniList由来)はposter_pathにTMDBの相対パスではなく完全なURLが
+        // 入っているため、httpで始まる場合はそのまま使い、それ以外は従来通り
+        // TMDB_IMAGE_BASEを前置きする。
+        posterUrl: row.poster_path ? (row.poster_path.startsWith('http') ? row.poster_path : `${TMDB_IMAGE_BASE}${row.poster_path}`) : null,
         posterPath: row.poster_path || null,
         japanReleaseDate: row.japan_release_date || null,
-        keywords: row.keywords || [],
+        keywords: keywordsArr,
         series: row.series || null,
         trailerKey: row.trailer_key || null,
+        mediaType: row.media_type || 'movie',
+        isAnime: !!row.is_anime,
+        isDrama: !!row.is_drama,
+        isManga: !!row.is_manga,
+        isNovel: !!row.is_novel,
         platforms: [],
         tagVotes: {},
         reviews: [],
@@ -6563,10 +7517,10 @@ async function removeExcludedWord(word){
 function matchesExcludedWord(m){
   const words = (state.profile && state.profile.excludedWords) || [];
   if(words.length === 0) return false;
-  const haystack = normalizeForSearch(
-    [m.title, m.synopsis, ...(m.genre || []), ...(m.keywords || [])].filter(Boolean).join(' ')
-  );
-  return words.some(w => haystack.includes(normalizeForSearch(w)));
+  // m.excludedWordHaystackは読み込み時に一度だけ正規化済み(タイトル・あらすじ・
+  // ジャンル・キーワードを結合したもの)。これも検索・ホーム棚の表示のたびに
+  // 全作品へ実行される経路なので、ここで毎回結合・正規化し直すと重くなる。
+  return words.some(w => m.excludedWordHaystack.includes(normalizeForSearch(w)));
 }
 
 async function loadMySubmittedMovies(){
@@ -6989,7 +7943,7 @@ function onMlTitleInput(){
   const listEl = document.getElementById('ml-title-suggestions');
   if(!q){ listEl.style.display = 'none'; listEl.innerHTML = ''; return; }
 
-  const matches = MOVIES.filter(m => normalizeForSearch(m.title).includes(q)).slice(0, 6);
+  const matches = MOVIES.filter(m => m.titleNorm.includes(q) && ((!m.isAnime && !m.isDrama && !m.isManga && !m.isNovel) || isAnimePreviewEnabled())).slice(0, 6);
   if(!matches.length){ listEl.style.display = 'none'; listEl.innerHTML = ''; return; }
 
   listEl.innerHTML = matches.map(m => {
@@ -7183,6 +8137,9 @@ function goMyLogForm(logId){
   document.getElementById('mylog-submit-btn').textContent = log ? '更新する' : '記録する';
   document.getElementById('mylog-delete-btn').style.display = log ? 'inline-block' : 'none';
 
+  // フォームを開いた瞬間の自動描画では鳴らさず、ユーザーが実際にスライダーを
+  // 動かした時だけ帯またぎ音が鳴るよう、現在値の帯であらかじめ揃えておく。
+  intensitySoundBandByTracker.mylog = riskCategoryUpperBound(Number(document.getElementById('ml-intensity-slider').value));
   onMlIntensityInput(document.getElementById('ml-intensity-slider').value);
   renderMlHeart();
   renderMlTagSelect();
@@ -7245,6 +8202,7 @@ function onMlIntensityInput(value){
   label.style.color = color;
   document.getElementById('ml-intensity-slider').style.accentColor = color;
   document.getElementById('ml-reason-reveal').style.display = value > 25 ? 'block' : 'none';
+  feedbackIntensityBand(value, 'mylog');
 }
 
 async function saveMyLog(){
@@ -7476,7 +8434,8 @@ function generateDiagnosis(pocketMovies){
 // 同じ日にページを開き直しても結果は変わらない(日が変われば新しい1本になる)。
 function pickOmikujiMovie(topTag, secondTag, excludeIds){
   const candidates = MOVIES.filter(m =>
-    !excludeIds.includes(m.id) && (m.tags.includes(topTag) || (secondTag && m.tags.includes(secondTag)))
+    !excludeIds.includes(m.id) && !m.isAnime && !m.isDrama && !m.isManga && !m.isNovel
+    && (m.tags.includes(topTag) || (secondTag && m.tags.includes(secondTag)))
   );
   if(!candidates.length) return null;
   const seedKey = `movie-omikuji:${excludeIds.slice().sort((a, b) => a - b).join(',')}`;
@@ -8594,10 +9553,16 @@ async function init(){
   const signInPromise = (!hasSupabaseSession && !sessionCheckFailed && !looksLikeAuthRedirect())
     ? autoSignInAnonymously()
     : Promise.resolve();
-  await Promise.all([loadMovies(), loadMyReviews(), loadMyTagVotes(), loadMyWatchLater(), loadMyPocket(), loadMyLists(), loadProfile(), loadMyLogs(), loadMySubmittedMovies(), loadLastSubmissionDate(), loadDiagnosisHistory(), loadRecentReviews()]);
+  await Promise.all([loadMovies(), loadMyReviews(), loadMyTagVotes(), loadMyWatchLater(), loadMyPocket(), loadMyLists(), loadProfile(), loadMyLogs(), loadMySubmittedMovies(), loadLastSubmissionDate(), loadDiagnosisHistory(), loadRecentReviews(), checkAnimePreviewOwner()]);
+
+  // 最初に開いた画面は常に映画から始める(前回アニメを見ていたとしても、
+  // 開くたびにアニメから始まるのは望ましくないとのオーナーの指示)。
+  const animePreview = isAnimePreviewEnabled();
+  state.catalogMode = 'movie';
 
   renderTagCloud();
   renderGenreCloud();
+  renderDecadeCloud();
   renderCountryCloud();
   renderResults();
   renderFormTags();
@@ -8605,6 +9570,11 @@ async function init(){
   renderFeaturedBanner();
   renderHomeRows();
   updateHeader();
+  document.getElementById('catalog-mode-toggle-inline').classList.toggle('enabled', animePreview);
+  document.getElementById('catalog-mode-toggle-side').classList.toggle('enabled', animePreview);
+  document.getElementById('catalog-mode-drawer').classList.toggle('enabled', animePreview);
+  document.getElementById('catalog-mode-drawer-backdrop').classList.toggle('enabled', animePreview);
+  updateCatalogModeToggleUI();
 
   // 上のPromise.allで一斉に叩いたcurrentAuthUser()が(希にある)gotrue-jsの
   // ハングでタイムアウトした場合、profile/myLogs/mySubmittedMovies/
@@ -8613,16 +9583,28 @@ async function init(){
   // 直らず、その操作自体がrequireVerifiedUser()に「未登録」と誤判定されて
   // ログイン画面に弾かれることさえある。表示はもう終わっているので、
   // 数秒待って裏で読み直し、直っていたら静かに描き直す。
-  if(!state.profileLoaded || !state.myLogsLoaded || !state.mySubmittedMoviesLoaded || !state.myReviewRowsLoaded){
+  // checkAnimePreviewOwner()も同じcurrentAuthUser()に依存しており、同じ
+  // ハングの影響を受ける(オーナー本人なのにハンバーガーメニューごと
+  // 漫画/小説の切り替えが消えて見える事故が実際に起きた)。他の4つの
+  // 読み込みと違って専用のloadedフラグが無いため、animePreviewOwnerConfirmed
+  // がまだfalseなら同じタイミングで再確認し、有効になった場合だけ
+  // ハンバーガーメニューを出し直す。
+  if(!state.profileLoaded || !state.myLogsLoaded || !state.mySubmittedMoviesLoaded || !state.myReviewRowsLoaded || !animePreviewOwnerConfirmed){
     wait(2000).then(async () => {
       await Promise.all([
         state.profileLoaded ? null : loadProfile(),
         state.myLogsLoaded ? null : loadMyLogs(),
         state.mySubmittedMoviesLoaded ? null : loadMySubmittedMovies(),
-        state.myReviewRowsLoaded ? null : loadMyReviews()
+        state.myReviewRowsLoaded ? null : loadMyReviews(),
+        animePreviewOwnerConfirmed ? null : checkAnimePreviewOwner()
       ]);
       updateHeader();
       if(document.getElementById('view-profile').classList.contains('active')) goProfile();
+      const animePreviewRetried = isAnimePreviewEnabled();
+      document.getElementById('catalog-mode-toggle-inline').classList.toggle('enabled', animePreviewRetried);
+      document.getElementById('catalog-mode-toggle-side').classList.toggle('enabled', animePreviewRetried);
+      document.getElementById('catalog-mode-drawer').classList.toggle('enabled', animePreviewRetried);
+      document.getElementById('catalog-mode-drawer-backdrop').classList.toggle('enabled', animePreviewRetried);
     });
   }
 
