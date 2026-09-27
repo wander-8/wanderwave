@@ -5,18 +5,17 @@ const TMDB_KEY = Deno.env.get("TMDB_API_KEY")!;
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
-// tmdb-expression-estimate/tmdb-movie-metadataは「既にmoviesテーブルにある行」を
-// 対象に補完するツールだが、こちらはTMDbから新しい候補作品そのものを見つけて
-// moviesテーブルに新規追加する。genre/emotion_tagsはTMDbには無い独自分類なので、
-// TMDbの標準ジャンル(genre_id)から機械的にマッピングする。既存869本の
-// genre×emotion_tagsの実際の対応(手動選定されたもの)を参考にしたヒューリスティック。
+// tmdb-discover-animeと同じ枠組みで、「ドラマ」(実写のTVシリーズ全般)を
+// 専用に取り込む。アニメと違って劇場公開は無く、常にmedia_type='tv'。
+// アニメ(genre 16)と、ドキュメンタリー・子供番組・ニュース・情報/トーク・
+// リアリティ番組は対象外にし(without_genres)、それ以外のジャンルの
+// 実写TVシリーズを幅広く対象にする。国は問わず(日本のドラマだけでなく、
+// 韓国ドラマ・欧米のTVシリーズなども同じ「ドラマ」枠として扱う方針)。
 const GENRE_MAP: Record<number, { ja: string; tags: string[] }> = {
   28: { ja: "アクション", tags: ["ワクワク", "ドキドキ"] },
   12: { ja: "アドベンチャー", tags: ["ワクワク", "美しい"] },
-  16: { ja: "アニメーション", tags: ["楽しい", "ワクワク", "美しい"] },
   35: { ja: "コメディ", tags: ["楽しい", "笑い"] },
   80: { ja: "クライム", tags: ["ドキドキ", "考えさせられる"] },
-  99: { ja: "ドキュメンタリー", tags: ["考えさせられる"] },
   18: { ja: "ドラマ", tags: ["感動", "悲しい", "考えさせられる"] },
   10751: { ja: "ファミリー", tags: ["楽しい", "ワクワク"] },
   14: { ja: "ファンタジー", tags: ["ワクワク", "美しい"] },
@@ -26,52 +25,35 @@ const GENRE_MAP: Record<number, { ja: string; tags: string[] }> = {
   9648: { ja: "ミステリー", tags: ["考えさせられる", "ドキドキ"] },
   10749: { ja: "恋愛", tags: ["感動", "悲しい", "美しい"] },
   878: { ja: "SF", tags: ["考えさせられる", "ワクワク"] },
-  10770: { ja: "TVムービー", tags: ["感動"] },
   53: { ja: "スリラー", tags: ["ドキドキ", "怖い"] },
   10752: { ja: "戦争", tags: ["悲しい", "考えさせられる"] },
   37: { ja: "西部劇", tags: ["ワクワク", "ドキドキ"] },
+  // TV専用ジャンルID
+  10759: { ja: "アクション", tags: ["ワクワク", "ドキドキ"] }, // Action & Adventure
+  10765: { ja: "SF", tags: ["考えさせられる", "ワクワク"] }, // Sci-Fi & Fantasy
+  10768: { ja: "戦争", tags: ["悲しい", "考えさせられる"] }, // War & Politics
+  10766: { ja: "ドラマ", tags: ["感動", "悲しい", "考えさせられる"] }, // Soap
 };
 
-// TMDbのproduction_countries.nameはlanguage=ja-JPを指定しても英語のまま返る
-// (TMDb API側の既知の制約)。既存データは日本語国名を「・」区切りで持つため、
-// iso_3166_1コードから日本語名へ変換する(主要国のみ。未知のコードは英語名のまま)。
+// アニメ(16)・ドキュメンタリー(99)・子供向け(10762)・ニュース(10763)・
+// リアリティ(10764)・トーク(10767)は「ドラマ」の対象外として除外する。
+const EXCLUDED_TV_GENRES = "16,99,10762,10763,10764,10767";
+
 const COUNTRY_NAME_JA: Record<string, string> = {
-  US: "アメリカ", JP: "日本", GB: "イギリス", FR: "フランス", DE: "ドイツ",
-  KR: "韓国", IT: "イタリア", NZ: "ニュージーランド", AU: "オーストラリア",
-  CA: "カナダ", ES: "スペイン", CN: "中国", HK: "香港", IN: "インド",
+  JP: "日本", CN: "中国", KR: "韓国", US: "アメリカ", FR: "フランス",
+  GB: "イギリス", TW: "台湾", HK: "香港", CA: "カナダ", DE: "ドイツ",
+  IT: "イタリア", ES: "スペイン", IN: "インド", AU: "オーストラリア",
+  MX: "メキシコ", BR: "ブラジル", TH: "タイ", HU: "ハンガリー",
+  IE: "アイルランド", AT: "オーストリア", PL: "ポーランド", CZ: "チェコ",
   CH: "スイス", BE: "ベルギー", NL: "オランダ", SE: "スウェーデン",
   DK: "デンマーク", NO: "ノルウェー", FI: "フィンランド", RU: "ロシア",
-  MX: "メキシコ", BR: "ブラジル", TW: "台湾", TH: "タイ", HU: "ハンガリー",
-  IE: "アイルランド", AT: "オーストリア", PL: "ポーランド", CZ: "チェコ",
-  AR: "アルゼンチン", TR: "トルコ", LU: "ルクセンブルク", RO: "ルーマニア",
-  ZA: "南アフリカ", PT: "ポルトガル", IS: "アイスランド", IL: "イスラエル",
-  IR: "イラン", CO: "コロンビア", UA: "ウクライナ", ID: "インドネシア",
-  EG: "エジプト", AE: "アラブ首長国連邦", MA: "モロッコ", SG: "シンガポール",
-  RS: "セルビア", PH: "フィリピン", PE: "ペルー", HR: "クロアチア",
-  UY: "ウルグアイ", EE: "エストニア", GE: "ジョージア", LT: "リトアニア",
-  CU: "キューバ", SK: "スロバキア", VE: "ベネズエラ", PR: "プエルトリコ",
-  TN: "チュニジア", LV: "ラトビア", QA: "カタール", LB: "レバノン",
-  VN: "ベトナム", DO: "ドミニカ共和国", SI: "スロベニア", MT: "マルタ",
-  SA: "サウジアラビア", KZ: "カザフスタン", MY: "マレーシア", MK: "北マケドニア",
-  BA: "ボスニア・ヘルツェゴビナ", CY: "キプロス", PS: "パレスチナ", NG: "ナイジェリア",
-  DZ: "アルジェリア", KH: "カンボジア", BO: "ボリビア", JO: "ヨルダン",
-  EC: "エクアドル", AF: "アフガニスタン", PY: "パラグアイ", SN: "セネガル",
-  GT: "グアテマラ", KE: "ケニア", AL: "アルバニア", BS: "バハマ",
-  AM: "アルメニア", BY: "ベラルーシ", MN: "モンゴル", ME: "モンテネグロ",
-  BD: "バングラデシュ", CD: "コンゴ民主共和国", CG: "コンゴ共和国", KW: "クウェート",
+  NZ: "ニュージーランド", AR: "アルゼンチン", TR: "トルコ",
 };
-
 function countryNameJa(iso: string, fallback: string): string {
   return COUNTRY_NAME_JA[iso] || fallback;
 }
 
 const SYNOPSIS_MAX_LEN = 400;
-
-// TMDbのコレクション名は「〇〇 Collection」「〇〇コレクション」という
-// 接尾辞つきで返るため、表示・同一シリーズ判定の両方で扱いやすいように外す。
-function cleanSeriesName(name: string): string {
-  return name.replace(/\s*(Collection|コレクション)\s*$/i, "").trim();
-}
 
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -137,24 +119,6 @@ function normalizeTitle(t: string): string {
   return (t || "").trim().toLowerCase();
 }
 
-// ホームの「今話題の新作」棚は、日本で未公開の作品が紛れ込むと不自然になるため、
-// TMDbのrelease_datesからJP国の公開日(最も早いもの)を取り出しておく。
-// JPのエントリが無ければ日本未公開とみなしnullのままにする。
-function extractJapanReleaseDate(releaseDatesResults: any[]): string | null {
-  const jp = releaseDatesResults.find((r: any) => r.iso_3166_1 === "JP");
-  if (!jp || !jp.release_dates?.length) return null;
-  const dates = jp.release_dates
-    .map((rd: any) => rd.release_date)
-    .filter(Boolean)
-    .sort();
-  return dates.length ? dates[0].slice(0, 10) : null;
-}
-
-// SupabaseのREST APIは1回のリクエストで最大1000行までしか返さない。moviesが
-// 1000本を超えた状態で.range()無しにselectすると、重複チェック用の一覧が
-// 黙って切り詰められ、既存作品を見落として重複行を挿入してしまう
-// (moviesにはtitle+release_yearのユニーク制約が無いため、これは検出されずに
-// 静かに成功してしまう)。1000件ずつページ送りして必ず全件取得する。
 async function selectAllRows(supabase: any, table: string, columns: string): Promise<any[]> {
   const PAGE_SIZE = 1000;
   let all: any[] = [];
@@ -173,53 +137,49 @@ Deno.serve(async (req: Request) => {
   try {
     const {
       pages = [1],
-      min_vote_count = 300,
-      min_vote_average = 6.0,
+      min_vote_count = 50,
+      min_vote_average = 5.0,
       dry_run = true,
-      // vote_count.desc(既定)だと、これまでの取り込みで既に上位が
-      // ほぼ網羅済み(深いページまで検証しても新規候補がほぼ出ない)。
-      // 別の軸で探せるよう、sort_by・公開日の下限・原語を上書きできるようにする。
-      sort_by = "vote_count.desc",
-      primary_release_date_gte = null,
-      primary_release_date_lte = null,
-      with_original_language = null,
+      sort_by = "popularity.desc",
+      first_air_date_gte = null,
+      first_air_date_lte = null,
+      with_origin_country = null,
     } = await req.json().catch(() => ({}));
 
     const supabase = createClient(SUPABASE_URL, SERVICE_ROLE);
 
-    // 重複チェック用に既存作品の(タイトル正規化, 公開年)を一度だけ取得しておく
     const existingRows = await selectAllRows(supabase, "movies", "title, release_year");
     const existingKeys = new Set(
       existingRows.map((r: any) => `${normalizeTitle(r.title)}|${r.release_year}`),
     );
 
-    // 1) TMDbのdiscoverでページ分の候補一覧を取得
+    // 1) TMDbのdiscover/tvでドラマ候補一覧を取得。
     const candidates: any[] = [];
     for (const page of pages) {
       const params: Record<string, string> = {
         language: "ja-JP",
         sort_by,
+        without_genres: EXCLUDED_TV_GENRES,
         "vote_count.gte": String(min_vote_count),
         "vote_average.gte": String(min_vote_average),
-        include_adult: "false",
         page: String(page),
       };
-      if (primary_release_date_gte) params["primary_release_date.gte"] = primary_release_date_gte;
-      if (primary_release_date_lte) params["primary_release_date.lte"] = primary_release_date_lte;
-      if (with_original_language) params["with_original_language"] = with_original_language;
-      const data = await tmdbFetch("/discover/movie", params);
+      if (with_origin_country) params["with_origin_country"] = with_origin_country;
+      if (first_air_date_gte) params["first_air_date.gte"] = first_air_date_gte;
+      if (first_air_date_lte) params["first_air_date.lte"] = first_air_date_lte;
+      const data = await tmdbFetch("/discover/tv", params);
       if (data?.results?.length) candidates.push(...data.results);
       await sleep(150);
     }
 
     // 2) 既存作品との重複を除外(タイトル+公開年で判定)
     const fresh = candidates.filter((c: any) => {
-      const year = c.release_date ? parseInt(String(c.release_date).slice(0, 4), 10) : null;
-      const key = `${normalizeTitle(c.title)}|${year}`;
+      const year = c.first_air_date ? parseInt(String(c.first_air_date).slice(0, 4), 10) : null;
+      const key = `${normalizeTitle(c.name)}|${year}`;
       return !existingKeys.has(key);
     });
 
-    // 3) 詳細情報(監督・出演・制作国・あらすじ)を取得し、挿入用の行を組み立てる
+    // 3) 詳細情報を取得し、挿入用の行を組み立てる
     const rows: any[] = [];
     const skipped: any[] = [];
     const CONCURRENCY = 3;
@@ -227,52 +187,78 @@ Deno.serve(async (req: Request) => {
       const chunk = fresh.slice(i, i + CONCURRENCY);
       const chunkRows = await Promise.all(
         chunk.map(async (c: any) => {
-          const [details, credits, releaseDates, keywordsRes] = await Promise.all([
-            tmdbFetch(`/movie/${c.id}`, { language: "ja-JP" }),
-            tmdbFetch(`/movie/${c.id}/credits`, { language: "ja-JP" }),
-            tmdbFetch(`/movie/${c.id}/release_dates`, {}),
-            tmdbFetch(`/movie/${c.id}/keywords`, {}),
+          const [details, credits, keywordsRes] = await Promise.all([
+            tmdbFetch(`/tv/${c.id}`, { language: "ja-JP" }),
+            tmdbFetch(`/tv/${c.id}/credits`, { language: "ja-JP" }),
+            tmdbFetch(`/tv/${c.id}/keywords`, {}),
           ]);
           if (!details) return null;
 
+          // 18禁(TMDb側のadultフラグ)は保険として明示的に除外する
+          // (include_adult:falseは/discover/tvには効かないため)。
+          if (details.adult === true) {
+            skipped.push({ tmdb_id: c.id, title: c.name, reason: "adult_flagged" });
+            return null;
+          }
+
           const genreIds: number[] = (details.genres || []).map((g: any) => g.id);
+          const keywordNames: string[] = (keywordsRes?.results || []).map((k: any) => String(k.name || "").toLowerCase());
+          // アニメーションが紛れ込んでいたら保険として除外(without_genresの
+          // すり抜け対策)。genre 16が付いていない実例(TMDb側のタグ漏れ)も
+          // あったため、"anime"キーワードでも二重にチェックする。
+          if (genreIds.includes(16) || keywordNames.includes("anime")) {
+            skipped.push({ tmdb_id: c.id, title: c.name, reason: "animation_genre" });
+            return null;
+          }
           const emotionTags = pickEmotionTags(genreIds);
           if (emotionTags.length === 0) {
-            skipped.push({ tmdb_id: c.id, title: c.title, reason: "no_genre_mapping" });
+            skipped.push({ tmdb_id: c.id, title: c.name, reason: "no_genre_mapping" });
             return null;
           }
           const genreNames = genreIds.map((id) => GENRE_MAP[id]?.ja).filter(Boolean);
-          const directors = (credits?.crew || []).filter((p: any) => p.job === "Director").map((p: any) => p.name);
+
+          const directors = (details.created_by || []).map((p: any) => p.name);
           const cast = (credits?.cast || []).slice(0, 5).map((p: any) => p.name);
-          const countries = (details.production_countries || []).map((co: any) => countryNameJa(co.iso_3166_1, co.name));
-          const year = details.release_date ? parseInt(String(details.release_date).slice(0, 4), 10) : null;
+
+          const title = details.name || c.name;
+          const dateStr = details.first_air_date;
+          const year = dateStr ? parseInt(String(dateStr).slice(0, 4), 10) : null;
+
           let overviewJa = details.overview || "";
           if (!overviewJa) {
-            const detailsEn = await tmdbFetch(`/movie/${c.id}`, { language: "en-US" });
+            const detailsEn = await tmdbFetch(`/tv/${c.id}`, { language: "en-US" });
             if (detailsEn?.overview) overviewJa = await translateToJa(detailsEn.overview);
           }
           const synopsis = overviewJa.slice(0, SYNOPSIS_MAX_LEN);
-          const japanReleaseDate = extractJapanReleaseDate(releaseDates?.results || []);
-          const keywords = (keywordsRes?.keywords || []).slice(0, 15).map((k: any) => k.name);
-          const series = details.belongs_to_collection?.name ? cleanSeriesName(details.belongs_to_collection.name) : null;
+
+          const countries: string[] = (details.origin_country || (details.production_countries || []).map((co: any) => co.iso_3166_1))
+            .map((iso: string) => countryNameJa(iso, iso));
+
+          const originCountries: string[] = details.origin_country || [];
+          const japanReleaseDate = originCountries.includes("JP") ? (dateStr || null) : null;
+
+          const keywords = (keywordsRes?.results || []).slice(0, 15).map((k: any) => k.name);
 
           return {
-            title: details.title || c.title,
+            title,
             release_year: year,
             emotion_tags: emotionTags,
             genre: genreNames.length ? genreNames : null,
             director: directors.join("、") || null,
             cast_members: cast.length ? cast : null,
-            country: countries.join("・") || null,
+            country: countries.length ? countries.join("・") : null,
             synopsis: synopsis || null,
             poster_path: details.poster_path || null,
             japan_release_date: japanReleaseDate,
             japan_release_checked_at: new Date().toISOString(),
             keywords: keywords.length ? keywords : null,
             keywords_checked_at: new Date().toISOString(),
-            series,
-            series_checked_at: new Date().toISOString(),
+            series: null,
+            series_checked_at: null,
             tmdb_id: c.id,
+            media_type: "tv",
+            is_anime: false,
+            is_drama: true,
             tmdb_vote_count: c.vote_count,
             tmdb_vote_average: c.vote_average,
           };
@@ -284,7 +270,7 @@ Deno.serve(async (req: Request) => {
 
     let inserted = 0;
     if (!dry_run && rows.length > 0) {
-      const insertPayload = rows.map(({ tmdb_id, tmdb_vote_count, tmdb_vote_average, ...rest }) => rest);
+      const insertPayload = rows.map(({ tmdb_vote_count, tmdb_vote_average, ...rest }) => rest);
       const { error: insertErr } = await supabase.from("movies").insert(insertPayload);
       if (insertErr) throw insertErr;
       inserted = insertPayload.length;
