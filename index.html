@@ -6182,40 +6182,56 @@ async function submitMovie(){
 // ページ送りを1件ずつ直列に待つと、本数が増えるほど(1000件ごとに1往復)
 // 読み込みが遅くなる(5000件超で6往復分が積み重なる)。1ページ目の取得と
 // 同時に件数(count: 'exact')も受け取り、残りのページは並列にまとめて取りに行く。
-async function selectAllRows(table, columns){
+async function selectAllRows(table, columns, applyFilterFn){
   const PAGE_SIZE = 1000;
-  const first = await supabase.from(table).select(columns, { count: 'exact' }).range(0, PAGE_SIZE - 1);
-  if(first.error) throw first.error;
-  const total = first.count ?? (first.data || []).length;
-
-  const remainingStarts = [];
-  for(let from = PAGE_SIZE; from < total; from += PAGE_SIZE) remainingStarts.push(from);
-  if(remainingStarts.length === 0) return first.data || [];
-
-  // 残り全ページを一度に並列で投げていたが、カタログが5万件を超えたところ、
-  // 同時接続数がSupabase側の接続プール上限を超え、「Timed out acquiring
-  // connection from connection pool」「canceling statement due to statement
-  // timeout」で一部ページが500になり、映画一覧がまるごと読み込み失敗扱いに
-  // なる事故が実際に起きた。同時に投げる本数の上限を固定することで、
-  // テーブルがどれだけ増えても同時接続数が際限なく増えないようにする。
   const CONCURRENCY = 6;
-  const rest = [];
-  for(let i = 0; i < remainingStarts.length; i += CONCURRENCY){
-    const batch = remainingStarts.slice(i, i + CONCURRENCY);
-    const batchResults = await Promise.all(batch.map(async from => {
-      const { data, error } = await supabase.from(table).select(columns).range(from, from + PAGE_SIZE - 1);
+  const withFilter = (q) => applyFilterFn ? applyFilterFn(q) : q;
+
+  // 以前は最初に件数(count: 'exact')を取ってから残りページ数を逆算していたが、
+  // is_anime等のフィルター付きでcount: 'exact'を使うと、対応するインデックスが
+  // 無いため件数計算だけでPostgres側のstatement_timeoutに引っかかり、1ページ目
+  // からいきなり500になる事故が起きた。件数を先に知る必要は無いので、短い
+  // (PAGE_SIZE未満の)ページが返ってくるまで単純にページ送りを続ける方式にする。
+  // ページ送りを1件ずつ直列に待つと、本数が増えるほど読み込みが遅くなる。
+  // かといって残り全ページを一度に並列で投げると、カタログが5万件を超えた
+  // ところで同時接続数がSupabase側の接続プール上限を超え、「Timed out
+  // acquiring connection from connection pool」「canceling statement due to
+  // statement timeout」で一部ページが500になり、一覧がまるごと読み込み失敗
+  // 扱いになる事故も起きた。そのため同時に投げる本数の上限(CONCURRENCY)を
+  // 固定したページ束を順番に処理する。
+  let rows = [];
+  let pageStart = 0;
+  let reachedEnd = false;
+  while(!reachedEnd){
+    const starts = Array.from({ length: CONCURRENCY }, (_, i) => pageStart + i * PAGE_SIZE);
+    const batchResults = await Promise.all(starts.map(async from => {
+      const { data, error } = await withFilter(supabase.from(table).select(columns)).range(from, from + PAGE_SIZE - 1);
       if(error) throw error;
       return data || [];
     }));
-    rest.push(...batchResults);
+    for(const data of batchResults){
+      rows = rows.concat(data);
+      if(data.length < PAGE_SIZE) reachedEnd = true;
+    }
+    pageStart += CONCURRENCY * PAGE_SIZE;
   }
-  return (first.data || []).concat(...rest);
+  return rows;
 }
 
 async function loadMovies(){
   try{
+    // moviesテーブルには今、通常の映画に加えてアニメ・ドラマ・漫画・小説の
+    // データも同居している(準備中で、まだ画面側には出す機能を用意していない)。
+    // ここで絞り込まずに全件取得すると、その未公開データまで検索結果や
+    // おすすめに紛れ込んで見えてしまう上、件数が増えるほど読み込みも遅くなる
+    // ため、公開する準備が整うまでは通常の映画(is_anime/is_drama/is_manga/
+    // is_novelが全てfalseの行)だけを取得する。
     const [moviesData, statsRes, estimatesData] = await Promise.all([
-      selectAllRows('movies', 'id, title, release_year, emotion_tags, genre, director, cast_members, country, synopsis, poster_path, japan_release_date, keywords, series, trailer_key'),
+      selectAllRows(
+        'movies',
+        'id, title, release_year, emotion_tags, genre, director, cast_members, country, synopsis, poster_path, japan_release_date, keywords, series, trailer_key',
+        (q) => q.match({ is_anime: false, is_drama: false, is_manga: false, is_novel: false })
+      ),
       supabase.from('movie_review_stats').select('*'),
       selectAllRows('movie_expression_estimates', 'movie_id, expression_level, reason_tags')
     ]);
