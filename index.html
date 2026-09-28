@@ -7219,7 +7219,13 @@ async function submitMovie(){
 // なり、映画一覧がまるごと読み込み失敗扱いになる事故も起きた。そのため
 // 同時に投げる本数の上限(CONCURRENCY)を固定したページ束を順番に処理する。
 async function selectAllRows(table, columns, applyFilterFn){
-  const PAGE_SIZE = 1000;
+  // 1000→2000への変更は実測で検証済み(35,538件の映画一覧で約3〜5秒→
+  // 約1.2〜1.7秒、クリーンなブラウザプロファイルで複数回再現)。5000まで
+  // 上げると逆に悪化した(1リクエストのペイロードが大きくなりすぎるためか、
+  // 12秒待っても完了しなかった)ため、2000を安全な上限として採用する。
+  // CONCURRENCYは同時接続数の上限(max_connections=60)に対する安全マージンの
+  // ため据え置き(過去に無制限並列で接続枯渇を起こした実績があるため)。
+  const PAGE_SIZE = 2000;
   const CONCURRENCY = 6;
   const withFilter = (q) => applyFilterFn ? applyFilterFn(q) : q;
 
@@ -7242,7 +7248,17 @@ async function selectAllRows(table, columns, applyFilterFn){
   return rows;
 }
 
-const MOVIE_COLUMNS = 'id, title, release_year, emotion_tags, genre, director, cast_members, country, synopsis, poster_path, japan_release_date, keywords, series, trailer_key, media_type, is_anime, is_drama, is_manga, is_novel';
+// synopsis(あらすじ)とcast_members(出演者)は、実測でmoviesテーブルの
+// 転送バイト数の合計36%を占め(それぞれ24.4%・11.6%)、初回読み込みを
+// 遅くしている最大の要因だった。検索の根幹であるkeywordsは(サイトの
+// 存在意義に関わるため)初回取得に残したまま、この2つだけ後から
+// バックグラウンドで取得する(loadMovieBigFieldsInBackground参照)。
+const MOVIE_LIGHT_COLUMNS = 'id, title, release_year, emotion_tags, genre, director, country, poster_path, japan_release_date, keywords, series, trailer_key, media_type, is_anime, is_drama, is_manga, is_novel';
+const MOVIE_BIG_COLUMNS = 'id, synopsis, cast_members';
+// アニメ・ドラマ・漫画・小説側(オーナー限定プレビュー)は、今のところ
+// 軽量/追加取得の二段構えにはせず、従来通り一括取得する(この取得自体が
+// 既にバックグラウンド化済みで、スプラッシュをブロックしないため)。
+const MOVIE_FULL_COLUMNS = MOVIE_LIGHT_COLUMNS + ', synopsis, cast_members';
 
 // moviesの1行(DBのrow)+集計データから、アプリ内部で使う表示用オブジェクトを
 // 組み立てる。loadMovies()の初回取得と、オーナーのプレビュー用バックグラウンド
@@ -7303,6 +7319,10 @@ function buildMovieRecord(row, statsByMovie, estimatesByMovie){
     isDrama: !!row.is_drama,
     isManga: !!row.is_manga,
     isNovel: !!row.is_novel,
+    // MOVIE_LIGHT_COLUMNSだけで取得した行はsynopsis/cast_membersを持たない
+    // (取得していないので'in row'すらfalse)。loadMovieBigFieldsInBackground()
+    // のapplyBigFieldsPatch()が届くまでの間、その事実を判別できるようにしておく。
+    hasFullData: ('synopsis' in row) || ('cast_members' in row),
     platforms: [],
     tagVotes: {},
     reviews: [],
@@ -7326,7 +7346,30 @@ function buildMovieRecord(row, statsByMovie, estimatesByMovie){
   };
 }
 
+// あとからバックグラウンドで届いたsynopsis/cast_membersを、既存の
+// MOVIES内のオブジェクトにその場で書き込む(配列要素を作り直さない)。
+// loadMyTagVotes()等が同じオブジェクトにtagVotes/reviews等を後付けして
+// いるため、buildMovieRecord()で作り直すとそれらが消えてしまう。
+// excludedWordHaystackはsynopsisを含めて再計算し直す必要がある
+// (除外ワードフィルタがあらすじの内容も見ているため)。
+function applyBigFieldsPatch(movie, row){
+  const titleEsc = movie.title;
+  const genreArr = movie.genre;
+  const keywordsArr = movie.keywords || [];
+  const castArr = row.cast_members || undefined;
+
+  movie.synopsis = row.synopsis || undefined;
+  movie.synopsisNorm = row.synopsis ? normalizeForSearch(row.synopsis) : undefined;
+  movie.cast = castArr;
+  movie.castNorm = castArr ? castArr.map(normalizeForSearch) : undefined;
+  movie.excludedWordHaystack = normalizeForSearch(
+    [titleEsc, row.synopsis, ...(genreArr || []), ...keywordsArr].filter(Boolean).join(' ')
+  );
+  movie.hasFullData = true;
+}
+
 let nonMovieCatalogLoaded = false;
+let movieBigFieldsLoaded = false;
 
 async function loadMovies(){
   try{
@@ -7345,8 +7388,15 @@ async function loadMovies(){
     // ブロックしないバックグラウンド取得(loadNonMovieCatalogInBackground)に
     // 回すことで、オーナー自身の初回表示が5万件超のフル取得で毎回重くなる
     // 事故を防ぐ(この関数の完了を待ってスプラッシュが閉じるため)。
+    //
+    // 映画だけに絞っても実測で約7.2秒かかっていた(35,538件・約30MB)。
+    // 実測の結果、転送バイト数が時間にほぼ比例していて、内訳はsynopsis
+    // 24.4%・cast_members 11.6%(2つで約36%)だったため、この2列だけは
+    // ここでは取得せず、loadMovieBigFieldsInBackground()で初期表示を
+    // ブロックせずに後から取得する。検索の根幹であるkeywordsは(サイトの
+    // 存在意義に関わる機能のため)引き続きここで即座に取得する。
     const [moviesData, statsRes, estimatesData] = await Promise.all([
-      selectAllRows('movies', MOVIE_COLUMNS, (q) => q.match({ is_anime: false, is_drama: false, is_manga: false, is_novel: false })),
+      selectAllRows('movies', MOVIE_LIGHT_COLUMNS, (q) => q.match({ is_anime: false, is_drama: false, is_manga: false, is_novel: false })),
       supabase.from('movie_review_stats').select('*'),
       selectAllRows('movie_expression_estimates', 'movie_id, expression_level, reason_tags')
     ]);
@@ -7358,6 +7408,7 @@ async function loadMovies(){
     estimatesData.forEach(e => { estimatesByMovie[e.movie_id] = e; });
 
     MOVIES = moviesData.map(row => buildMovieRecord(row, statsByMovie, estimatesByMovie));
+    loadMovieBigFieldsInBackground();
 
     const broadFetch = (() => {
       try{ return localStorage.getItem(ANIME_PREVIEW_KEY) === '1'; }
@@ -7371,13 +7422,50 @@ async function loadMovies(){
   }
 }
 
+// 映画(is_anime/drama/manga/novel全部false)分のsynopsis・cast_membersを、
+// 初期表示を待たせずに裏で取得し、既存のMOVIES内オブジェクトに書き込む。
+// 全ユーザーが対象(オーナー限定のloadNonMovieCatalogInBackgroundとは違い、
+// 映画モードそのものが対象なので)、完了後はモードに関係なく無条件で
+// 棚・検索結果・(開いていれば)詳細ページを描き直す。
+async function loadMovieBigFieldsInBackground(){
+  try{
+    const rows = await selectAllRows('movies', MOVIE_BIG_COLUMNS, (q) => q.match({ is_anime: false, is_drama: false, is_manga: false, is_novel: false }));
+    const rowById = {};
+    rows.forEach(r => { rowById[r.id] = r; });
+    MOVIES.forEach(movie => {
+      const row = rowById[movie.id];
+      if(row) applyBigFieldsPatch(movie, row);
+    });
+    movieBigFieldsLoaded = true;
+    renderFeaturedBanner();
+    renderHomeRows();
+    renderResults();
+    if(state.currentMovieId != null && document.getElementById('view-detail').classList.contains('active')){
+      const current = MOVIES.find(x => x.id === state.currentMovieId);
+      if(current){
+        // renderMovieInfoPanel()は末尾でパネルを強制的に閉じる作りなので
+        // (通常は詳細ページを開く時に一度だけ呼ばれ、その後ユーザーの
+        // タップでtoggleMovieInfoPanel()が開閉する前提)、ここで呼び直す
+        // 際は今の開閉状態を保存・復元し、閲覧中のパネルを勝手に
+        // 閉じてしまわないようにする。
+        const panel = document.getElementById('movie-info-panel');
+        const wasOpen = panel.style.display === 'block';
+        renderMovieInfoPanel(current);
+        if(wasOpen) panel.style.display = 'block';
+      }
+    }
+  }catch(err){
+    console.error('あらすじ・出演者情報の読み込みに失敗しました', err);
+  }
+}
+
 // アニメ・ドラマ・漫画・小説分を、初期表示を待たせずに裏で追加取得する。
 // 完了時、既に映画以外のモードを見ていたら(=このデータが無いと0件表示に
 // なってしまうため)、その場で棚を描き直す。映画モードのままなら見た目に
 // 影響が無いので何もしない。
 async function loadNonMovieCatalogInBackground(statsByMovie, estimatesByMovie){
   try{
-    const rows = await selectAllRows('movies', MOVIE_COLUMNS, (q) => q.or('is_anime.eq.true,is_drama.eq.true,is_manga.eq.true,is_novel.eq.true'));
+    const rows = await selectAllRows('movies', MOVIE_FULL_COLUMNS, (q) => q.or('is_anime.eq.true,is_drama.eq.true,is_manga.eq.true,is_novel.eq.true'));
     MOVIES = MOVIES.concat(rows.map(row => buildMovieRecord(row, statsByMovie, estimatesByMovie)));
     nonMovieCatalogLoaded = true;
     if(state.catalogMode !== 'movie'){
