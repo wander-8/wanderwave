@@ -122,7 +122,10 @@
     padding: 2px 9px;
     font-weight: 600;
     color: var(--plum-deep);
-    display: inline-flex;
+    /* updateHeader()がJSで毎回display:noneにしているが、それが効くまでの
+       一瞬だけ初期HTMLの「信頼度 0」がそのまま見えてしまっていたため、
+       デフォルトから非表示にしておく(表示を復活させる時はここも見直す)。 */
+    display: none;
     align-items: center;
     gap: 4px;
   }
@@ -7239,26 +7242,111 @@ async function selectAllRows(table, columns, applyFilterFn){
   return rows;
 }
 
+const MOVIE_COLUMNS = 'id, title, release_year, emotion_tags, genre, director, cast_members, country, synopsis, poster_path, japan_release_date, keywords, series, trailer_key, media_type, is_anime, is_drama, is_manga, is_novel';
+
+// moviesの1行(DBのrow)+集計データから、アプリ内部で使う表示用オブジェクトを
+// 組み立てる。loadMovies()の初回取得と、オーナーのプレビュー用バックグラウンド
+// 追加取得(loadNonMovieCatalogInBackground)の両方から呼べるよう切り出した。
+function buildMovieRecord(row, statsByMovie, estimatesByMovie){
+  const s = statsByMovie[row.id];
+  const intensityCount = s ? Number(s.intensity_count) : 0;
+  const estimate = estimatesByMovie[row.id];
+  // 実際の投票が1件もない映画は、公式レーティング等をもとにした推定値
+  // (movie_expression_estimates)を表示のフォールバックとして使う。
+  // 実際の投票が集まった時点で、通常通りその集計が優先される。
+  const useEstimate = intensityCount === 0 && !!estimate;
+
+  const titleEsc = escapeHtml(row.title);
+  const genreArr = row.genre || undefined;
+  const castArr = row.cast_members || undefined;
+  const keywordsArr = row.keywords || [];
+
+  return {
+    id: row.id,
+    // titleはこの後、色々なテンプレート内でinnerHTMLとしてそのまま差し込まれる。
+    // moviesテーブルは「誰でも追加可能」なので、ここで一度だけエスケープしておく。
+    title: titleEsc,
+    // 検索は数万件規模の全作品に対して1文字打つたびに走る一番ホットな
+    // 経路なので、normalizeForSearch()の結果はここで一度だけ計算して
+    // 持っておく(検索のたびに毎回呼び直すと、あらすじ等の長い文字列も
+    // 含めて全作品を正規化し直すことになり、1文字目の入力で固まっていた)。
+    titleNorm: normalizeForSearch(titleEsc),
+    castNorm: castArr ? castArr.map(normalizeForSearch) : undefined,
+    directorNorm: row.director ? normalizeForSearch(row.director) : undefined,
+    countryNorm: row.country ? normalizeForSearch(row.country) : undefined,
+    genreNorm: genreArr ? genreArr.map(normalizeForSearch) : undefined,
+    synopsisNorm: row.synopsis ? normalizeForSearch(row.synopsis) : undefined,
+    keywordsNorm: keywordsArr.map(normalizeForSearch),
+    keywordsLower: keywordsArr.map(k => k.toLowerCase()),
+    excludedWordHaystack: normalizeForSearch(
+      [titleEsc, row.synopsis, ...(genreArr || []), ...keywordsArr].filter(Boolean).join(' ')
+    ),
+    year: row.release_year,
+    tags: row.emotion_tags || [],
+    genre: genreArr,
+    director: row.director || undefined,
+    cast: castArr,
+    country: row.country || undefined,
+    synopsis: row.synopsis || undefined,
+    posterColor: POSTER_PALETTE[row.id % POSTER_PALETTE.length],
+    // 漫画(AniList由来)はposter_pathにTMDBの相対パスではなく完全なURLが
+    // 入っているため、httpで始まる場合はそのまま使い、それ以外は従来通り
+    // TMDB_IMAGE_BASEを前置きする。
+    posterUrl: row.poster_path ? (row.poster_path.startsWith('http') ? row.poster_path : `${TMDB_IMAGE_BASE}${row.poster_path}`) : null,
+    posterPath: row.poster_path || null,
+    japanReleaseDate: row.japan_release_date || null,
+    keywords: keywordsArr,
+    series: row.series || null,
+    trailerKey: row.trailer_key || null,
+    mediaType: row.media_type || 'movie',
+    isAnime: !!row.is_anime,
+    isDrama: !!row.is_drama,
+    isManga: !!row.is_manga,
+    isNovel: !!row.is_novel,
+    platforms: [],
+    tagVotes: {},
+    reviews: [],
+    loveSum: s ? Number(s.love_sum) : 0,
+    loveCount: s ? Number(s.love_count) : 0,
+    intensitySum: useEstimate ? estimate.expression_level : (s ? Number(s.intensity_weight_sum) : 0),
+    intensityWeight: useEstimate ? 1 : (s ? Number(s.intensity_weight_total) : 0),
+    intensityCount: intensityCount,
+    expressionEstimated: useEstimate,
+    reasonVotes: useEstimate
+      ? {
+          violence: (estimate.reason_tags || []).includes('violence') ? 1 : 0,
+          sexual: (estimate.reason_tags || []).includes('sexual') ? 1 : 0,
+          fear: (estimate.reason_tags || []).includes('fear') ? 1 : 0
+        }
+      : {
+          violence: s ? Number(s.reason_violence) : 0,
+          sexual: s ? Number(s.reason_sexual) : 0,
+          fear: s ? Number(s.reason_fear) : 0
+        }
+  };
+}
+
+let nonMovieCatalogLoaded = false;
+
 async function loadMovies(){
   try{
     // 隠しプレビューフラグが無い端末は、isAnimePreviewEnabled()の判定を
     // 待つまでもなくmovieモードでしか閲覧できない(currentCatalogMode
-    // 参照)。それなのに今までは毎回、表示すらされないアニメ・ドラマ・
+    // 参照)。それなのに以前は毎回、表示すらされないアニメ・ドラマ・
     // 漫画・小説のデータまでまるごと取得しており、カタログが5万件を
     // 超えたことで読み込みが遅い最大の原因になっていた。
     // checkAnimePreviewOwner()(オーナー本人かどうかの確認)は非同期で
     // 完了を待つと並列読み込みの意味が薄れるため、代わりに(一度でも
     // ?anime=1で有効化されていれば残る)localStorageのフラグだけを
-    // 同期的に見て判定する。オーナーが真っさらな端末で最初に開いた
-    // 回だけ映画のみで表示され、モード切替時に漫画・小説等が別途
-    // 取得される(この一度きりの取りこぼしは許容する)。
-    const broadFetch = (() => {
-      try{ return localStorage.getItem(ANIME_PREVIEW_KEY) === '1'; }
-      catch{ return false; }
-    })();
-    const moviesFilter = broadFetch ? null : (q) => q.match({ is_anime: false, is_drama: false, is_manga: false, is_novel: false });
+    // 同期的に見て判定する。
+    //
+    // オーナー(プレビューフラグ有効)であっても、この初回取得自体は常に
+    // 映画だけに絞る。アニメ・ドラマ・漫画・小説の残り分はスプラッシュを
+    // ブロックしないバックグラウンド取得(loadNonMovieCatalogInBackground)に
+    // 回すことで、オーナー自身の初回表示が5万件超のフル取得で毎回重くなる
+    // 事故を防ぐ(この関数の完了を待ってスプラッシュが閉じるため)。
     const [moviesData, statsRes, estimatesData] = await Promise.all([
-      selectAllRows('movies', 'id, title, release_year, emotion_tags, genre, director, cast_members, country, synopsis, poster_path, japan_release_date, keywords, series, trailer_key, media_type, is_anime, is_drama, is_manga, is_novel', moviesFilter),
+      selectAllRows('movies', MOVIE_COLUMNS, (q) => q.match({ is_anime: false, is_drama: false, is_manga: false, is_novel: false })),
       supabase.from('movie_review_stats').select('*'),
       selectAllRows('movie_expression_estimates', 'movie_id, expression_level, reason_tags')
     ]);
@@ -7269,88 +7357,36 @@ async function loadMovies(){
     const estimatesByMovie = {};
     estimatesData.forEach(e => { estimatesByMovie[e.movie_id] = e; });
 
-    MOVIES = moviesData.map(row => {
-      const s = statsByMovie[row.id];
-      const intensityCount = s ? Number(s.intensity_count) : 0;
-      const estimate = estimatesByMovie[row.id];
-      // 実際の投票が1件もない映画は、公式レーティング等をもとにした推定値
-      // (movie_expression_estimates)を表示のフォールバックとして使う。
-      // 実際の投票が集まった時点で、通常通りその集計が優先される。
-      const useEstimate = intensityCount === 0 && !!estimate;
+    MOVIES = moviesData.map(row => buildMovieRecord(row, statsByMovie, estimatesByMovie));
 
-      const titleEsc = escapeHtml(row.title);
-      const genreArr = row.genre || undefined;
-      const castArr = row.cast_members || undefined;
-      const keywordsArr = row.keywords || [];
-
-      return {
-        id: row.id,
-        // titleはこの後、色々なテンプレート内でinnerHTMLとしてそのまま差し込まれる。
-        // moviesテーブルは「誰でも追加可能」なので、ここで一度だけエスケープしておく。
-        title: titleEsc,
-        // 検索は数万件規模の全作品に対して1文字打つたびに走る一番ホットな
-        // 経路なので、normalizeForSearch()の結果はここで一度だけ計算して
-        // 持っておく(検索のたびに毎回呼び直すと、あらすじ等の長い文字列も
-        // 含めて全作品を正規化し直すことになり、1文字目の入力で固まっていた)。
-        titleNorm: normalizeForSearch(titleEsc),
-        castNorm: castArr ? castArr.map(normalizeForSearch) : undefined,
-        directorNorm: row.director ? normalizeForSearch(row.director) : undefined,
-        countryNorm: row.country ? normalizeForSearch(row.country) : undefined,
-        genreNorm: genreArr ? genreArr.map(normalizeForSearch) : undefined,
-        synopsisNorm: row.synopsis ? normalizeForSearch(row.synopsis) : undefined,
-        keywordsNorm: keywordsArr.map(normalizeForSearch),
-        keywordsLower: keywordsArr.map(k => k.toLowerCase()),
-        excludedWordHaystack: normalizeForSearch(
-          [titleEsc, row.synopsis, ...(genreArr || []), ...keywordsArr].filter(Boolean).join(' ')
-        ),
-        year: row.release_year,
-        tags: row.emotion_tags || [],
-        genre: genreArr,
-        director: row.director || undefined,
-        cast: castArr,
-        country: row.country || undefined,
-        synopsis: row.synopsis || undefined,
-        posterColor: POSTER_PALETTE[row.id % POSTER_PALETTE.length],
-        // 漫画(AniList由来)はposter_pathにTMDBの相対パスではなく完全なURLが
-        // 入っているため、httpで始まる場合はそのまま使い、それ以外は従来通り
-        // TMDB_IMAGE_BASEを前置きする。
-        posterUrl: row.poster_path ? (row.poster_path.startsWith('http') ? row.poster_path : `${TMDB_IMAGE_BASE}${row.poster_path}`) : null,
-        posterPath: row.poster_path || null,
-        japanReleaseDate: row.japan_release_date || null,
-        keywords: keywordsArr,
-        series: row.series || null,
-        trailerKey: row.trailer_key || null,
-        mediaType: row.media_type || 'movie',
-        isAnime: !!row.is_anime,
-        isDrama: !!row.is_drama,
-        isManga: !!row.is_manga,
-        isNovel: !!row.is_novel,
-        platforms: [],
-        tagVotes: {},
-        reviews: [],
-        loveSum: s ? Number(s.love_sum) : 0,
-        loveCount: s ? Number(s.love_count) : 0,
-        intensitySum: useEstimate ? estimate.expression_level : (s ? Number(s.intensity_weight_sum) : 0),
-        intensityWeight: useEstimate ? 1 : (s ? Number(s.intensity_weight_total) : 0),
-        intensityCount: intensityCount,
-        expressionEstimated: useEstimate,
-        reasonVotes: useEstimate
-          ? {
-              violence: (estimate.reason_tags || []).includes('violence') ? 1 : 0,
-              sexual: (estimate.reason_tags || []).includes('sexual') ? 1 : 0,
-              fear: (estimate.reason_tags || []).includes('fear') ? 1 : 0
-            }
-          : {
-              violence: s ? Number(s.reason_violence) : 0,
-              sexual: s ? Number(s.reason_sexual) : 0,
-              fear: s ? Number(s.reason_fear) : 0
-            }
-      };
-    });
+    const broadFetch = (() => {
+      try{ return localStorage.getItem(ANIME_PREVIEW_KEY) === '1'; }
+      catch{ return false; }
+    })();
+    if(broadFetch) loadNonMovieCatalogInBackground(statsByMovie, estimatesByMovie);
   }catch(err){
     console.error('映画一覧の読み込みに失敗しました', err);
     MOVIES = [];
     showToast('映画一覧の読み込みに失敗しました。通信環境を確認してください。');
+  }
+}
+
+// アニメ・ドラマ・漫画・小説分を、初期表示を待たせずに裏で追加取得する。
+// 完了時、既に映画以外のモードを見ていたら(=このデータが無いと0件表示に
+// なってしまうため)、その場で棚を描き直す。映画モードのままなら見た目に
+// 影響が無いので何もしない。
+async function loadNonMovieCatalogInBackground(statsByMovie, estimatesByMovie){
+  try{
+    const rows = await selectAllRows('movies', MOVIE_COLUMNS, (q) => q.or('is_anime.eq.true,is_drama.eq.true,is_manga.eq.true,is_novel.eq.true'));
+    MOVIES = MOVIES.concat(rows.map(row => buildMovieRecord(row, statsByMovie, estimatesByMovie)));
+    nonMovieCatalogLoaded = true;
+    if(state.catalogMode !== 'movie'){
+      renderFeaturedBanner();
+      renderHomeRows();
+      renderResults();
+    }
+  }catch(err){
+    console.error('アニメ・ドラマ・漫画・小説カタログの読み込みに失敗しました', err);
   }
 }
 
