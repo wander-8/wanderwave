@@ -7218,14 +7218,20 @@ async function submitMovie(){
 // 「canceling statement due to statement timeout」で一部ページが500に
 // なり、映画一覧がまるごと読み込み失敗扱いになる事故も起きた。そのため
 // 同時に投げる本数の上限(CONCURRENCY)を固定したページ束を順番に処理する。
-async function selectAllRows(table, columns, applyFilterFn, orderColumn = 'id'){
-  // 重要: PostgREST(Supabase側)は1リクエストあたり実際には1000件までしか
-  // 返さない(要求したrange幅に関わらず)。これに気づかずPAGE_SIZEを2000に
-  // 上げた結果、「2000件要求したのに1000件しか返らない→PAGE_SIZE未満だから
-  // 最後まで読んだ」と誤判定してページ送りが早期に止まり、本番で映画一覧が
-  // 35,538件中6,000件しか読み込まれない事故になった(2026年、本番で実際に
-  // 発生・確認済み)。PAGE_SIZEはサーバー側の実際の上限と必ず一致させること。
-  const PAGE_SIZE = 1000;
+async function selectAllRows(table, columns, applyFilterFn, orderColumn = 'id', pageSize = 3000){
+  // PostgREST(Supabase側)は1リクエストあたり実際に返せる行数に上限があり
+  // (要求したrange幅に関わらずそこで打ち切られる)、以前1000だったのを
+  // オーナーがSupabaseダッシュボードのAPI設定(Max Rows)で5000に引き上げた
+  // (2026年)。ただし匿名(anon)ロールにはstatement_timeout=3秒があり、
+  // 単発の実測では3000でも軽いクエリなら1.5秒前後で収まるが、他のfetchと
+  // 同時に走らせた(=接続を取り合った)状態では、synopsis/cast_membersを
+  // 含む重いクエリ(.or()フィルター)が3秒を超えてタイムアウトする事故が
+  // 実際に発生した。呼び出し側ごとに安全な値を明示的に渡すこと(既定値の
+  // 3000は軽いクエリ向け)。値を変える際は必ず、単発の実測タイムだけでなく
+  // 実際のアプリ内で他のfetchと同時に走らせた状態での返却件数まで確認する
+  // こと(タイミングが速く見えても実は件数が切り詰められている、という
+  // 事故が過去に本番で実際に起きているため)。
+  const PAGE_SIZE = pageSize;
   const CONCURRENCY = 6;
   const withFilter = (q) => applyFilterFn ? applyFilterFn(q) : q;
 
@@ -7410,8 +7416,14 @@ async function loadMovies(){
     // ここでは取得せず、loadMovieBigFieldsInBackground()で初期表示を
     // ブロックせずに後から取得する。検索の根幹であるkeywordsは(サイトの
     // 存在意義に関わる機能のため)引き続きここで即座に取得する。
-    const [moviesData, statsRes, estimatesData] = await Promise.all([
-      selectAllRows('movies', MOVIE_LIGHT_COLUMNS, (q) => q.match({ is_anime: false, is_drama: false, is_manga: false, is_novel: false })),
+    // moviesの軽量取得を最優先で単独実行してから、残り(review_stats・
+    // expression_estimates)をまとめて取る。両方とも同時にCONCURRENCY分の
+    // リクエストを投げると、匿名(anon)ロールのstatement_timeout(3秒)に
+    // 引っかかりmoviesの取得ごと失敗する(=カタログが丸ごと空になる)事故が
+    // 実際に発生したため、スプラッシュをブロックする最重要な取得だけ他と
+    // 競合させない。
+    const moviesData = await selectAllRows('movies', MOVIE_LIGHT_COLUMNS, (q) => q.match({ is_anime: false, is_drama: false, is_manga: false, is_novel: false }), 'id', 2000);
+    const [statsRes, estimatesData] = await Promise.all([
       supabase.from('movie_review_stats').select('*'),
       // movie_expression_estimatesはmovie_idを主キーとしており、id列を持たない
       // (他のselectAllRows呼び出しと違い、並び替え列を明示的に指定する必要がある)。
@@ -7425,13 +7437,20 @@ async function loadMovies(){
     estimatesData.forEach(e => { estimatesByMovie[e.movie_id] = e; });
 
     MOVIES = moviesData.map(row => buildMovieRecord(row, statsByMovie, estimatesByMovie));
-    loadMovieBigFieldsInBackground();
 
     const broadFetch = (() => {
       try{ return localStorage.getItem(ANIME_PREVIEW_KEY) === '1'; }
       catch{ return false; }
     })();
-    if(broadFetch) loadNonMovieCatalogInBackground(statsByMovie, estimatesByMovie);
+    // 2つのバックグラウンド取得を同時に走らせると、それぞれのCONCURRENCY分の
+    // リクエストが重なって接続を取り合い、重い方(loadNonMovieCatalogInBackground、
+    // synopsis/cast_members込みの.or()フィルター)がstatement_timeout(3秒)に
+    // 引っかかる事故が実際に起きた。両方待たせても体感への影響は無い
+    // (どちらもスプラッシュはブロックしない)ため、順番に実行して接続の
+    // 取り合いを避ける。
+    loadMovieBigFieldsInBackground().then(() => {
+      if(broadFetch) loadNonMovieCatalogInBackground(statsByMovie, estimatesByMovie);
+    });
   }catch(err){
     console.error('映画一覧の読み込みに失敗しました', err);
     MOVIES = [];
@@ -7482,7 +7501,10 @@ async function loadMovieBigFieldsInBackground(){
 // 影響が無いので何もしない。
 async function loadNonMovieCatalogInBackground(statsByMovie, estimatesByMovie){
   try{
-    const rows = await selectAllRows('movies', MOVIE_FULL_COLUMNS, (q) => q.or('is_anime.eq.true,is_drama.eq.true,is_manga.eq.true,is_novel.eq.true'));
+    // synopsis/cast_members込みの全カラム+.or()フィルターという最も重い
+    // 組み合わせなので、他より小さいpageSizeで安全マージンを確保する
+    // (3000だと接続が混み合った状態でstatement_timeoutに達した実績がある)。
+    const rows = await selectAllRows('movies', MOVIE_FULL_COLUMNS, (q) => q.or('is_anime.eq.true,is_drama.eq.true,is_manga.eq.true,is_novel.eq.true'), 'id', 1500);
     MOVIES = MOVIES.concat(rows.map(row => buildMovieRecord(row, statsByMovie, estimatesByMovie)));
     nonMovieCatalogLoaded = true;
     if(state.catalogMode !== 'movie'){
