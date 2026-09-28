@@ -2338,6 +2338,7 @@
     <button class="catalog-mode-menu-item" id="catalog-mode-btn-drama-side" onclick="setCatalogMode('drama')">ドラマ</button>
     <button class="catalog-mode-menu-item" id="catalog-mode-btn-manga-side" onclick="setCatalogMode('manga')">漫画</button>
     <button class="catalog-mode-menu-item" id="catalog-mode-btn-novel-side" onclick="setCatalogMode('novel')">小説</button>
+    <button class="catalog-mode-menu-item" id="catalog-mode-btn-music-side" onclick="setCatalogMode('music')">音楽</button>
   </div>
 </div>
 
@@ -2353,6 +2354,7 @@
   <button class="catalog-mode-drawer-item" id="catalog-mode-btn-drama" onclick="setCatalogMode('drama')">ドラマ</button>
   <button class="catalog-mode-drawer-item" id="catalog-mode-btn-manga" onclick="setCatalogMode('manga')">漫画</button>
   <button class="catalog-mode-drawer-item" id="catalog-mode-btn-novel" onclick="setCatalogMode('novel')">小説</button>
+  <button class="catalog-mode-drawer-item" id="catalog-mode-btn-music" onclick="setCatalogMode('music')">音楽</button>
 </div>
 
 <div class="app">
@@ -3750,7 +3752,7 @@ const TAG_COLORS = {
 
 // 「詳しく絞り込む」に出すジャンル・国の候補。moviesテーブル全体を集計した際に
 // 件数の多い主要なものだけに絞ってあり、表記ゆれ的な少数派(「犯罪」「伝記」等)は含めない。
-const FILTER_GENRES = ["ドラマ","コメディ","アクション","スリラー","アドベンチャー","クライム","恋愛","ホラー","SF","ファンタジー","ミステリー","アニメーション","ファミリー","歴史","戦争","音楽","ドキュメンタリー","西部劇","特撮","TVムービー","絵本","図鑑","新書"];
+const FILTER_GENRES = ["ドラマ","コメディ","アクション","スリラー","アドベンチャー","クライム","恋愛","ホラー","SF","ファンタジー","ミステリー","アニメーション","ファミリー","歴史","戦争","音楽","ドキュメンタリー","西部劇","特撮","TVムービー","絵本","図鑑","新書","J-Pop","K-Pop","Rock","Classical","Anime","Hip Hop/Rap"];
 const FILTER_COUNTRIES = ["アメリカ","イギリス","フランス","ドイツ","日本","カナダ","イタリア","スペイン","中国","香港","韓国","インド","オーストラリア","ベルギー","メキシコ","スウェーデン","デンマーク","ブラジル","ロシア","アイルランド","オランダ","ポーランド","スイス","アルゼンチン","トルコ","ノルウェー","フィンランド","オーストリア","ルクセンブルク","ルーマニア","チェコ","台湾","ハンガリー","南アフリカ","タイ","ニュージーランド","ポルトガル"];
 
 function tagColor(tag){
@@ -4449,7 +4451,8 @@ function isInCatalogMode(m, mode){
   if(mode === 'drama') return !!m.isDrama;
   if(mode === 'manga') return !!m.isManga && (!looksLikeEnglishTitle(m.title) || !!m.posterUrl);
   if(mode === 'novel') return !!m.isNovel && (!looksLikeEnglishTitle(m.title) || !!m.posterUrl);
-  return !m.isAnime && !m.isDrama && !m.isManga && !m.isNovel;
+  if(mode === 'music') return !!m.isMusic;
+  return !m.isAnime && !m.isDrama && !m.isManga && !m.isNovel && !m.isMusic;
 }
 
 function renderHomeRows(){
@@ -4747,7 +4750,11 @@ function applyFeaturedContent(){
     posterBgEl.style.background = featured.posterColor;
     posterBgEl.textContent = featured.title.charAt(0);
   }
-  document.getElementById('featured-title-text').textContent = featured.title;
+  // featured.titleはbuildMovieRecord()側で既にHTMLエスケープ済み(&#39;等)の
+  // 文字列なので、textContentで入れるとエスケープされたまま文字通り
+  // 表示されてしまう(アポストロフィを含む英題のアルバム等で発覚)。
+  // 他のテンプレート同様innerHTMLで差し込んでデコードさせる。
+  document.getElementById('featured-title-text').innerHTML = featured.title;
   document.getElementById('featured-love-text').innerHTML =
     `${HEART_ICON} ${avg.toFixed(1)} ・ ${loveLabel(avg, featured.loveCount)}`;
   document.getElementById('featured-card').onclick = () => goDetail(featured.id);
@@ -6448,13 +6455,14 @@ function setCatalogMode(mode){
   }, 150);
 }
 
-// 選択肢(映画/アニメ/ドラマ/漫画/小説)はこの配列に追記していく。
+// 選択肢(映画/アニメ/ドラマ/漫画/小説/音楽)はこの配列に追記していく。
 const CATALOG_MODES = [
   ['movie', '映画'],
   ['anime', 'アニメ'],
   ['drama', 'ドラマ'],
   ['manga', '漫画'],
   ['novel', '小説'],
+  ['music', '音楽'],
 ];
 function updateCatalogModeToggleUI(){
   const mode = state.catalogMode;
@@ -6473,7 +6481,7 @@ function updateCatalogModeToggleUI(){
 
 function renderMovieInfoPanel(m){
   // 漫画・小説は「監督」ではなく「作者」の方が自然なので、作品種別に応じてラベルを切り替える。
-  document.getElementById('d-director-label').textContent = (m.isManga || m.isNovel) ? '作者' : '監督';
+  document.getElementById('d-director-label').textContent = m.isMusic ? 'アーティスト' : (m.isManga || m.isNovel) ? '作者' : '監督';
   document.getElementById('d-director').textContent = m.director || '情報がまだありません';
   document.getElementById('d-cast').textContent = (m.cast && m.cast.length > 0) ? m.cast.join('、') : '情報がまだありません';
   document.getElementById('d-country').textContent = m.country || '情報がまだありません';
@@ -7274,7 +7282,7 @@ async function selectAllRows(table, columns, applyFilterFn, orderColumn = 'id', 
 // 遅くしている最大の要因だった。検索の根幹であるkeywordsは(サイトの
 // 存在意義に関わるため)初回取得に残したまま、この2つだけ後から
 // バックグラウンドで取得する(loadMovieBigFieldsInBackground参照)。
-const MOVIE_LIGHT_COLUMNS = 'id, title, release_year, emotion_tags, genre, director, country, poster_path, japan_release_date, keywords, series, trailer_key, media_type, is_anime, is_drama, is_manga, is_novel';
+const MOVIE_LIGHT_COLUMNS = 'id, title, release_year, emotion_tags, genre, director, country, poster_path, japan_release_date, keywords, series, trailer_key, media_type, is_anime, is_drama, is_manga, is_novel, is_music';
 const MOVIE_BIG_COLUMNS = 'id, synopsis, cast_members';
 // アニメ・ドラマ・漫画・小説側(オーナー限定プレビュー)は、今のところ
 // 軽量/追加取得の二段構えにはせず、従来通り一括取得する(この取得自体が
@@ -7340,6 +7348,7 @@ function buildMovieRecord(row, statsByMovie, estimatesByMovie){
     isDrama: !!row.is_drama,
     isManga: !!row.is_manga,
     isNovel: !!row.is_novel,
+    isMusic: !!row.is_music,
     // MOVIE_LIGHT_COLUMNSだけで取得した行はsynopsis/cast_membersを持たない
     // (取得していないので'in row'すらfalse)。loadMovieBigFieldsInBackground()
     // のapplyBigFieldsPatch()が届くまでの間、その事実を判別できるようにしておく。
@@ -7422,7 +7431,7 @@ async function loadMovies(){
     // 引っかかりmoviesの取得ごと失敗する(=カタログが丸ごと空になる)事故が
     // 実際に発生したため、スプラッシュをブロックする最重要な取得だけ他と
     // 競合させない。
-    const moviesData = await selectAllRows('movies', MOVIE_LIGHT_COLUMNS, (q) => q.match({ is_anime: false, is_drama: false, is_manga: false, is_novel: false }), 'id', 2000);
+    const moviesData = await selectAllRows('movies', MOVIE_LIGHT_COLUMNS, (q) => q.match({ is_anime: false, is_drama: false, is_manga: false, is_novel: false, is_music: false }), 'id', 2000);
     const [statsRes, estimatesData] = await Promise.all([
       supabase.from('movie_review_stats').select('*'),
       // movie_expression_estimatesはmovie_idを主キーとしており、id列を持たない
@@ -7465,7 +7474,7 @@ async function loadMovies(){
 // 棚・検索結果・(開いていれば)詳細ページを描き直す。
 async function loadMovieBigFieldsInBackground(){
   try{
-    const rows = await selectAllRows('movies', MOVIE_BIG_COLUMNS, (q) => q.match({ is_anime: false, is_drama: false, is_manga: false, is_novel: false }));
+    const rows = await selectAllRows('movies', MOVIE_BIG_COLUMNS, (q) => q.match({ is_anime: false, is_drama: false, is_manga: false, is_novel: false, is_music: false }));
     const rowById = {};
     rows.forEach(r => { rowById[r.id] = r; });
     MOVIES.forEach(movie => {
@@ -7504,7 +7513,7 @@ async function loadNonMovieCatalogInBackground(statsByMovie, estimatesByMovie){
     // synopsis/cast_members込みの全カラム+.or()フィルターという最も重い
     // 組み合わせなので、他より小さいpageSizeで安全マージンを確保する
     // (3000だと接続が混み合った状態でstatement_timeoutに達した実績がある)。
-    const rows = await selectAllRows('movies', MOVIE_FULL_COLUMNS, (q) => q.or('is_anime.eq.true,is_drama.eq.true,is_manga.eq.true,is_novel.eq.true'), 'id', 1500);
+    const rows = await selectAllRows('movies', MOVIE_FULL_COLUMNS, (q) => q.or('is_anime.eq.true,is_drama.eq.true,is_manga.eq.true,is_novel.eq.true,is_music.eq.true'), 'id', 1500);
     MOVIES = MOVIES.concat(rows.map(row => buildMovieRecord(row, statsByMovie, estimatesByMovie)));
     nonMovieCatalogLoaded = true;
     if(state.catalogMode !== 'movie'){
@@ -8207,7 +8216,7 @@ function onMlTitleInput(){
   const listEl = document.getElementById('ml-title-suggestions');
   if(!q){ listEl.style.display = 'none'; listEl.innerHTML = ''; return; }
 
-  const matches = MOVIES.filter(m => m.titleNorm.includes(q) && ((!m.isAnime && !m.isDrama && !m.isManga && !m.isNovel) || isAnimePreviewEnabled())).slice(0, 6);
+  const matches = MOVIES.filter(m => m.titleNorm.includes(q) && ((!m.isAnime && !m.isDrama && !m.isManga && !m.isNovel && !m.isMusic) || isAnimePreviewEnabled())).slice(0, 6);
   if(!matches.length){ listEl.style.display = 'none'; listEl.innerHTML = ''; return; }
 
   listEl.innerHTML = matches.map(m => {
@@ -8698,7 +8707,7 @@ function generateDiagnosis(pocketMovies){
 // 同じ日にページを開き直しても結果は変わらない(日が変われば新しい1本になる)。
 function pickOmikujiMovie(topTag, secondTag, excludeIds){
   const candidates = MOVIES.filter(m =>
-    !excludeIds.includes(m.id) && !m.isAnime && !m.isDrama && !m.isManga && !m.isNovel
+    !excludeIds.includes(m.id) && !m.isAnime && !m.isDrama && !m.isManga && !m.isNovel && !m.isMusic
     && (m.tags.includes(topTag) || (secondTag && m.tags.includes(secondTag)))
   );
   if(!candidates.length) return null;
@@ -8731,7 +8740,9 @@ function renderOmikujiCard(movieId){
   posterEl.innerHTML = m.posterUrl
     ? `<img src="${m.posterUrl}" alt="" loading="lazy" decoding="async">`
     : escapeHtml(m.title.charAt(0));
-  document.getElementById('omikuji-title').textContent = m.title;
+  // m.titleは既にHTMLエスケープ済みなので、featured-title-textと同じ理由で
+  // innerHTMLを使う(textContentだとエスケープ文字列がそのまま見えてしまう)。
+  document.getElementById('omikuji-title').innerHTML = m.title;
   card.style.display = 'block';
 }
 
