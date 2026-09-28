@@ -4658,7 +4658,11 @@ let featuredTimer = null;
 
 function renderFeaturedBanner(){
   const root = document.getElementById('featured-banner');
-  if(MOVIES.length === 0){ root.innerHTML = ""; return; }
+  // 空バナーで抜ける経路(この行・下のfeaturedList空チェックの両方)は、
+  // 前のモードのオートプレイ用setIntervalを止めないままだと、消した後の
+  // DOM(featured-card等)に対してshiftFeatured()が発火し続けてエラーに
+  // なる。抜ける前に必ずタイマーも止める。
+  if(MOVIES.length === 0){ clearInterval(featuredTimer); root.innerHTML = ""; return; }
 
   // ずっと同じ上位5本を出し続けると、票が集まった作品にどんどん票が集中し
   // (見せる→さらに票が集まる、の繰り返しで)、いつまでも同じ顔ぶれで
@@ -4671,7 +4675,16 @@ function renderFeaturedBanner(){
     .slice(0, 30);
   const pool = lovedPool.length > 0 ? lovedPool : [...eligibleMovies].sort((a, b) => loveAverage(b) - loveAverage(a));
   featuredList = seededShuffle(pool, 'featured-banner').slice(0, 5);
-  if(featuredIndex >= featuredList.length) featuredIndex = 0;
+  featuredIndex = 0;
+
+  // MOVIES全体は0件でなくても、今のモード(例: 音楽)にまだデータが
+  // 1件も無い瞬間がありうる(オーナー限定のバックグラウンド取得が
+  // 完了する前にモードを切り替えた場合等)。featuredListが空のまま
+  // 下のapplyFeaturedContent()を呼ぶとfeaturedList[0]がundefinedになり
+  // 例外で処理が止まる。これがsetCatalogMode()のフェード解除処理まで
+  // 巻き込んで画面が真っ暗に固まったまま戻らなくなる事故の原因になって
+  // いたため、ここで空バナー表示にフォールバックして必ず抜ける。
+  if(featuredList.length === 0){ clearInterval(featuredTimer); root.innerHTML = ""; return; }
 
   const dots = buildFeaturedDots();
 
@@ -6428,11 +6441,16 @@ document.addEventListener('click', (e) => {
   if(!insideAny) closeCatalogModeMenu();
 });
 
+// init()の「常に映画から始める」リセット(下記参照)が、オーナーが手動で
+// 切り替えた直後の選択を後から上書きしてしまう事故を防ぐためのフラグ。
+let userHasSwitchedCatalogMode = false;
+
 function setCatalogMode(mode){
   closeCatalogModeMenu();
   if(!isAnimePreviewEnabled() || !CATALOG_MODES.some(([m]) => m === mode)) return;
   if(state.catalogMode === mode) return;
   state.catalogMode = mode;
+  userHasSwitchedCatalogMode = true;
   // モードは端末に保存しない(常に映画から始める方針のため、次に開いた時は
   // 引き継がない。切り替え自体はこのセッション中だけ効く)。
 
@@ -6447,11 +6465,20 @@ function setCatalogMode(mode){
   const homeView = document.getElementById('view-home');
   homeView.classList.add('mode-switch-fade');
   setTimeout(() => {
-    renderFeaturedBanner();
-    renderHomeRows();
-    switchView('view-home');
-    updateCatalogModeToggleUI();
-    requestAnimationFrame(() => homeView.classList.remove('mode-switch-fade'));
+    // renderFeaturedBanner()等が例外を投げると(実例: 対象モードのデータが
+    // まだ1件も無い瞬間に切り替えた場合)、下のクラス解除が実行されずに
+    // 画面が真っ暗なまま固まって二度と戻らない事故になっていた。原因側
+    // (renderFeaturedBanner内の空プール処理)は別途直したが、ここでも
+    // finallyで必ずフェードを解除し、同種の描画エラーが今後起きても
+    // 画面が復帰不能になることが無いようにする。
+    try{
+      renderFeaturedBanner();
+      renderHomeRows();
+      switchView('view-home');
+      updateCatalogModeToggleUI();
+    } finally {
+      requestAnimationFrame(() => homeView.classList.remove('mode-switch-fade'));
+    }
   }, 150);
 }
 
@@ -6555,6 +6582,7 @@ function goDetailWithViewReturn(id, viewId, label){
 function goDetailWithMode(id, mode){
   if(isAnimePreviewEnabled() && CATALOG_MODES.some(([m]) => m === mode)){
     state.catalogMode = mode;
+    userHasSwitchedCatalogMode = true;
     updateCatalogModeToggleUI();
   }
   goDetail(id);
@@ -9832,8 +9860,14 @@ async function init(){
 
   // 最初に開いた画面は常に映画から始める(前回アニメを見ていたとしても、
   // 開くたびにアニメから始まるのは望ましくないとのオーナーの指示)。
+  // ただし、この一括await中(スプラッシュの8秒セーフティタイムアウト経由で
+  // 先に閉じてしまい、その間にオーナーが実際にモードを切り替えていた場合)
+  // ここで無条件に'movie'へ戻すと、その場でのクリックを後から静かに
+  // 上書きしてしまい、画面が真っ暗に固まる事故の引き金にもなっていた。
+  // 実際にユーザー操作でモードが切り替わっていた場合はこのリセットを
+  // スキップする。
   const animePreview = isAnimePreviewEnabled();
-  state.catalogMode = 'movie';
+  if(!userHasSwitchedCatalogMode) state.catalogMode = 'movie';
 
   renderTagCloud();
   renderGenreCloud();
