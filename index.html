@@ -7218,14 +7218,14 @@ async function submitMovie(){
 // 「canceling statement due to statement timeout」で一部ページが500に
 // なり、映画一覧がまるごと読み込み失敗扱いになる事故も起きた。そのため
 // 同時に投げる本数の上限(CONCURRENCY)を固定したページ束を順番に処理する。
-async function selectAllRows(table, columns, applyFilterFn){
-  // 1000→2000への変更は実測で検証済み(35,538件の映画一覧で約3〜5秒→
-  // 約1.2〜1.7秒、クリーンなブラウザプロファイルで複数回再現)。5000まで
-  // 上げると逆に悪化した(1リクエストのペイロードが大きくなりすぎるためか、
-  // 12秒待っても完了しなかった)ため、2000を安全な上限として採用する。
-  // CONCURRENCYは同時接続数の上限(max_connections=60)に対する安全マージンの
-  // ため据え置き(過去に無制限並列で接続枯渇を起こした実績があるため)。
-  const PAGE_SIZE = 2000;
+async function selectAllRows(table, columns, applyFilterFn, orderColumn = 'id'){
+  // 重要: PostgREST(Supabase側)は1リクエストあたり実際には1000件までしか
+  // 返さない(要求したrange幅に関わらず)。これに気づかずPAGE_SIZEを2000に
+  // 上げた結果、「2000件要求したのに1000件しか返らない→PAGE_SIZE未満だから
+  // 最後まで読んだ」と誤判定してページ送りが早期に止まり、本番で映画一覧が
+  // 35,538件中6,000件しか読み込まれない事故になった(2026年、本番で実際に
+  // 発生・確認済み)。PAGE_SIZEはサーバー側の実際の上限と必ず一致させること。
+  const PAGE_SIZE = 1000;
   const CONCURRENCY = 6;
   const withFilter = (q) => applyFilterFn ? applyFilterFn(q) : q;
 
@@ -7235,13 +7235,28 @@ async function selectAllRows(table, columns, applyFilterFn){
   while(!reachedEnd){
     const starts = Array.from({ length: CONCURRENCY }, (_, i) => pageStart + i * PAGE_SIZE);
     const batchResults = await Promise.all(starts.map(async from => {
-      const { data, error } = await withFilter(supabase.from(table).select(columns)).range(from, from + PAGE_SIZE - 1);
+      // .range()での並び替えなしページングは、Postgres側の実行計画が
+      // リクエストごとに変わりうるため危険(実際に発生:.or()フィルター付きの
+      // 取得で、あるページだけ本来より少ない件数を返し、まだ後ろに行が
+      // 残っているのに「最後まで読んだ」と誤判定してしまい、drama作品が
+      // 501件中4件しか読み込まれない事故になった)。idで安定した並び順を
+      // 固定し、ページ同士が同じ行を指し続けるようにする。
+      const { data, error } = await withFilter(supabase.from(table).select(columns)).order(orderColumn, { ascending: true }).range(from, from + PAGE_SIZE - 1);
       if(error) throw error;
       return data || [];
     }));
     for(const data of batchResults){
       rows = rows.concat(data);
       if(data.length < PAGE_SIZE) reachedEnd = true;
+      // PostgREST側の1リクエストあたりの実際の上限がPAGE_SIZEより小さい
+      // (=要求した件数を静かに切り詰めてくる)場合、この関数は「早めに
+      // 最後まで読んだ」と誤判定して取りこぼす。0件(本当の末尾)以外で
+      // PAGE_SIZE未満が返ってきたら、次に触る人が気づけるようコンソールに
+      // 警告を出しておく(本番で実際にこれが起きて映画一覧が6割近く
+      // 欠けたまま気づかれなかった事故があったため)。
+      if(data.length > 0 && data.length < PAGE_SIZE){
+        console.warn(`selectAllRows(${table}): requested ${PAGE_SIZE} rows but got ${data.length} — PAGE_SIZE may exceed the server's actual per-request limit. Verify PAGE_SIZE matches it exactly.`);
+      }
     }
     pageStart += CONCURRENCY * PAGE_SIZE;
   }
@@ -7398,7 +7413,9 @@ async function loadMovies(){
     const [moviesData, statsRes, estimatesData] = await Promise.all([
       selectAllRows('movies', MOVIE_LIGHT_COLUMNS, (q) => q.match({ is_anime: false, is_drama: false, is_manga: false, is_novel: false })),
       supabase.from('movie_review_stats').select('*'),
-      selectAllRows('movie_expression_estimates', 'movie_id, expression_level, reason_tags')
+      // movie_expression_estimatesはmovie_idを主キーとしており、id列を持たない
+      // (他のselectAllRows呼び出しと違い、並び替え列を明示的に指定する必要がある)。
+      selectAllRows('movie_expression_estimates', 'movie_id, expression_level, reason_tags', null, 'movie_id')
     ]);
     if(statsRes.error) throw statsRes.error;
 
