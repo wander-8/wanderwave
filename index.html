@@ -2364,11 +2364,9 @@
     <div class="topbar">
       <div class="topbar-left">
         <div class="logo logo-driftwood-header" onclick="goHome()"><img src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==" alt="Wander" class="header-logo-img"></div>
-        <!-- 映画⇔アニメの切り替え(アプリ版=狭い画面)。まだ方針検討中の
-             隠しプレビュー機能なので、isAnimePreviewEnabled()がtrueの端末
-             でだけJSでdisplay:flexにする。ハンバーガーボタン自体はヘッダーの
-             通常の流れの中に置き、開くドロワー本体は#view-homeの外側
-             (catalog-mode-drawer)にある。 -->
+        <!-- 映画⇔アニメ等の切り替え(アプリ版=狭い画面)。ハンバーガーボタン
+             自体はヘッダーの通常の流れの中に置き、開くドロワー本体は
+             #view-homeの外側(catalog-mode-drawer)にある。 -->
         <div class="catalog-mode-toggle" id="catalog-mode-toggle-inline">
           <button class="catalog-mode-hamburger-btn" id="catalog-mode-hamburger-btn" onclick="toggleCatalogModeMenu()" aria-label="表示を切り替える" title="表示を切り替える">
             <svg viewBox="0 0 24 24" width="34" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="4" y1="7" x2="20" y2="7"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="17" x2="20" y2="17"/></svg>
@@ -4395,9 +4393,7 @@ async function checkAnimePreviewOwner(){
 }
 
 function isAnimePreviewEnabled(){
-  if(animePreviewOwnerConfirmed) return true;
-  try{ return localStorage.getItem(ANIME_PREVIEW_KEY) === '1'; }
-  catch{ return false; }
+  return true;
 }
 
 // ひらがな・カタカナ・漢字を一文字も含まないタイトルを「英語名」とみなす
@@ -7431,21 +7427,11 @@ let movieBigFieldsLoaded = false;
 
 async function loadMovies(){
   try{
-    // 隠しプレビューフラグが無い端末は、isAnimePreviewEnabled()の判定を
-    // 待つまでもなくmovieモードでしか閲覧できない(currentCatalogMode
-    // 参照)。それなのに以前は毎回、表示すらされないアニメ・ドラマ・
-    // 漫画・小説のデータまでまるごと取得しており、カタログが5万件を
-    // 超えたことで読み込みが遅い最大の原因になっていた。
-    // checkAnimePreviewOwner()(オーナー本人かどうかの確認)は非同期で
-    // 完了を待つと並列読み込みの意味が薄れるため、代わりに(一度でも
-    // ?anime=1で有効化されていれば残る)localStorageのフラグだけを
-    // 同期的に見て判定する。
-    //
-    // オーナー(プレビューフラグ有効)であっても、この初回取得自体は常に
-    // 映画だけに絞る。アニメ・ドラマ・漫画・小説の残り分はスプラッシュを
-    // ブロックしないバックグラウンド取得(loadNonMovieCatalogInBackground)に
-    // 回すことで、オーナー自身の初回表示が5万件超のフル取得で毎回重くなる
-    // 事故を防ぐ(この関数の完了を待ってスプラッシュが閉じるため)。
+    // カタログが5万件を超えたため、初回取得は常に映画だけに絞る。
+    // アニメ・ドラマ・漫画・小説・音楽の残り分はスプラッシュをブロック
+    // しないバックグラウンド取得(loadNonMovieCatalogInBackground)に回す
+    // ことで、初回表示が5万件超のフル取得で毎回重くなる事故を防ぐ
+    // (この関数の完了を待ってスプラッシュが閉じるため)。
     //
     // 映画だけに絞っても実測で約7.2秒かかっていた(35,538件・約30MB)。
     // 実測の結果、転送バイト数が時間にほぼ比例していて、内訳はsynopsis
@@ -7475,10 +7461,7 @@ async function loadMovies(){
 
     MOVIES = moviesData.map(row => buildMovieRecord(row, statsByMovie, estimatesByMovie));
 
-    const broadFetch = (() => {
-      try{ return localStorage.getItem(ANIME_PREVIEW_KEY) === '1'; }
-      catch{ return false; }
-    })();
+    const broadFetch = isAnimePreviewEnabled();
     // 2つのバックグラウンド取得を同時に走らせると、それぞれのCONCURRENCY分の
     // リクエストが重なって接続を取り合い、重い方(loadNonMovieCatalogInBackground、
     // synopsis/cast_members込みの.or()フィルター)がstatement_timeout(3秒)に
