@@ -4136,8 +4136,10 @@ function renderCountryCloud(){
 }
 
 function toggleFilterDisclosure(){
+  const wasOpen = document.getElementById('filter-disclosure-btn').classList.contains('open');
   document.getElementById('filter-disclosure-btn').classList.toggle('open');
   document.getElementById('filter-disclosure-body').classList.toggle('open');
+  playTone(wasOpen ? 420 : 600, 0.08, 0.07, 'sine');
 }
 
 // 表現度は元々「この値以下は全部表示」という上限方式だったが、それだと
@@ -5434,7 +5436,8 @@ function renderResults(){
 function renderVisibleResults(){
   const root = document.getElementById('results');
   const visible = resultsFiltered.slice(0, resultsShownCount);
-  renderMovieCards(root, visible, '条件に合う映画が見つかりませんでした。タグを減らすか、表現度の絞り込みを外してみましょう。');
+  const modeLabel = (CATALOG_MODES.find(([m]) => m === currentCatalogMode()) || [])[1] || '映画';
+  renderMovieCards(root, visible, `条件に合う${modeLabel}が見つかりませんでした。タグを減らすか、表現度の絞り込みを外してみましょう。`);
 
   const remaining = resultsFiltered.length - visible.length;
   if(remaining <= 0) return;
