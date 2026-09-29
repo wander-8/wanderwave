@@ -4590,12 +4590,13 @@ function renderHomeRows(){
   // 「みんなの声」: 映画を問わず、届いた感想を新着順に横スクロールで見せる。
   // 実際に投稿された本物のレビューだけを使う(捏造・水増しは一切しない)。
   // 除外ワードに一致する作品の感想は、他の棚と同じくここにも出さない。
-  const visibleIds = new Set(visibleMovies.map(m => m.id));
+  // 「映画を問わず」の通り、今見ているカタログモードに関係なく全種別から
+  // 拾う(以前はvisibleMoviesで絞ってしまっており、現在のモード以外の
+  // 感想が実質常に空になっていた)。
   const reviewCards = RECENT_REVIEWS
-    .filter(r => visibleIds.has(r.movie_id))
     .map(r => {
-      const m = visibleMovies.find(x => x.id === r.movie_id);
-      if(!m) return null;
+      const m = MOVIES.find(x => x.id === r.movie_id);
+      if(!m || matchesExcludedWord(m)) return null;
       const snippet = r.review_text.length > 60 ? r.review_text.slice(0, 60) + '…' : r.review_text;
       const posterImg = (m.posterUrl && !shouldHidePosterForIntensity(m)) ? `<img src="${m.posterUrl}" alt="" loading="lazy" decoding="async">` : '';
       return `
