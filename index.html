@@ -7540,7 +7540,11 @@ async function loadMovies(){
     // (どちらもスプラッシュはブロックしない)ため、順番に実行して接続の
     // 取り合いを避ける。
     loadMovieBigFieldsInBackground().then(() => {
-      if(broadFetch) loadNonMovieCatalogInBackground(statsByMovie, estimatesByMovie);
+      if(broadFetch){
+        loadNonMovieCatalogInBackground(statsByMovie, estimatesByMovie).then(() => {
+          loadNonMovieBigFieldsInBackground();
+        });
+      }
     });
   }catch(err){
     console.error('映画一覧の読み込みに失敗しました', err);
@@ -7592,10 +7596,14 @@ async function loadMovieBigFieldsInBackground(){
 // 影響が無いので何もしない。
 async function loadNonMovieCatalogInBackground(statsByMovie, estimatesByMovie){
   try{
-    // synopsis/cast_members込みの全カラム+.or()フィルターという最も重い
-    // 組み合わせなので、他より小さいpageSizeで安全マージンを確保する
-    // (3000だと接続が混み合った状態でstatement_timeoutに達した実績がある)。
-    const rows = await selectAllRows('movies', MOVIE_FULL_COLUMNS, (q) => q.or('is_anime.eq.true,is_drama.eq.true,is_manga.eq.true,is_novel.eq.true,is_music.eq.true'), 'id', 1500);
+    // 以前はsynopsis/cast_members込みの全カラムを一度に取っていたが、
+    // ハンバーガーメニューを全ユーザーに公開した(isAnimePreviewEnabled()が
+    // 常にtrue)ことで、この取得がオーナー限定の稀な処理から全訪問者が毎回
+    // 待つ処理に変わった。しかもアニメ・ドラマ・漫画・小説・音楽の合計が
+    // 4万件を超え、実測で10秒以上かかるようになっていた。映画と同じく
+    // 軽量カラムだけを先に取ってnonMovieCatalogLoadedを早く立て、
+    // synopsis/cast_membersは後段のloadNonMovieBigFieldsInBackground()に回す。
+    const rows = await selectAllRows('movies', MOVIE_LIGHT_COLUMNS, (q) => q.or('is_anime.eq.true,is_drama.eq.true,is_manga.eq.true,is_novel.eq.true,is_music.eq.true'), 'id', 1500);
     MOVIES = MOVIES.concat(rows.map(row => buildMovieRecord(row, statsByMovie, estimatesByMovie)));
     nonMovieCatalogLoaded = true;
     if(state.catalogMode !== 'movie'){
@@ -7605,6 +7613,37 @@ async function loadNonMovieCatalogInBackground(statsByMovie, estimatesByMovie){
     }
   }catch(err){
     console.error('アニメ・ドラマ・漫画・小説カタログの読み込みに失敗しました', err);
+  }
+}
+
+// 上のloadNonMovieCatalogInBackground()で後回しにしたsynopsis・cast_membersを、
+// 映画版(loadMovieBigFieldsInBackground)と同じ考え方で追って取得し、
+// 既にMOVIESに入っている該当行へ書き足す。
+async function loadNonMovieBigFieldsInBackground(){
+  try{
+    const rows = await selectAllRows('movies', MOVIE_BIG_COLUMNS, (q) => q.or('is_anime.eq.true,is_drama.eq.true,is_manga.eq.true,is_novel.eq.true,is_music.eq.true'), 'id', 1500);
+    const rowById = {};
+    rows.forEach(r => { rowById[r.id] = r; });
+    MOVIES.forEach(movie => {
+      const row = rowById[movie.id];
+      if(row) applyBigFieldsPatch(movie, row);
+    });
+    if(state.catalogMode !== 'movie'){
+      renderFeaturedBanner();
+      renderHomeRows();
+      renderResults();
+    }
+    if(state.currentMovieId != null && document.getElementById('view-detail').classList.contains('active')){
+      const current = MOVIES.find(x => x.id === state.currentMovieId);
+      if(current){
+        const panel = document.getElementById('movie-info-panel');
+        const wasOpen = panel.style.display === 'block';
+        renderMovieInfoPanel(current);
+        if(wasOpen) panel.style.display = 'block';
+      }
+    }
+  }catch(err){
+    console.error('アニメ・ドラマ・漫画・小説のあらすじ・出演者情報の読み込みに失敗しました', err);
   }
 }
 
