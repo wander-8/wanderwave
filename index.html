@@ -2664,6 +2664,14 @@
       <div class="section-label">こんな小説もおすすめ</div>
       <div class="results" id="d-recommended-novel"></div>
     </div>
+
+    <!-- 「音楽」欄は音楽のページでだけ出す。アニメの主題歌など、genreに
+         "Anime"を含むアルバムのページでだけ、橋渡しとして「アニメ」欄も
+         合わせて出す(goDetailWithMode参照)。 -->
+    <div id="d-recommended-music-wrap" style="display:none;">
+      <div class="section-label">こんな音楽もおすすめ</div>
+      <div class="results" id="d-recommended-music"></div>
+    </div>
   </div>
 
   <!-- ============ ADD MOVIE VIEW ============ -->
@@ -5546,7 +5554,7 @@ function renderRecommended(currentMovie){
       .map(x => x.m);
   }
 
-  // 「ドラマ」欄(隠しプレビュー限定): TVドラマのページに加えて、普通の実写
+  // 「ドラマ」欄: TVドラマのページに加えて、普通の実写
   // 映画のページでも出す(ドラマと実写映画は視聴者層が近く、行き来したい
   // という要望のため)。TVアニメ・アニメ映画のページでは出さない。
   const currentIsDrama = !!currentMovie.isDrama && currentMovie.mediaType === 'tv';
@@ -5565,7 +5573,7 @@ function renderRecommended(currentMovie){
     dramaWrap.style.display = 'none';
   }
 
-  // 「漫画」欄(隠しプレビュー限定): 漫画のページでだけ出す。ドラマと違い、
+  // 「漫画」欄: 漫画のページでだけ出す。ドラマと違い、
   // 漫画は実写映画と視聴者層が近いわけではないので、映画ページには混ぜない。
   const currentIsManga = !!currentMovie.isManga;
   const mangaWrap = document.getElementById('d-recommended-manga-wrap');
@@ -5582,7 +5590,7 @@ function renderRecommended(currentMovie){
     mangaWrap.style.display = 'none';
   }
 
-  // 「小説」欄(隠しプレビュー限定): 小説のページでだけ出す。
+  // 「小説」欄: 小説のページでだけ出す。
   const currentIsNovel = !!currentMovie.isNovel;
   const novelWrap = document.getElementById('d-recommended-novel-wrap');
   if(animePreview && currentIsNovel){
@@ -5598,11 +5606,34 @@ function renderRecommended(currentMovie){
     novelWrap.style.display = 'none';
   }
 
-  // 「映画」欄: TVアニメ・TVドラマ・漫画・小説のページでは出さない。アニメ映画の
-  // ページの時だけ、実写中心の並びにアニメ映画を少し混ぜる。ここから開いた
-  // 作品はサイト全体のモードも「映画」に自動で切り替わる(forceMode → goDetailWithMode)。
+  // 「音楽」欄: 音楽のページでだけ出す。
+  const currentIsMusic = !!currentMovie.isMusic;
+  const musicWrap = document.getElementById('d-recommended-music-wrap');
+  if(currentIsMusic){
+    const musicPool = others.filter(m => m.isMusic);
+    const musicList = scoreAndPick(musicPool, MIN_COUNT + 2);
+    if(musicList.length){
+      musicWrap.style.display = 'block';
+      renderMovieCards(document.getElementById('d-recommended-music'), musicList, '', { forceMode: 'music' });
+    } else {
+      musicWrap.style.display = 'none';
+    }
+  } else {
+    musicWrap.style.display = 'none';
+  }
+
+  // アニメの主題歌・BGM等(iTunesのジャンルが"Anime")かどうか。この場合だけ
+  // 「音楽」欄に加えて「アニメ」欄も橋渡しとして出す(アニメ映画が「映画」と
+  // 「アニメ」の両方の欄に出るのと同じ考え方)。
+  const currentIsAnimeThemeMusic = currentIsMusic
+    && Array.isArray(currentMovie.genre) && currentMovie.genre.some(g => /anime/i.test(g));
+
+  // 「映画」欄: TVアニメ・TVドラマ・漫画・小説・音楽のページでは出さない。
+  // アニメ映画のページの時だけ、実写中心の並びにアニメ映画を少し混ぜる。
+  // ここから開いた作品はサイト全体のモードも「映画」に自動で切り替わる
+  // (forceMode → goDetailWithMode)。
   const movieWrap = document.getElementById('d-recommended-movie-wrap');
-  if(currentIsAnimeTv || currentIsDrama || currentIsManga || currentIsNovel){
+  if(currentIsAnimeTv || currentIsDrama || currentIsManga || currentIsNovel || currentIsMusic){
     movieWrap.style.display = 'none';
   } else {
     movieWrap.style.display = 'block';
@@ -5617,11 +5648,12 @@ function renderRecommended(currentMovie){
     renderMovieCards(root, movieList, 'まだおすすめできる作品がありません。', { forceMode: 'movie' });
   }
 
-  // 「アニメ」欄(隠しプレビュー限定): TVアニメ・アニメ映画のページの時だけ出す。
-  // 普通の実写映画のページには出さない。ここから開くとサイト全体のモードが
+  // 「アニメ」欄: TVアニメ・アニメ映画のページに加え、
+  // アニメの主題歌・BGMアルバムのページでも橋渡しとして出す。普通の実写
+  // 映画のページには出さない。ここから開くとサイト全体のモードが
   // 「アニメ」に自動で切り替わる。
   const animeWrap = document.getElementById('d-recommended-anime-wrap');
-  if(animePreview && (currentIsAnimeTv || currentIsAnimeFilm)){
+  if(animePreview && (currentIsAnimeTv || currentIsAnimeFilm || currentIsAnimeThemeMusic)){
     const animePool = others.filter(m =>
       (m.isAnime && (!looksLikeEnglishTitle(m.title) || m.trailerKey)) || looksLikeAnimeFilm(m));
     const animeList = scoreAndPick(animePool, MIN_COUNT + 2);
