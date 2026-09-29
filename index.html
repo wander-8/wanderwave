@@ -3819,7 +3819,15 @@ function getAudioCtx(){
   return audioCtx;
 }
 
+// タップのたびに何かしら音が鳴ることを保証するため、個別の操作音
+// (feedbackLove・feedbackDetailOpen・チップの開閉音等)が実際に鳴った
+// 瞬間にこのフラグを立てる。後述のクリック委譲リスナーが、このフラグが
+// 立っていない(=そのクリックでまだ何の音も鳴っていない)場合にだけ
+// 控えめな汎用タップ音を補う。個別の音と二重に鳴ることを防ぐのが目的。
+let __soundPlayedThisClick = false;
+
 function playTone(freq, duration, volume, type){
+  __soundPlayedThisClick = true;
   const ctx = getAudioCtx();
   if(!ctx) return;
   if(ctx.state === 'suspended') ctx.resume();
@@ -3837,6 +3845,7 @@ function playTone(freq, duration, volume, type){
 }
 
 function playSweep(freqFrom, freqTo, duration, volume){
+  __soundPlayedThisClick = true;
   const ctx = getAudioCtx();
   if(!ctx) return;
   if(ctx.state === 'suspended') ctx.resume();
@@ -3853,6 +3862,26 @@ function playSweep(freqFrom, freqTo, duration, volume){
   osc.start(now);
   osc.stop(now + duration);
 }
+
+// サイト内には、要素ごとに個別のタップ音が付いているもの(検索画面の
+// 感情タグチップ等)と、付いていないもの(ジャンル/国/年代/色のチップ、
+// フォームのタグ/配信サービスチップ等)が混在しており触り心地が不揃い
+// だった。個別に全箇所へ音を仕込むのではなく、クリックをdocumentで
+// 一括して受け止め、そのクリックでまだ何の音も鳴っていなければ
+// (=上のフラグが立っていなければ)控えめな汎用タップ音を鳴らす形にして、
+// 触れるものすべてに必ず何かしらの音が付くようにする。
+// キャプチャ段階(頭から下りてくる経路)でフラグをリセットしてから、
+// バブリング段階(要素本来のonclickが動いた後)で判定するため、要素固有の
+// 音がある場合はそちらが先に鳴り、ここでの汎用音は鳴らない。
+document.addEventListener('click', () => { __soundPlayedThisClick = false; }, true);
+document.addEventListener('click', (evt) => {
+  if(__soundPlayedThisClick) return;
+  const el = evt.target.closest(
+    '[onclick], button, .tagchip, .genre-chip, .country-chip, .color-swatch'
+  );
+  if(!el || el.disabled || el.classList.contains('disabled')) return;
+  playTone(500, 0.07, 0.05, 'sine');
+}, false);
 
 // ---- 比較用の音候補(検討中) ----
 const SOUND_PRESETS = {
@@ -5503,22 +5532,23 @@ function renderRecommended(currentMovie){
   const currentIsAnimeTv = currentMovie.isAnime && currentMovie.mediaType === 'tv';
   const currentIsAnimeWork = currentIsAnimeFilm || currentIsAnimeTv;
 
-  // アニメ作品の「シリーズの他の作品」判定。TMDbのcollection情報(series列)は
-  // 映画にしか付かず、TVシリーズには元々付与されない仕組みのため、
+  // 「シリーズの他の作品」判定。TMDbのcollection情報(series列)は映画にしか
+  // 付かず、TVシリーズや漫画・小説・音楽には元々付与されない仕組みのため、
   // 「鬼滅の刃」(TVアニメ)と「劇場版鬼滅の刃 無限列車編」(アニメ映画)の
   // ようなTV↔劇場版↔OVAをまたいだ同一フランチャイズをseries列だけでは
-  // 結び付けられない。アニメ作品同士に限り、記号や「劇場版」等の接頭辞を
+  // 結び付けられない。同じメディア種別同士に限り、記号や巻数表記等を
   // 除いたタイトルの部分一致で簡易的に同じシリーズとみなす(短すぎる
   // タイトル同士の誤爆を避けるため、4文字未満は対象外にする)。
-  function animeTitleKey(title){
+  // 元はアニメ専用だったが、漫画・小説・音楽にも同じ考え方を当てはめる。
+  function seriesTitleKey(title){
     return (title || '')
       .replace(/[「」『』（）()\[\]:：\-−~〜!！?？.,、。\s　]/g, '')
       .toLowerCase();
   }
-  function isSameAnimeSeries(a, b){
-    if(!isAnimeWork(a) || !isAnimeWork(b)) return false;
-    const ka = animeTitleKey(a.title);
-    const kb = animeTitleKey(b.title);
+  function isSameTitleSeries(a, b, sameCategory){
+    if(!sameCategory(a) || !sameCategory(b)) return false;
+    const ka = seriesTitleKey(a.title);
+    const kb = seriesTitleKey(b.title);
     if(ka.length < 4 || kb.length < 4) return false;
     const shorter = ka.length <= kb.length ? ka : kb;
     const longer = ka.length <= kb.length ? kb : ka;
@@ -5526,13 +5556,19 @@ function renderRecommended(currentMovie){
   }
 
   // シリーズの他の作品(公開年順)。実写はTMDbのcollection一致(series列)、
-  // アニメはそれに加えて上のタイトル部分一致でも拾う。
+  // アニメ・漫画・小説・音楽はそれに加えて上のタイトル部分一致でも拾う
+  // (それぞれ同じメディア種別同士でだけ結び付ける)。
   let seriesSiblings = currentMovie.series
     ? dedupeByNormalizedTitleYear(others.filter(m => m.series === currentMovie.series))
     : [];
-  if(currentIsAnimeWork){
+  const seriesCategoryCheck = currentIsAnimeWork ? isAnimeWork
+    : currentMovie.isManga ? (m => !!m.isManga)
+    : currentMovie.isNovel ? (m => !!m.isNovel)
+    : currentMovie.isMusic ? (m => !!m.isMusic)
+    : null;
+  if(seriesCategoryCheck){
     const seen = new Set(seriesSiblings.map(m => m.id));
-    others.filter(m => isSameAnimeSeries(currentMovie, m)).forEach(m => {
+    others.filter(m => isSameTitleSeries(currentMovie, m, seriesCategoryCheck)).forEach(m => {
       if(!seen.has(m.id)){ seriesSiblings.push(m); seen.add(m.id); }
     });
   }
