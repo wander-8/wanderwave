@@ -2593,7 +2593,7 @@
         <div class="post-block">
           <div class="post-kicker">レビュー</div>
           <div class="post-block-label">ひとこと感想(任意)</div>
-          <textarea id="review-text" maxlength="200" rows="3" placeholder="200字まで書けます・感情タグや表現度だけでもOK(例: 泣けるけど元気が出る話でした)"></textarea>
+          <textarea id="review-text" rows="3" placeholder="文字数の制限はありません・感情タグや表現度だけでもOK(例: 泣けるけど元気が出る話でした)"></textarea>
           <div class="slider-value" id="review-count">0 / 200</div>
         </div>
 
@@ -3049,7 +3049,7 @@
 
       <div class="field">
         <label>ひとこと感想(任意・200字まで)</label>
-        <textarea id="ml-review" maxlength="200" rows="3" placeholder="例: 泣けるけど元気が出る話でした"></textarea>
+        <textarea id="ml-review" rows="3" placeholder="例: 泣けるけど元気が出る話でした"></textarea>
       </div>
 
       <div class="form-actions">
@@ -6977,12 +6977,22 @@ function renderVisibleReviews(){
   const start = reviewsPage * REVIEWS_PAGE_SIZE;
   const visible = reviewsList.slice(start, start + REVIEWS_PAGE_SIZE);
 
-  reviewsEl.innerHTML = visible.map(r => `
+  // 文字数の制限を撤廃したことで長いレビューも投稿できるようになったため、
+  // 一覧が長くなりすぎないよう200字を超える分は畳んでおき、タップで全文を
+  // 開けるようにする(短いレビューはそのまま全文表示、追加の手間は無い)。
+  const REVIEW_PREVIEW_LEN = 200;
+  reviewsEl.innerHTML = visible.map((r, i) => {
+    const text = r.review_text;
+    const isLong = text.length > REVIEW_PREVIEW_LEN;
+    const bodyId = `r-body-${start + i}`;
+    return `
     <div class="review-card">
       <div class="r-name">${escapeHtml((r.profiles && r.profiles.user_name) || 'ゲスト')}</div>
-      <div class="r-body">${escapeHtml(r.review_text)}</div>
+      <div class="r-body" id="${bodyId}" data-full="${escapeHtml(text)}" data-preview="${escapeHtml(text.slice(0, REVIEW_PREVIEW_LEN))}" data-expanded="0">${escapeHtml(isLong ? text.slice(0, REVIEW_PREVIEW_LEN) + '…' : text)}</div>
+      ${isLong ? `<button class="link-btn" onclick="toggleReviewBodyExpand('${bodyId}')" id="${bodyId}-btn">続きを読む</button>` : ''}
     </div>
-  `).join('');
+  `;
+  }).join('');
 
   document.getElementById('d-reviews-count').textContent = reviewsList.length > 0 ? `${reviewsList.length}件` : '';
 
@@ -6998,6 +7008,21 @@ function renderVisibleReviews(){
   document.getElementById('reviews-page-next').disabled = reviewsPage >= totalPages - 1;
 }
 
+function toggleReviewBodyExpand(bodyId){
+  const el = document.getElementById(bodyId);
+  const btn = document.getElementById(bodyId + '-btn');
+  const expanded = el.dataset.expanded === '1';
+  if(expanded){
+    el.innerHTML = escapeHtml(el.dataset.preview) + '…';
+    btn.textContent = '続きを読む';
+    el.dataset.expanded = '0';
+  } else {
+    el.innerHTML = escapeHtml(el.dataset.full);
+    btn.textContent = '閉じる';
+    el.dataset.expanded = '1';
+  }
+}
+
 function goToReviewsPage(delta){
   reviewsPage += delta;
   renderVisibleReviews();
@@ -7006,7 +7031,7 @@ function goToReviewsPage(delta){
 
 function updateReviewCount(){
   const box = document.getElementById('review-text');
-  document.getElementById('review-count').textContent = box.value.length + ' / ' + box.getAttribute('maxlength');
+  document.getElementById('review-count').textContent = box.value.length + '文字';
 }
 
 document.addEventListener('input', (e) => {
@@ -8901,8 +8926,8 @@ function generateDiagnosis(pocketMovies){
   const oracleFeeling = (secondTag && FEELING_WORD[secondTag]) || "これまでとは少し違う気分";
   const oracleSection = [
     '✦ 映画オラクル(未来への一歩)',
-    `次にポケットに加える1本は、${oracleFeeling}をそっと連れてきてくれそうです。`,
-    'どんな新しい扉が開くのか、今から少し楽しみにしていてくださいね。'
+    `次にポケットに加える1本は、${oracleFeeling}をそっと連れてきてくれるかもしれません。`,
+    'どんな新しい扉が開くのか、今から少し楽しみにしていてください。'
   ].join('\n');
 
   const body = [cardSection, senseSection, oracleSection].join('\n\n');
@@ -8920,12 +8945,22 @@ function generateDiagnosis(pocketMovies){
   };
 }
 
+// 「今日の贈り物」が映画専用に固定されていたのを、日替わりで映画・アニメ・
+// ドラマ・漫画・小説・音楽を巡回するように変更。dayNumを直接インデックスに
+// 使うので、同じ日は必ず同じメディア種別になり、日が変われば次の種別に
+// 進む(CATALOG_MODESの並び順どおりに巡回)。
+function todaysGiftMode(){
+  const dayNum = Math.floor(Date.now() / 86400000);
+  return CATALOG_MODES[dayNum % CATALOG_MODES.length][0];
+}
+
 // 一覧で選ばせる「おすすめ」ではなく、傾向が近い未選択の作品から1本だけを
 // おみくじのように差し出す。日付+選んだ作品IDをシードにしているので、
 // 同じ日にページを開き直しても結果は変わらない(日が変われば新しい1本になる)。
 function pickOmikujiMovie(topTag, secondTag, excludeIds){
+  const mode = todaysGiftMode();
   const candidates = MOVIES.filter(m =>
-    !excludeIds.includes(m.id) && !m.isAnime && !m.isDrama && !m.isManga && !m.isNovel && !m.isMusic
+    !excludeIds.includes(m.id) && isInCatalogMode(m, mode)
     && (m.tags.includes(topTag) || (secondTag && m.tags.includes(secondTag)))
   );
   if(!candidates.length) return null;
