@@ -2470,7 +2470,7 @@
         <div class="movie-info-label">製作国</div>
         <div class="movie-info-value" id="d-country">情報がまだありません</div>
       </div>
-      <div class="movie-info-row">
+      <div class="movie-info-row" id="d-synopsis-row">
         <div class="movie-info-label">あらすじ</div>
         <div class="movie-info-value" id="d-synopsis">情報がまだありません</div>
       </div>
@@ -2536,6 +2536,24 @@
           <div class="genre-cloud" id="episodes-chunk-tabs"></div>
           <div class="episodes-grid" id="episodes-grid"></div>
           <div class="episodes-loading" id="episodes-loading" style="display:none;">読み込み中…</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 音楽アルバム向けの収録曲一覧。話数一覧(episodes-wrap)と同じ、普段は
+         折りたたんでおきタップで展開する形。あらすじの代わりにこちらを出す
+         (アルバムに「あらすじ」は無いため)。iTunesにcollectionIdを保存して
+         いないので、開いた時にタイトル+アーティストで都度検索する
+         (itunes-album-tracks参照)。 -->
+    <div id="tracks-wrap" style="display:none;">
+      <button class="filter-disclosure-btn" id="tracks-toggle-btn" onclick="toggleTracksSection()">
+        <span id="tracks-toggle-label">収録曲を見る</span>
+        <span class="filter-disclosure-chev" id="tracks-chev">⌄</span>
+      </button>
+      <div class="filter-disclosure-body episodes-disclosure-body" id="tracks-body">
+        <div class="filter-disclosure-inner">
+          <div class="episodes-grid" id="tracks-grid"></div>
+          <div class="episodes-loading" id="tracks-loading" style="display:none;">読み込み中…</div>
         </div>
       </div>
     </div>
@@ -6318,6 +6336,80 @@ function resetEpisodesUI(m){
   document.getElementById('episodes-loading').style.display = 'none';
 }
 
+// 音楽アルバムの「収録曲を見る」欄。話数一覧と同じ折りたたみ式だが、
+// シーズン・区切りチップは無く常にフラットな一覧を出す(アルバムの曲数は
+// 通常100曲を超えないため)。itunes-album-tracks関数を開いた時に一度だけ
+// 呼び、結果をtracksCacheに残して同じ作品の間は再取得しない。
+let tracksOpen = false;
+let tracksCache = null;
+let tracksLoadToken = 0;
+
+function resetTracksUI(m){
+  tracksOpen = false;
+  tracksCache = null;
+  tracksLoadToken++;
+  document.getElementById('tracks-wrap').style.display = m.isMusic ? 'block' : 'none';
+  document.getElementById('tracks-toggle-btn').classList.remove('open');
+  document.getElementById('tracks-body').classList.remove('open');
+  document.getElementById('tracks-toggle-label').textContent = '収録曲を見る';
+  document.getElementById('tracks-grid').innerHTML = '';
+  document.getElementById('tracks-loading').style.display = 'none';
+}
+
+async function toggleTracksSection(){
+  tracksOpen = !tracksOpen;
+  document.getElementById('tracks-toggle-btn').classList.toggle('open', tracksOpen);
+  document.getElementById('tracks-body').classList.toggle('open', tracksOpen);
+  if(tracksOpen && tracksCache === null){
+    await loadAlbumTracks(state.currentMovieId);
+  }
+}
+
+function formatTrackDuration(ms){
+  if(!ms) return '';
+  const totalSec = Math.round(ms / 1000);
+  const min = Math.floor(totalSec / 60);
+  const sec = totalSec % 60;
+  return `${min}:${String(sec).padStart(2, '0')}`;
+}
+
+async function loadAlbumTracks(movieId){
+  const token = tracksLoadToken;
+  document.getElementById('tracks-loading').style.display = 'block';
+  document.getElementById('tracks-grid').innerHTML = '';
+  try{
+    const { data, error } = await supabase.functions.invoke('itunes-album-tracks', {
+      body: { movie_id: movieId }
+    });
+    if(token !== tracksLoadToken || state.currentMovieId !== movieId) return;
+    document.getElementById('tracks-loading').style.display = 'none';
+    if(error || !data || !data.tracks || !data.tracks.length){
+      tracksCache = [];
+      document.getElementById('tracks-grid').innerHTML = '<div class="episodes-loading">収録曲情報が見つかりませんでした</div>';
+      return;
+    }
+    tracksCache = data.tracks;
+    renderTracksGrid(tracksCache);
+  }catch(err){
+    console.error('収録曲情報の取得に失敗しました', err);
+    document.getElementById('tracks-loading').style.display = 'none';
+  }
+}
+
+function renderTracksGrid(tracks){
+  const root = document.getElementById('tracks-grid');
+  root.innerHTML = tracks.map(t => `
+    <div class="episode-card">
+      <div class="episode-thumb">${t.trackNumber || '♪'}</div>
+      <div class="episode-meta">
+        <div class="episode-num">${t.trackNumber ? `${t.trackNumber}曲目` : ''}</div>
+        <div class="episode-name">${escapeHtml(t.trackName)}</div>
+        ${t.trackTimeMillis ? `<div class="episode-love-hint">${formatTrackDuration(t.trackTimeMillis)}</div>` : ''}
+      </div>
+    </div>
+  `).join('');
+}
+
 async function toggleEpisodesSection(){
   episodesOpen = !episodesOpen;
   document.getElementById('episodes-toggle-btn').classList.toggle('open', episodesOpen);
@@ -6580,7 +6672,10 @@ function renderMovieInfoPanel(m){
   document.getElementById('d-director').textContent = m.director || '情報がまだありません';
   document.getElementById('d-cast').textContent = (m.cast && m.cast.length > 0) ? m.cast.join('、') : '情報がまだありません';
   document.getElementById('d-country').textContent = m.country || '情報がまだありません';
-  document.getElementById('d-synopsis').textContent = m.synopsis || '情報がまだありません';
+  // 音楽アルバムに「あらすじ」は無いので、この行ごと隠す(代わりに
+  // tracks-wrapの「収録曲を見る」で曲目を出す)。
+  document.getElementById('d-synopsis-row').style.display = m.isMusic ? 'none' : '';
+  if(!m.isMusic) document.getElementById('d-synopsis').textContent = m.synopsis || '情報がまだありません';
   document.getElementById('movie-info-panel').style.display = 'none';
 }
 
@@ -6696,6 +6791,7 @@ async function goDetail(id){
   renderMovieInfoPanel(m);
   resetTrailerUI(m);
   resetEpisodesUI(m);
+  resetTracksUI(m);
 
   tagVoteOpen = false;
   document.getElementById('tag-vote-select').style.display = 'none';
