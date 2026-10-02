@@ -4816,7 +4816,15 @@ function renderFeaturedBanner(){
   // 固定化してしまう。実際に愛された実績がある作品(loveCount>0)の中から
   // 上位30本のプールを作り、そこから日替わりで5本をピックアップする。
   const catalogMode = currentCatalogMode();
-  const eligibleMovies = MOVIES.filter(m => !matchesExcludedWord(m) && isInCatalogMode(m, catalogMode));
+  // この特集バナーは、見る側が意図して検索したわけではなく毎回自動で
+  // 目に入る場所なので、表現度フィルターで意図的に強い内容を探す場合とは
+  // 扱いを分ける(検索では強い内容も隠さない方針だが、ここは誰でも最初に
+  // 見る場所であり子供も使うサイトであるため、控えめ(25以下、または未評価)
+  // な作品だけに絞る)。表現度の推定が甘く本来もっと強いはずの作品が
+  // 紛れ込む事故は今後もありうるため、個別の推定値の精度だけに頼らない
+  // 安全マージンとしてここで絞る。
+  const eligibleMovies = MOVIES.filter(m => !matchesExcludedWord(m) && isInCatalogMode(m, catalogMode)
+    && (movieIntensityBand(m) == null || movieIntensityBand(m) <= 25));
   const lovedPool = eligibleMovies.filter(m => m.loveCount > 0)
     .sort((a, b) => loveAverage(b) - loveAverage(a))
     .slice(0, 30);
