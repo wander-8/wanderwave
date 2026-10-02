@@ -481,7 +481,32 @@
   .filter-group{ margin-bottom:16px; }
   .filter-group:last-child{ margin-bottom:0; }
   .filter-group-label{ font-size:12px; color: var(--ink-soft); margin:0 0 8px; letter-spacing:.03em; }
-  .genre-cloud, .country-cloud{ display:flex; flex-wrap:wrap; gap:8px; }
+  /* ジャンル・国・年代をタブで1ページずつ切り替える(タップでも、タブ行
+     自体を横にスワイプしても切り替えられる)。ページの中身(チップの横
+     スクロール)とジェスチャーが競合しないよう、ドラッグで切り替えるのは
+     タブ行だけに絞る(initFilterTabSwipe参照)。 */
+  .filter-tabs{ display:flex; gap:6px; margin-bottom:12px; }
+  .filter-tab{
+    flex:0 0 auto; padding:6px 14px; border-radius:999px;
+    border:1px solid var(--line); background:transparent;
+    color: var(--ink-soft); font-size:13px; font-weight:600; cursor:pointer;
+    transition: all .18s ease;
+  }
+  .filter-tab.active{ border-color: var(--ink-soft); color: var(--ink); background: var(--surface); }
+  .filter-pages-viewport{ overflow:hidden; }
+  .filter-pages-track{ display:flex; }
+  .filter-page{ flex:0 0 100%; min-width:0; }
+  /* 音楽モードでジャンル(47種)・国(30種超)まで増やした結果、折り返し
+     (flex-wrap:wrap)だと「詳しく絞り込む」が縦に何段も伸びて使いにくいとの
+     指摘を受けた。棚(ホームの各カテゴリ列)や「みんなの声」と同じ、横スワイプ
+     1列のカルーセルに変える(折り返さず、1行に収めて横にスクロール)。 */
+  .genre-cloud, .country-cloud{
+    display:flex; flex-wrap:nowrap; gap:8px;
+    overflow-x:auto; -webkit-overflow-scrolling:touch;
+    scroll-snap-type:x proximity; padding-bottom:2px;
+    scrollbar-width:none;
+  }
+  .genre-cloud::-webkit-scrollbar, .country-cloud::-webkit-scrollbar{ display:none; }
   /* ジャンル/国チップは選択が変わるたびに(押した本人以外も含めて)クラウド
      全体を作り直しているため、押した瞬間だけでなく再描画のたびに小さく
      ポップして現れるようにする(結果カードの登場演出と同じ言語)。 */
@@ -499,6 +524,9 @@
     cursor:pointer;
     transition: all .18s ease, transform .12s ease;
     animation: chipPopIn .2s ease-out both;
+    flex-shrink: 0;
+    scroll-snap-align: start;
+    white-space: nowrap;
   }
   .genre-chip:active, .country-chip:active{ transform: scale(0.92); }
   .genre-chip.active{
@@ -2482,24 +2510,32 @@
       </button>
       <div class="filter-disclosure-body" id="filter-disclosure-body">
         <div class="filter-disclosure-inner">
-          <div class="filter-group" id="genre-filter-group">
-            <div class="filter-group-label">ジャンル</div>
-            <div class="genre-cloud" id="genre-cloud"></div>
-          </div>
-          <div class="filter-group" id="country-filter-group">
-            <div class="filter-group-label">国</div>
-            <div class="country-cloud" id="country-cloud"></div>
-          </div>
-          <!-- 年代はバー(スライダー)だと、映画とアニメで実際に作品がある
-               年代の幅が全然違う(映画は戦前から、アニメは近年に偏る)のに
-               同じ目盛りを出してしまい、選んでも0件になる年代が多くて
-               不安な見た目になっていた。ジャンル・国と同じチップ形式にし、
-               その時のモード(映画/アニメ)の中で実際に作品がある年代だけを
-               動的に出す(renderDecadeCloud参照)ことで、選んでも必ず
-               何かしら出てくるようにする。 -->
-          <div class="filter-group">
-            <div class="filter-group-label">年代</div>
-            <div class="genre-cloud" id="decade-cloud"></div>
+          <!-- 音楽モードでジャンル(47種)・国(30種超)まで増やしたところ、
+               ジャンル・国・年代を縦に全部並べたままだと「詳しく絞り込む」
+               全体が長くなりすぎて使いにくいとの指摘を受けた。3つを縦に
+               並べるのではなく、タブ(タップ/スワイプ)で1つずつ切り替える
+               ページ送りの形に変える(各ページの中のチップ自体も、折り返さず
+               横1列でスクロールするカルーセルのまま)。 -->
+          <div class="filter-tabs" id="filter-tabs"></div>
+          <div class="filter-pages-viewport" id="filter-pages-viewport">
+            <div class="filter-pages-track" id="filter-pages-track">
+              <div class="filter-page" id="genre-filter-group">
+                <div class="genre-cloud" id="genre-cloud"></div>
+              </div>
+              <div class="filter-page" id="country-filter-group">
+                <div class="country-cloud" id="country-cloud"></div>
+              </div>
+              <!-- 年代はバー(スライダー)だと、映画とアニメで実際に作品がある
+                   年代の幅が全然違う(映画は戦前から、アニメは近年に偏る)のに
+                   同じ目盛りを出してしまい、選んでも0件になる年代が多くて
+                   不安な見た目になっていた。ジャンル・国と同じチップ形式にし、
+                   その時のモード(映画/アニメ)の中で実際に作品がある年代だけを
+                   動的に出す(renderDecadeCloud参照)ことで、選んでも必ず
+                   何かしら出てくるようにする。 -->
+              <div class="filter-page">
+                <div class="genre-cloud" id="decade-cloud"></div>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -4431,6 +4467,7 @@ function renderGenreCloud(){
     };
     el.appendChild(chip);
   });
+  renderFilterTabs();
 }
 
 function renderCountryCloud(){
@@ -4455,7 +4492,89 @@ function renderCountryCloud(){
     };
     el.appendChild(chip);
   });
+  renderFilterTabs();
 }
+
+// ジャンル・国・年代を縦に並べず、タブで1ページずつ切り替える(タップ/
+// タブ行のスワイプどちらでも)。どれかのページが空(絵本モードのジャンル等)
+// の時はそのタブ自体を出さない(選んでも何も無いページに迷い込まない
+// ように)。各page*Clouds関数は既に「中身が空ならdisplay:noneにする」
+// 判定を済ませているので、ここではその結果(display)を読むだけでよい。
+const FILTER_PAGE_KEYS = ['genre', 'country', 'decade'];
+const FILTER_PAGE_LABELS = { genre: 'ジャンル', country: '国', decade: '年代' };
+let filterPageIndex = 0;
+function filterPageIsVisible(key){
+  if(key === 'genre') return document.getElementById('genre-filter-group').style.display !== 'none';
+  if(key === 'country') return document.getElementById('country-filter-group').style.display !== 'none';
+  return true; // 年代は常に出す(0件になることが無い作り)
+}
+function renderFilterTabs(){
+  const visibleKeys = FILTER_PAGE_KEYS.filter(filterPageIsVisible);
+  // 選んでいたタブがモード切り替え等で消えた場合は、残っている最初の
+  // タブに静かに切り替える(ジャンル・国チップの「選択肢が消えたら
+  // 選択解除する」お掃除ロジックと同じ考え方)。
+  if(!visibleKeys.includes(FILTER_PAGE_KEYS[filterPageIndex])){
+    filterPageIndex = FILTER_PAGE_KEYS.indexOf(visibleKeys[0] || 'genre');
+  }
+  document.getElementById('filter-tabs').innerHTML = visibleKeys.map(key => {
+    const idx = FILTER_PAGE_KEYS.indexOf(key);
+    const active = idx === filterPageIndex;
+    return `<button class="filter-tab${active ? ' active' : ''}" onclick="goToFilterPage('${key}')">${FILTER_PAGE_LABELS[key]}</button>`;
+  }).join('');
+  positionFilterTrack(false);
+}
+function goToFilterPage(key){
+  filterPageIndex = FILTER_PAGE_KEYS.indexOf(key);
+  renderFilterTabs();
+}
+function positionFilterTrack(animated){
+  const viewport = document.getElementById('filter-pages-viewport');
+  const track = document.getElementById('filter-pages-track');
+  track.style.transition = animated === false ? 'none' : 'transform 0.26s cubic-bezier(.22,.8,.32,1)';
+  track.style.transform = `translateX(-${filterPageIndex * viewport.offsetWidth}px)`;
+}
+// タブ行自体を横にドラッグしてもページを切り替えられるようにする
+// (チップの横スクロールと競合しないよう、ドラッグの起点をタブ行だけに
+// 絞ってあるので、ジャンル・国のチップ一覧を横スクロールする操作とは
+// ぶつからない)。initCatalogSwipeGestureと同じしきい値・追従の考え方。
+(function initFilterTabSwipe(){
+  const tabs = document.getElementById('filter-tabs');
+  const track = document.getElementById('filter-pages-track');
+  let startX = 0, dragging = false;
+  tabs.addEventListener('touchstart', (e) => {
+    if(e.touches.length > 1) return;
+    startX = e.touches[0].clientX;
+    dragging = false;
+    track.style.transition = 'none';
+  }, { passive: true });
+  tabs.addEventListener('touchmove', (e) => {
+    if(e.touches.length > 1) return;
+    const dx = e.touches[0].clientX - startX;
+    if(!dragging){
+      if(Math.abs(dx) < 10) return;
+      dragging = true;
+    }
+    const viewport = document.getElementById('filter-pages-viewport');
+    const base = -filterPageIndex * viewport.offsetWidth;
+    track.style.transform = `translateX(${base + dx}px)`;
+  }, { passive: true });
+  tabs.addEventListener('touchend', (e) => {
+    if(!dragging){ positionFilterTrack(false); return; }
+    dragging = false;
+    const dx = e.changedTouches[0].clientX - startX;
+    const visibleKeys = FILTER_PAGE_KEYS.filter(filterPageIsVisible);
+    const curPos = visibleKeys.indexOf(FILTER_PAGE_KEYS[filterPageIndex]);
+    const SWIPE_MIN_DISTANCE = 40;
+    if(Math.abs(dx) >= SWIPE_MIN_DISTANCE && curPos !== -1){
+      const dir = dx < 0 ? 1 : -1;
+      const nextPos = curPos + dir;
+      if(nextPos >= 0 && nextPos < visibleKeys.length){
+        filterPageIndex = FILTER_PAGE_KEYS.indexOf(visibleKeys[nextPos]);
+      }
+    }
+    renderFilterTabs();
+  }, { passive: true });
+})();
 
 function toggleFilterDisclosure(){
   const wasOpen = document.getElementById('filter-disclosure-btn').classList.contains('open');
@@ -4583,6 +4702,7 @@ function renderDecadeCloud(){
     };
     el.appendChild(chip);
   });
+  renderFilterTabs();
 }
 
 function onSearchInput(){
@@ -7266,11 +7386,12 @@ function updateCatalogModeToggleUI(){
     const t = e.touches[0];
     startX = t.clientX;
     startY = t.clientY;
-    // .results(通常のカード行)に加えて.review-feed-marquee(「みんなの声」)も
-    // それ自体が横ドラッグでスクロールする欄なので、ここで拾わず素通りさせる
-    // (以前はここに入っておらず、「みんなの声」を触ろうとするとスワイプ扱い
-    // されてカテゴリが切り替わってしまっていた)。
-    ignoreSwipe = !!e.target.closest('.results, .review-feed-marquee');
+    // .results(通常のカード行)・.review-feed-marquee(「みんなの声」)に加えて
+    // .genre-cloud/.country-cloud(「詳しく絞り込む」のジャンル・国・年代、
+    // 横スワイプのカルーセルに変更済み)もそれ自体が横ドラッグで動く欄なので、
+    // ここで拾わず素通りさせる(以前はここに入っておらず、ジャンルチップを
+    // 横に流そうとするとスワイプ扱いされてカテゴリが切り替わってしまっていた)。
+    ignoreSwipe = !!e.target.closest('.results, .review-feed-marquee, .genre-cloud, .country-cloud');
     dragging = false;
     homeView.style.transition = 'none';
   }, { passive: true });
