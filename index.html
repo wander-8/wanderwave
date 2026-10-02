@@ -498,15 +498,19 @@
   .filter-page{ flex:0 0 100%; min-width:0; }
   /* 音楽モードでジャンル(47種)・国(30種超)まで増やした結果、折り返し
      (flex-wrap:wrap)だと「詳しく絞り込む」が縦に何段も伸びて使いにくいとの
-     指摘を受けた。棚(ホームの各カテゴリ列)や「みんなの声」と同じ、横スワイプ
-     1列のカルーセルに変える(折り返さず、1行に収めて横にスクロール)。 */
+     指摘を受けた。1行の横スクロールにしたところ、今度は「真っ直ぐすぎる」
+     (単調)との指摘を受けたので、2段の千鳥(ジグザグ)配置にする。偶数番目を
+     上段・奇数番目を下段に振り分け(renderZigzagChips参照)、下段は半チップ分
+     右にずらす。2段をまとめて1つの横スクロール領域として扱う。 */
   .genre-cloud, .country-cloud{
-    display:flex; flex-wrap:nowrap; gap:8px;
+    display:flex; flex-direction:column; gap:8px;
     overflow-x:auto; -webkit-overflow-scrolling:touch;
-    scroll-snap-type:x proximity; padding-bottom:2px;
+    padding-bottom:2px;
     scrollbar-width:none;
   }
   .genre-cloud::-webkit-scrollbar, .country-cloud::-webkit-scrollbar{ display:none; }
+  .chip-row{ display:flex; flex-wrap:nowrap; gap:8px; }
+  .chip-row-offset{ margin-left:24px; }
   /* ジャンル/国チップは選択が変わるたびに(押した本人以外も含めて)クラウド
      全体を作り直しているため、押した瞬間だけでなく再描画のたびに小さく
      ポップして現れるようにする(結果カードの登場演出と同じ言語)。 */
@@ -525,7 +529,6 @@
     transition: all .18s ease, transform .12s ease;
     animation: chipPopIn .2s ease-out both;
     flex-shrink: 0;
-    scroll-snap-align: start;
     white-space: nowrap;
   }
   .genre-chip:active, .country-chip:active{ transform: scale(0.92); }
@@ -4440,9 +4443,26 @@ function selectBookType(value){
   renderResults();
 }
 
+// チップを2段の千鳥(ジグザグ)配置で並べる共通ヘルパー。1行の横スクロール
+// だと件数が多いモード(音楽のジャンル47種等)では単調に見えるとの指摘を
+// 受け、偶数番目を上段・奇数番目を下段に振り分ける(下段は.chip-row-offset
+// で半チップ分ずらす)。2段ぶんをまとめて1つの横スクロール領域として扱う
+// (段ごとに別々にスクロールさせるわけではない)。
+function renderZigzagChips(container, items, buildChip){
+  container.innerHTML = "";
+  const rowA = document.createElement('div');
+  rowA.className = 'chip-row';
+  const rowB = document.createElement('div');
+  rowB.className = 'chip-row chip-row-offset';
+  items.forEach((item, i) => {
+    (i % 2 === 0 ? rowA : rowB).appendChild(buildChip(item));
+  });
+  container.appendChild(rowA);
+  container.appendChild(rowB);
+}
+
 function renderGenreCloud(){
   const el = document.getElementById('genre-cloud');
-  el.innerHTML = "";
   const genres = availableGenres();
   // 絵本・図鑑のように、そもそも楽天側にサブジャンルの区分が存在しない
   // 本の種類を選んでいる時はジャンルチップが1つも無くなる(新書の
@@ -4454,7 +4474,7 @@ function renderGenreCloud(){
   // 選択を解除する(消えたチップの分だけ絞り込みが宙に浮いて0件のまま
   // 気づけない、という事故を防ぐ)。
   [...state.activeGenres].forEach(g => { if(!genres.includes(g)) state.activeGenres.delete(g); });
-  genres.forEach(genre => {
+  renderZigzagChips(el, genres, (genre) => {
     const chip = document.createElement('div');
     const isActive = state.activeGenres.has(genre);
     chip.className = 'genre-chip' + (isActive ? ' active' : '');
@@ -4465,21 +4485,20 @@ function renderGenreCloud(){
       renderGenreCloud();
       renderResults();
     };
-    el.appendChild(chip);
+    return chip;
   });
   renderFilterTabs();
 }
 
 function renderCountryCloud(){
   const el = document.getElementById('country-cloud');
-  el.innerHTML = "";
   const countries = availableCountries();
   // 小説・漫画・音楽のように実質「日本」しか選択肢が無いモードでは、
   // 選んでも絞り込みの意味が無いチップが並ぶだけで邪魔なので、国の欄自体を
   // 丸ごと隠す(選択肢が2つ以上ある時だけ出す)。
   document.getElementById('country-filter-group').style.display = countries.length > 1 ? '' : 'none';
   [...state.activeCountries].forEach(c => { if(!countries.includes(c)) state.activeCountries.delete(c); });
-  countries.forEach(country => {
+  renderZigzagChips(el, countries, (country) => {
     const chip = document.createElement('div');
     const isActive = state.activeCountries.has(country);
     chip.className = 'country-chip' + (isActive ? ' active' : '');
@@ -4490,7 +4509,7 @@ function renderCountryCloud(){
       renderCountryCloud();
       renderResults();
     };
-    el.appendChild(chip);
+    return chip;
   });
   renderFilterTabs();
 }
@@ -4682,7 +4701,6 @@ function availableDecades(){
 
 function renderDecadeCloud(){
   const el = document.getElementById('decade-cloud');
-  el.innerHTML = "";
   // 選択中の年代が、モード切り替え等で選択肢から消えてしまった場合は
   // 「こだわらない」に戻す(消えたチップの分だけ絞り込みが宙に浮いて
   // 0件のまま気づけない、という事故を防ぐ)。
@@ -4690,7 +4708,7 @@ function renderDecadeCloud(){
   if(state.decadeFilter !== 0 && !decades.includes(state.decadeFilter)){
     state.decadeFilter = 0;
   }
-  decades.forEach(d => {
+  renderZigzagChips(el, decades, (d) => {
     const chip = document.createElement('div');
     const isActive = state.decadeFilter === d;
     chip.className = 'genre-chip' + (isActive ? ' active' : '');
@@ -4700,7 +4718,7 @@ function renderDecadeCloud(){
       renderDecadeCloud();
       renderResults();
     };
-    el.appendChild(chip);
+    return chip;
   });
   renderFilterTabs();
 }
