@@ -7884,104 +7884,169 @@ function applyBigFieldsPatch(movie, row){
 let nonMovieCatalogLoaded = false;
 let movieBigFieldsLoaded = false;
 
-async function loadMovies(){
+// 1ページ目(映画のみ・FIRST_PAGE_SIZE件)をブラウザに保存しておき、
+// 次回アクセス時はネットワークを待たずにそこから即座に描画する
+// (「2回目以降をほぼ待ち時間なしにしたい」というオーナーの要望)。
+// あくまで初回描画を速くするための一時的な見た目であり、裏では毎回
+// 必ず最新データを取りに行って静かに差し替える(キャッシュが真実の
+// 代わりになることは無い)。行の形(MOVIE_LIGHT_COLUMNS)が将来変わった
+// 場合に古いキャッシュを安全に無視できるよう、バージョンを持たせておく。
+const CATALOG_CACHE_KEY = 'wander_catalog_cache_v1';
+const CATALOG_CACHE_VERSION = 1;
+const CATALOG_CACHE_MAX_AGE_MS = 24 * 60 * 60 * 1000; // これより古い保存分は信用せず、素直にネットワークを待つ
+
+function readCatalogCache(){
   try{
-    // カタログが5万件を超えたため、初回取得は常に映画だけに絞る。
-    // アニメ・ドラマ・漫画・小説・音楽の残り分はスプラッシュをブロック
-    // しないバックグラウンド取得(loadNonMovieCatalogInBackground)に回す
-    // ことで、初回表示が5万件超のフル取得で毎回重くなる事故を防ぐ
-    // (この関数の完了を待ってスプラッシュが閉じるため)。
-    //
-    // 映画だけに絞っても実測で約7.2秒(以前)〜10.6秒(カタログ増加後の
-    // 最新実測)かかっていた(35,428件)。これはスプラッシュの8秒セーフ
-    // ティタイムアウトを超えてしまい、「ロゴが出たまま固まって見える→
-    // すぐ閉じたくなる」という離脱の主因になっていた。そのため全件を
-    // 待ってから描画するのをやめ、まず1ページ分(FIRST_PAGE_SIZE件)だけ
-    // 取得してすぐ描画し、残りはloadRemainingMoviesInBackground()で
-    // スプラッシュを待たせずに裏で取得・結合する(1ページ目で全件読み
-    // 終わっていた場合=カタログがFIRST_PAGE_SIZE件以下の場合は何もしない)。
-    //
-    // 実測の結果、転送バイト数が時間にほぼ比例していて、内訳はsynopsis
-    // 24.4%・cast_members 11.6%(2つで約36%)だったため、この2列だけは
-    // ここでは取得せず、loadMovieBigFieldsInBackground()で初期表示を
-    // ブロックせずに後から取得する。検索の根幹であるkeywordsは(サイトの
-    // 存在意義に関わる機能のため)引き続きここで即座に取得する。
-    // moviesの軽量取得を最優先で単独実行してから、残り(review_stats・
-    // expression_estimates)をまとめて取る。両方とも同時にCONCURRENCY分の
-    // リクエストを投げると、匿名(anon)ロールのstatement_timeout(3秒)に
-    // 引っかかりmoviesの取得ごと失敗する(=カタログが丸ごと空になる)事故が
-    // 実際に発生したため、スプラッシュをブロックする最重要な取得だけ他と
-    // 競合させない(1ページ目だけに絞った今も、この順序は変えない)。
-    const FIRST_PAGE_SIZE = 2000;
-    const plainMovieFilter = (q) => q.match({ is_anime: false, is_drama: false, is_manga: false, is_novel: false, is_music: false });
-    const { data: firstPageData, error: firstPageError } = await plainMovieFilter(supabase.from('movies').select(MOVIE_LIGHT_COLUMNS)).order('id', { ascending: true }).range(0, FIRST_PAGE_SIZE - 1);
-    if(firstPageError) throw firstPageError;
-    const firstPageRows = firstPageData || [];
+    const raw = localStorage.getItem(CATALOG_CACHE_KEY);
+    if(!raw) return null;
+    const parsed = JSON.parse(raw);
+    if(!parsed || parsed.version !== CATALOG_CACHE_VERSION) return null;
+    if(!parsed.savedAt || Date.now() - parsed.savedAt > CATALOG_CACHE_MAX_AGE_MS) return null;
+    if(!Array.isArray(parsed.firstPageRows) || !parsed.firstPageRows.length) return null;
+    return parsed;
+  }catch{
+    return null; // プライベートモード等でlocalStorageが使えない・壊れている場合は無視
+  }
+}
 
-    // review_stats/expression_estimatesは全件(7万行超、複数ページに分けて
-    // 取得するため実測2秒以上)取得すると1ページ目の表示まで道連れで
-    // 遅くなる。表現度(表現度バッジ)は実データを大事にしている機能なので、
-    // 0件/未推定のまま一瞬表示するのは避けたい一方、全件を待つのも遅い。
-    // そこで1ページ目に実際に含まれるidの範囲(min〜max)だけに絞って取得する
-    // (ほぼ1往復で済む)。全件分は後でloadFullStatsAndEstimates()が裏で
-    // 取得し、残りの映画・他メディア種別のためにそちらを使う。
-    // 既にidの昇順で取得済みなので、先頭と末尾がそのままmin/maxになる。
-    const minId = firstPageRows.length ? firstPageRows[0].id : null;
-    const maxId = firstPageRows.length ? firstPageRows[firstPageRows.length - 1].id : null;
-    const [statsRes, estimatesRes] = minId == null
-      ? [{ data: [] }, { data: [] }]
-      : await Promise.all([
-          supabase.from('movie_review_stats').select('*').gte('movie_id', minId).lte('movie_id', maxId),
-          supabase.from('movie_expression_estimates').select('movie_id, expression_level, reason_tags').gte('movie_id', minId).lte('movie_id', maxId)
-        ]);
-    if(statsRes.error) throw statsRes.error;
-    if(estimatesRes.error) throw estimatesRes.error;
+function writeCatalogCache(firstPageRows, statsByMovie, estimatesByMovie){
+  try{
+    localStorage.setItem(CATALOG_CACHE_KEY, JSON.stringify({
+      version: CATALOG_CACHE_VERSION,
+      savedAt: Date.now(),
+      firstPageRows,
+      statsByMovie,
+      estimatesByMovie,
+    }));
+  }catch{
+    // 容量超過(QuotaExceededError)・プライベートモード等で保存できなくても、
+    // キャッシュは無くても動く機能なので致命的ではない。無視する。
+  }
+}
 
-    const firstPageStatsByMovie = {};
-    (statsRes.data || []).forEach(s => { firstPageStatsByMovie[s.movie_id] = s; });
-    const firstPageEstimatesByMovie = {};
-    (estimatesRes.data || []).forEach(e => { firstPageEstimatesByMovie[e.movie_id] = e; });
+async function loadMovies(){
+  const FIRST_PAGE_SIZE = 2000;
+  const plainMovieFilter = (q) => q.match({ is_anime: false, is_drama: false, is_manga: false, is_novel: false, is_music: false });
 
-    MOVIES = firstPageRows.map(row => buildMovieRecord(row, firstPageStatsByMovie, firstPageEstimatesByMovie));
-
-    const broadFetch = isAnimePreviewEnabled();
-    // 1ページ目でPAGE_SIZE未満しか返ってこなければ、それが既に全件
-    // (=カタログがFIRST_PAGE_SIZE件以下)なので残りの取得は不要。
-    const reachedEndOnFirstPage = firstPageRows.length < FIRST_PAGE_SIZE;
-
-    // 残りの映画・他メディア種別はreview_stats/expression_estimatesの全件版を
-    // 必要とするため、ここで1回だけ裏で取得して使い回す(1ページ目用の
-    // 範囲限定版とは別物)。
-    const fullStatsPromise = loadFullStatsAndEstimates();
-
-    // movies本体の残りページ取得(CONCURRENCY分の接続)と、stats/estimates
-    // 全件の取得(同じく複数ページ)を同時に走らせると、匿名ロールの
-    // statement_timeout(3秒)に引っかかる事故が過去に実際に起きたため、
-    // stats/estimates全件が終わってから残りページの取得を始める
-    // (どちらもスプラッシュはブロックしないので体感への影響は無い)。
-    const restMoviesLoadedPromise = reachedEndOnFirstPage
-      ? Promise.resolve()
-      : fullStatsPromise.then(({ statsByMovie, estimatesByMovie }) =>
-          loadRemainingMoviesInBackground(FIRST_PAGE_SIZE, plainMovieFilter, statsByMovie, estimatesByMovie)
-        );
-
-    // loadMovieBigFieldsInBackground()はMOVIES全件をid引きで埋めるため、
-    // 残りページの結合(restMoviesLoadedPromise)が終わってから走らせないと、
-    // 後から結合された分のsynopsis/castが永久に埋まらないまま欠けてしまう。
-    restMoviesLoadedPromise.then(() => loadMovieBigFieldsInBackground()).then(() => {
-      if(broadFetch){
-        fullStatsPromise.then(({ statsByMovie, estimatesByMovie }) => {
-          loadNonMovieCatalogInBackground(statsByMovie, estimatesByMovie).then(() => {
-            loadNonMovieBigFieldsInBackground();
-          });
-        });
-      }
+  const cached = readCatalogCache();
+  if(cached){
+    MOVIES = cached.firstPageRows.map(row => buildMovieRecord(row, cached.statsByMovie, cached.estimatesByMovie));
+    // 表示は既にキャッシュで済んでいるので、ネットワーク取得はここでは
+    // 待たず裏で続ける。失敗してもキャッシュの表示を壊さないよう、
+    // ここで個別にcatchする(通常のエラートースト等は出さない)。
+    fetchFreshCatalogAndContinue(FIRST_PAGE_SIZE, plainMovieFilter).catch(err => {
+      console.error('最新カタログの取得に失敗しました(表示中のキャッシュを維持します)', err);
     });
+    return;
+  }
+
+  try{
+    await fetchFreshCatalogAndContinue(FIRST_PAGE_SIZE, plainMovieFilter);
   }catch(err){
     console.error('映画一覧の読み込みに失敗しました', err);
     MOVIES = [];
     showToast('映画一覧の読み込みに失敗しました。通信環境を確認してください。');
   }
+}
+
+// 実際のネットワーク取得本体。1ページ目(映画のみ)を取得してMOVIESを
+// (キャッシュから即描画済みなら最新データで)置き換え、保存し直してから、
+// 残りの映画・stats/estimates全件・他メディア種別の取得を続ける。
+// 失敗時は例外を投げて呼び出し元に任せる。
+//
+// カタログが5万件を超えたため、初回取得は常に映画だけに絞る。アニメ・
+// ドラマ・漫画・小説・音楽の残り分はスプラッシュをブロックしない
+// バックグラウンド取得(loadNonMovieCatalogInBackground)に回すことで、
+// 初回表示が5万件超のフル取得で毎回重くなる事故を防ぐ。
+//
+// 映画だけに絞っても実測で約7.2秒(以前)〜10.6秒(カタログ増加後の
+// 最新実測)かかっていた(35,428件)。これはスプラッシュの8秒セーフ
+// ティタイムアウトを超えてしまい、「ロゴが出たまま固まって見える→
+// すぐ閉じたくなる」という離脱の主因になっていた。そのため全件を
+// 待ってから描画するのをやめ、まず1ページ分(FIRST_PAGE_SIZE件)だけ
+// 取得してすぐ描画し、残りはloadRemainingMoviesInBackground()で
+// スプラッシュを待たせずに裏で取得・結合する(1ページ目で全件読み
+// 終わっていた場合=カタログがFIRST_PAGE_SIZE件以下の場合は何もしない)。
+//
+// 実測の結果、転送バイト数が時間にほぼ比例していて、内訳はsynopsis
+// 24.4%・cast_members 11.6%(2つで約36%)だったため、この2列だけは
+// ここでは取得せず、loadMovieBigFieldsInBackground()で初期表示を
+// ブロックせずに後から取得する。検索の根幹であるkeywordsは(サイトの
+// 存在意義に関わる機能のため)引き続きここで即座に取得する。
+// moviesの軽量取得を最優先で単独実行してから、残り(review_stats・
+// expression_estimates)をまとめて取る。両方とも同時にCONCURRENCY分の
+// リクエストを投げると、匿名(anon)ロールのstatement_timeout(3秒)に
+// 引っかかりmoviesの取得ごと失敗する(=カタログが丸ごと空になる)事故が
+// 実際に発生したため、スプラッシュをブロックする最重要な取得だけ他と
+// 競合させない(1ページ目だけに絞った今も、この順序は変えない)。
+async function fetchFreshCatalogAndContinue(FIRST_PAGE_SIZE, plainMovieFilter){
+  const { data: firstPageData, error: firstPageError } = await plainMovieFilter(supabase.from('movies').select(MOVIE_LIGHT_COLUMNS)).order('id', { ascending: true }).range(0, FIRST_PAGE_SIZE - 1);
+  if(firstPageError) throw firstPageError;
+  const firstPageRows = firstPageData || [];
+
+  // review_stats/expression_estimatesは全件(7万行超、複数ページに分けて
+  // 取得するため実測2秒以上)取得すると1ページ目の表示まで道連れで
+  // 遅くなる。表現度(表現度バッジ)は実データを大事にしている機能なので、
+  // 0件/未推定のまま一瞬表示するのは避けたい一方、全件を待つのも遅い。
+  // そこで1ページ目に実際に含まれるidの範囲(min〜max)だけに絞って取得する
+  // (ほぼ1往復で済む)。全件分は後でloadFullStatsAndEstimates()が裏で
+  // 取得し、残りの映画・他メディア種別のためにそちらを使う。
+  // 既にidの昇順で取得済みなので、先頭と末尾がそのままmin/maxになる。
+  const minId = firstPageRows.length ? firstPageRows[0].id : null;
+  const maxId = firstPageRows.length ? firstPageRows[firstPageRows.length - 1].id : null;
+  const [statsRes, estimatesRes] = minId == null
+    ? [{ data: [] }, { data: [] }]
+    : await Promise.all([
+        supabase.from('movie_review_stats').select('*').gte('movie_id', minId).lte('movie_id', maxId),
+        supabase.from('movie_expression_estimates').select('movie_id, expression_level, reason_tags').gte('movie_id', minId).lte('movie_id', maxId)
+      ]);
+  if(statsRes.error) throw statsRes.error;
+  if(estimatesRes.error) throw estimatesRes.error;
+
+  const firstPageStatsByMovie = {};
+  (statsRes.data || []).forEach(s => { firstPageStatsByMovie[s.movie_id] = s; });
+  const firstPageEstimatesByMovie = {};
+  (estimatesRes.data || []).forEach(e => { firstPageEstimatesByMovie[e.movie_id] = e; });
+
+  MOVIES = firstPageRows.map(row => buildMovieRecord(row, firstPageStatsByMovie, firstPageEstimatesByMovie));
+  writeCatalogCache(firstPageRows, firstPageStatsByMovie, firstPageEstimatesByMovie);
+  renderFeaturedBanner();
+  renderHomeRows();
+  renderResults();
+
+  const broadFetch = isAnimePreviewEnabled();
+  // 1ページ目でPAGE_SIZE未満しか返ってこなければ、それが既に全件
+  // (=カタログがFIRST_PAGE_SIZE件以下)なので残りの取得は不要。
+  const reachedEndOnFirstPage = firstPageRows.length < FIRST_PAGE_SIZE;
+
+  // 残りの映画・他メディア種別はreview_stats/expression_estimatesの全件版を
+  // 必要とするため、ここで1回だけ裏で取得して使い回す(1ページ目用の
+  // 範囲限定版とは別物)。
+  const fullStatsPromise = loadFullStatsAndEstimates();
+
+  // movies本体の残りページ取得(CONCURRENCY分の接続)と、stats/estimates
+  // 全件の取得(同じく複数ページ)を同時に走らせると、匿名ロールの
+  // statement_timeout(3秒)に引っかかる事故が過去に実際に起きたため、
+  // stats/estimates全件が終わってから残りページの取得を始める
+  // (どちらもスプラッシュはブロックしないので体感への影響は無い)。
+  const restMoviesLoadedPromise = reachedEndOnFirstPage
+    ? Promise.resolve()
+    : fullStatsPromise.then(({ statsByMovie, estimatesByMovie }) =>
+        loadRemainingMoviesInBackground(FIRST_PAGE_SIZE, plainMovieFilter, statsByMovie, estimatesByMovie)
+      );
+
+  // loadMovieBigFieldsInBackground()はMOVIES全件をid引きで埋めるため、
+  // 残りページの結合(restMoviesLoadedPromise)が終わってから走らせないと、
+  // 後から結合された分のsynopsis/castが永久に埋まらないまま欠けてしまう。
+  restMoviesLoadedPromise.then(() => loadMovieBigFieldsInBackground()).then(() => {
+    if(broadFetch){
+      fullStatsPromise.then(({ statsByMovie, estimatesByMovie }) => {
+        loadNonMovieCatalogInBackground(statsByMovie, estimatesByMovie).then(() => {
+          loadNonMovieBigFieldsInBackground();
+        });
+      });
+    }
+  });
 }
 
 // review_stats/expression_estimates の全件版(映画以外のメディア種別も含む)を
