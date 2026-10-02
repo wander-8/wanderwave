@@ -19,6 +19,11 @@
 <meta name="twitter:image" content="https://wander-8.site/og-image.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<!-- カタログ本体(movies等)を読むSupabase REST APIへの最初のリクエストは、
+     ここへの事前接続が無いとDNS・TLSハンドシェイクだけで2秒前後かかっており、
+     スプラッシュ(ロゴ)が閉じるまでの時間の大半を占めていた(実測)。
+     画像CDN群より優先度が高いため一番上に置く。 -->
+<link rel="preconnect" href="https://wjhvifdbttlijxnreaha.supabase.co" crossorigin>
 <!-- 各メディア種別のポスター画像提供元へ事前に接続しておく。特に漫画(AniList)は
      計測でTMDbの約10倍遅いCDNだったため、最初の1枚が表示されるまでのDNS・TLS
      ハンドシェイク分だけでも前倒しで済ませておく狙い。 -->
@@ -155,7 +160,7 @@
     overflow: hidden;
     cursor: pointer;
     display:flex; align-items:flex-end;
-    transition: transform 0.15s ease;
+    transition: transform 0.15s cubic-bezier(.22,.8,.32,1);
   }
   /* .appの最大幅をPCで広げた分、16:10のままだとバナーが不自然に縦長化するため、
      広い画面ではアスペクト比を横長寄りに切り替えて高さの伸びを抑える。 */
@@ -664,7 +669,7 @@
     flex: 0 0 148px;
     scroll-snap-align: start;
     cursor: pointer;
-    transition: transform 0.15s ease, box-shadow 0.15s ease;
+    transition: transform 0.15s cubic-bezier(.22,.8,.32,1), box-shadow 0.15s ease;
   }
   .result-card:active{
     transform: scale(0.96);
@@ -682,7 +687,7 @@
     }
   }
   .poster-thumb img{
-    transition: transform 0.2s ease;
+    transition: transform 0.2s cubic-bezier(.22,.8,.32,1);
   }
   .review-feed-card{
     flex: 0 0 180px;
@@ -850,7 +855,7 @@
     position: absolute; top: 2px; left: 2px;
     width: 16px; height: 16px; border-radius: 50%;
     background: var(--ink-soft);
-    transition: transform .2s ease, background .2s ease;
+    transition: transform .2s cubic-bezier(.34,1.56,.64,1), background .2s ease;
   }
   .mini-switch.on{ background: rgba(160,132,242,0.35); border-color: var(--gold); }
   .mini-switch.on .mini-switch-knob{ background: var(--gold); transform: translateX(16px); }
@@ -891,7 +896,7 @@
   }
   .heart-single-btn .heart-icon{
     width: 38px; height: 36px;
-    transition: transform .2s ease, color .2s ease;
+    transition: transform .2s cubic-bezier(.22,.8,.32,1), color .2s ease;
   }
   .heart-single-btn.lv1{ border-color: var(--love); background: rgba(232,137,158,0.08); color: var(--love); animation: none; }
   .heart-single-btn.lv1 .heart-icon{ transform: scale(0.85); filter: drop-shadow(0 0 4px rgba(232,137,158,0.5)); }
@@ -1046,7 +1051,7 @@
     padding: 14px 22px; font-weight:600; font-size:14px;
     box-shadow: 0 8px 20px rgba(110,75,99,0.35);
     cursor:pointer; z-index: 5;
-    transition: transform 0.15s ease;
+    transition: transform 0.15s cubic-bezier(.22,.8,.32,1);
   }
   .fab:active{
     transform: scale(0.94);
@@ -1247,7 +1252,7 @@
     background: var(--surface); border:1px solid var(--line);
     border-radius: 12px; padding: 14px; margin-bottom: 10px;
     display:flex; align-items:center; gap:12px; cursor:pointer;
-    transition: transform .15s ease;
+    transition: transform .15s cubic-bezier(.22,.8,.32,1);
   }
   .menu-row:active{ transform: scale(0.98); }
   .menu-row-icon{
@@ -1301,7 +1306,7 @@
   }
   .post-panel-chevron{
     color: var(--ink-soft); font-size: 13px;
-    transition: transform 0.2s ease;
+    transition: transform 0.2s cubic-bezier(.22,.8,.32,1);
   }
   .post-panel-chevron.open{ transform: rotate(180deg); }
   #post-panel-body{ margin-top: 14px; }
@@ -1693,7 +1698,7 @@
   .color-swatch{
     width: 34px; height: 34px; border-radius: 50%;
     cursor: pointer; border: 2px solid transparent;
-    transition: border-color .15s ease, transform .15s ease;
+    transition: border-color .15s ease, transform .15s cubic-bezier(.34,1.56,.64,1);
   }
   .color-swatch.selected{ border-color: var(--ink); transform: scale(1.1); }
   .avatar-preview{ display:flex; }
@@ -6559,13 +6564,37 @@ async function loadAlbumTracks(movieId){
   }
 }
 
+// 音楽作品の詳細ページを開いたら、「収録曲を見る」を開かなくても自動で
+// 1曲目(試聴可能な最初のトラック)をループ再生し始める(オーナーの要望)。
+// goDetail()からresetTracksUI(m)の直後に(awaitせず)呼ばれる。
+async function autoPlayAlbumPreview(m){
+  if(!m.isMusic) return;
+  const myMovieId = m.id;
+  if(tracksCache === null){
+    await loadAlbumTracks(myMovieId);
+  }
+  // 読み込みに時間がかかっている間に別の作品に移動していたら何もしない
+  if(state.currentMovieId !== myMovieId) return;
+  const tracks = tracksCache || [];
+  const idx = tracks.findIndex(t => t.previewUrl);
+  if(idx === -1) return;
+  toggleTrackPreview(idx, tracks[idx].previewUrl);
+}
+
 // iTunesはプレビュー用(30秒)の試聴音源を公式に提供している。フル楽曲の
 // 取得・配信はしない(著作権的にそこまでは踏み込まない)。再生中のトラックは
 // 1つだけに絞り、別の曲を押したら前の曲を止めてから切り替える(複数同時に
 // 鳴り続けるのを防ぐ)。
 const previewAudio = new Audio();
+// 30秒で単発停止すると「開いたらすぐ無音に戻る」体験になり寂しいため、
+// 同じ試聴区間をそのままループさせる(オーナーの要望)。loopがtrueの間は
+// 'ended'イベント自体が発火しない(ブラウザがループ再生する)ため、
+// stopTrackPreview()は手動停止・曲の切り替え・エラー時のみ呼ばれる。
+previewAudio.loop = true;
 let playingTrackIndex = null;
-previewAudio.addEventListener('ended', () => stopTrackPreview());
+// ネットワーク不良・プレビューURL切れ等でplay()開始後に再生が止まった場合も、
+// ボタンが「再生中」表示のまま固まらないようにする(ended と同じ扱いで復帰)
+previewAudio.addEventListener('error', () => stopTrackPreview());
 
 function stopTrackPreview(){
   previewAudio.pause();
@@ -6584,9 +6613,14 @@ function toggleTrackPreview(index, url){
   }
   stopTrackPreview();
   previewAudio.src = url;
-  previewAudio.play().catch(err => console.error('試聴の再生に失敗しました', err));
   playingTrackIndex = index;
   if(btn) btn.textContent = '⏸';
+  previewAudio.play().catch(() => {
+    // play()が拒否された場合(壊れたURL・通信エラー等)、ボタンが
+    // 「再生中(⏸)」表示のまま固まって二度と反応しなくなっていたのを修正。
+    // 再生開始に失敗したことが分かるよう、必ず▶表示に戻す。
+    if(playingTrackIndex === index) stopTrackPreview();
+  });
 }
 
 function renderTracksGrid(tracks){
@@ -6599,8 +6633,8 @@ function renderTracksGrid(tracks){
         <div class="episode-name">${escapeHtml(t.trackName)}</div>
         <div class="episode-love-row">
           ${t.previewUrl ? `
-            <button class="heart-single-btn mini" id="track-play-${i}" onclick="toggleTrackPreview(${i}, '${t.previewUrl}')">▶</button>
-            <span class="episode-love-hint">30秒試聴${t.trackTimeMillis ? `・${formatTrackDuration(t.trackTimeMillis)}` : ''}</span>
+            <button class="heart-single-btn mini" id="track-play-${i}" onclick="toggleTrackPreview(${i}, '${t.previewUrl}')">${playingTrackIndex === i ? '⏸' : '▶'}</button>
+            <span class="episode-love-hint">30秒試聴(ループ)${t.trackTimeMillis ? `・${formatTrackDuration(t.trackTimeMillis)}` : ''}</span>
           ` : (t.trackTimeMillis ? `<span class="episode-love-hint">${formatTrackDuration(t.trackTimeMillis)}</span>` : '')}
         </div>
       </div>
@@ -6735,19 +6769,10 @@ function renderEpisodesGrid(episodes){
         <div class="episode-meta">
           <div class="episode-num">第${e.episode_number}話</div>
           <div class="episode-name">${escapeHtml(e.name)}</div>
-          <div class="episode-love-row">
-            <button class="heart-single-btn mini" onclick="cycleLove(event)">
-              <svg class="heart-icon" viewBox="0 0 32 30" fill="currentColor"><path d="M16 27 C6 20 2 13 2 8.5 C2 4 5.5 1 9.5 1 C12.5 1 15 2.8 16 5.5 C17 2.8 19.5 1 22.5 1 C26.5 1 30 4 30 8.5 C30 13 26 20 16 27 Z"/></svg>
-            </button>
-            <span class="episode-love-hint">作品全体の愛度</span>
-          </div>
         </div>
       </div>
     `;
   }).join('');
-  // 新しく増えたミニハートにも、既についている愛度(lv1〜3)を反映させる
-  const m = MOVIES.find(x => x.id === state.currentMovieId);
-  if(m) updateLoveUI(m);
 }
 
 // 映画⇔アニメの切り替え。隠しプレビューフラグが立っていない一般ユーザーは
@@ -7032,6 +7057,7 @@ async function goDetail(id){
   resetTrailerUI(m);
   resetEpisodesUI(m);
   resetTracksUI(m);
+  autoPlayAlbumPreview(m);
 
   tagVoteOpen = false;
   document.getElementById('tag-vote-select').style.display = 'none';
@@ -7683,7 +7709,7 @@ async function submitMovie(){
 // 「canceling statement due to statement timeout」で一部ページが500に
 // なり、映画一覧がまるごと読み込み失敗扱いになる事故も起きた。そのため
 // 同時に投げる本数の上限(CONCURRENCY)を固定したページ束を順番に処理する。
-async function selectAllRows(table, columns, applyFilterFn, orderColumn = 'id', pageSize = 3000){
+async function selectAllRows(table, columns, applyFilterFn, orderColumn = 'id', pageSize = 3000, startOffset = 0){
   // PostgREST(Supabase側)は1リクエストあたり実際に返せる行数に上限があり
   // (要求したrange幅に関わらずそこで打ち切られる)、以前1000だったのを
   // オーナーがSupabaseダッシュボードのAPI設定(Max Rows)で5000に引き上げた
@@ -7701,7 +7727,7 @@ async function selectAllRows(table, columns, applyFilterFn, orderColumn = 'id', 
   const withFilter = (q) => applyFilterFn ? applyFilterFn(q) : q;
 
   let rows = [];
-  let pageStart = 0;
+  let pageStart = startOffset;
   let reachedEnd = false;
   while(!reachedEnd){
     const starts = Array.from({ length: CONCURRENCY }, (_, i) => pageStart + i * PAGE_SIZE);
@@ -7866,7 +7892,15 @@ async function loadMovies(){
     // ことで、初回表示が5万件超のフル取得で毎回重くなる事故を防ぐ
     // (この関数の完了を待ってスプラッシュが閉じるため)。
     //
-    // 映画だけに絞っても実測で約7.2秒かかっていた(35,538件・約30MB)。
+    // 映画だけに絞っても実測で約7.2秒(以前)〜10.6秒(カタログ増加後の
+    // 最新実測)かかっていた(35,428件)。これはスプラッシュの8秒セーフ
+    // ティタイムアウトを超えてしまい、「ロゴが出たまま固まって見える→
+    // すぐ閉じたくなる」という離脱の主因になっていた。そのため全件を
+    // 待ってから描画するのをやめ、まず1ページ分(FIRST_PAGE_SIZE件)だけ
+    // 取得してすぐ描画し、残りはloadRemainingMoviesInBackground()で
+    // スプラッシュを待たせずに裏で取得・結合する(1ページ目で全件読み
+    // 終わっていた場合=カタログがFIRST_PAGE_SIZE件以下の場合は何もしない)。
+    //
     // 実測の結果、転送バイト数が時間にほぼ比例していて、内訳はsynopsis
     // 24.4%・cast_members 11.6%(2つで約36%)だったため、この2列だけは
     // ここでは取得せず、loadMovieBigFieldsInBackground()で初期表示を
@@ -7877,34 +7911,69 @@ async function loadMovies(){
     // リクエストを投げると、匿名(anon)ロールのstatement_timeout(3秒)に
     // 引っかかりmoviesの取得ごと失敗する(=カタログが丸ごと空になる)事故が
     // 実際に発生したため、スプラッシュをブロックする最重要な取得だけ他と
-    // 競合させない。
-    const moviesData = await selectAllRows('movies', MOVIE_LIGHT_COLUMNS, (q) => q.match({ is_anime: false, is_drama: false, is_manga: false, is_novel: false, is_music: false }), 'id', 2000);
-    const [statsRes, estimatesData] = await Promise.all([
-      supabase.from('movie_review_stats').select('*'),
-      // movie_expression_estimatesはmovie_idを主キーとしており、id列を持たない
-      // (他のselectAllRows呼び出しと違い、並び替え列を明示的に指定する必要がある)。
-      selectAllRows('movie_expression_estimates', 'movie_id, expression_level, reason_tags', null, 'movie_id')
-    ]);
+    // 競合させない(1ページ目だけに絞った今も、この順序は変えない)。
+    const FIRST_PAGE_SIZE = 2000;
+    const plainMovieFilter = (q) => q.match({ is_anime: false, is_drama: false, is_manga: false, is_novel: false, is_music: false });
+    const { data: firstPageData, error: firstPageError } = await plainMovieFilter(supabase.from('movies').select(MOVIE_LIGHT_COLUMNS)).order('id', { ascending: true }).range(0, FIRST_PAGE_SIZE - 1);
+    if(firstPageError) throw firstPageError;
+    const firstPageRows = firstPageData || [];
+
+    // review_stats/expression_estimatesは全件(7万行超、複数ページに分けて
+    // 取得するため実測2秒以上)取得すると1ページ目の表示まで道連れで
+    // 遅くなる。表現度(表現度バッジ)は実データを大事にしている機能なので、
+    // 0件/未推定のまま一瞬表示するのは避けたい一方、全件を待つのも遅い。
+    // そこで1ページ目に実際に含まれるidの範囲(min〜max)だけに絞って取得する
+    // (ほぼ1往復で済む)。全件分は後でloadFullStatsAndEstimates()が裏で
+    // 取得し、残りの映画・他メディア種別のためにそちらを使う。
+    // 既にidの昇順で取得済みなので、先頭と末尾がそのままmin/maxになる。
+    const minId = firstPageRows.length ? firstPageRows[0].id : null;
+    const maxId = firstPageRows.length ? firstPageRows[firstPageRows.length - 1].id : null;
+    const [statsRes, estimatesRes] = minId == null
+      ? [{ data: [] }, { data: [] }]
+      : await Promise.all([
+          supabase.from('movie_review_stats').select('*').gte('movie_id', minId).lte('movie_id', maxId),
+          supabase.from('movie_expression_estimates').select('movie_id, expression_level, reason_tags').gte('movie_id', minId).lte('movie_id', maxId)
+        ]);
     if(statsRes.error) throw statsRes.error;
+    if(estimatesRes.error) throw estimatesRes.error;
 
-    const statsByMovie = {};
-    (statsRes.data || []).forEach(s => { statsByMovie[s.movie_id] = s; });
-    const estimatesByMovie = {};
-    estimatesData.forEach(e => { estimatesByMovie[e.movie_id] = e; });
+    const firstPageStatsByMovie = {};
+    (statsRes.data || []).forEach(s => { firstPageStatsByMovie[s.movie_id] = s; });
+    const firstPageEstimatesByMovie = {};
+    (estimatesRes.data || []).forEach(e => { firstPageEstimatesByMovie[e.movie_id] = e; });
 
-    MOVIES = moviesData.map(row => buildMovieRecord(row, statsByMovie, estimatesByMovie));
+    MOVIES = firstPageRows.map(row => buildMovieRecord(row, firstPageStatsByMovie, firstPageEstimatesByMovie));
 
     const broadFetch = isAnimePreviewEnabled();
-    // 2つのバックグラウンド取得を同時に走らせると、それぞれのCONCURRENCY分の
-    // リクエストが重なって接続を取り合い、重い方(loadNonMovieCatalogInBackground、
-    // synopsis/cast_members込みの.or()フィルター)がstatement_timeout(3秒)に
-    // 引っかかる事故が実際に起きた。両方待たせても体感への影響は無い
-    // (どちらもスプラッシュはブロックしない)ため、順番に実行して接続の
-    // 取り合いを避ける。
-    loadMovieBigFieldsInBackground().then(() => {
+    // 1ページ目でPAGE_SIZE未満しか返ってこなければ、それが既に全件
+    // (=カタログがFIRST_PAGE_SIZE件以下)なので残りの取得は不要。
+    const reachedEndOnFirstPage = firstPageRows.length < FIRST_PAGE_SIZE;
+
+    // 残りの映画・他メディア種別はreview_stats/expression_estimatesの全件版を
+    // 必要とするため、ここで1回だけ裏で取得して使い回す(1ページ目用の
+    // 範囲限定版とは別物)。
+    const fullStatsPromise = loadFullStatsAndEstimates();
+
+    // movies本体の残りページ取得(CONCURRENCY分の接続)と、stats/estimates
+    // 全件の取得(同じく複数ページ)を同時に走らせると、匿名ロールの
+    // statement_timeout(3秒)に引っかかる事故が過去に実際に起きたため、
+    // stats/estimates全件が終わってから残りページの取得を始める
+    // (どちらもスプラッシュはブロックしないので体感への影響は無い)。
+    const restMoviesLoadedPromise = reachedEndOnFirstPage
+      ? Promise.resolve()
+      : fullStatsPromise.then(({ statsByMovie, estimatesByMovie }) =>
+          loadRemainingMoviesInBackground(FIRST_PAGE_SIZE, plainMovieFilter, statsByMovie, estimatesByMovie)
+        );
+
+    // loadMovieBigFieldsInBackground()はMOVIES全件をid引きで埋めるため、
+    // 残りページの結合(restMoviesLoadedPromise)が終わってから走らせないと、
+    // 後から結合された分のsynopsis/castが永久に埋まらないまま欠けてしまう。
+    restMoviesLoadedPromise.then(() => loadMovieBigFieldsInBackground()).then(() => {
       if(broadFetch){
-        loadNonMovieCatalogInBackground(statsByMovie, estimatesByMovie).then(() => {
-          loadNonMovieBigFieldsInBackground();
+        fullStatsPromise.then(({ statsByMovie, estimatesByMovie }) => {
+          loadNonMovieCatalogInBackground(statsByMovie, estimatesByMovie).then(() => {
+            loadNonMovieBigFieldsInBackground();
+          });
         });
       }
     });
@@ -7912,6 +7981,44 @@ async function loadMovies(){
     console.error('映画一覧の読み込みに失敗しました', err);
     MOVIES = [];
     showToast('映画一覧の読み込みに失敗しました。通信環境を確認してください。');
+  }
+}
+
+// review_stats/expression_estimates の全件版(映画以外のメディア種別も含む)を
+// 裏で取得する。loadMovies()の1ページ目表示はこれを待たない(範囲限定版を
+// 使う)が、残りの映画(loadRemainingMoviesInBackground)と他メディア種別
+// (loadNonMovieCatalogInBackground)はこの全件版が必要なため、ここで1回だけ
+// 取得して両方に使い回す。
+async function loadFullStatsAndEstimates(){
+  const [statsRes, estimatesData] = await Promise.all([
+    supabase.from('movie_review_stats').select('*'),
+    // movie_expression_estimatesはmovie_idを主キーとしており、id列を持たない
+    // (他のselectAllRows呼び出しと違い、並び替え列を明示的に指定する必要がある)。
+    selectAllRows('movie_expression_estimates', 'movie_id, expression_level, reason_tags', null, 'movie_id')
+  ]);
+  if(statsRes.error) throw statsRes.error;
+  const statsByMovie = {};
+  (statsRes.data || []).forEach(s => { statsByMovie[s.movie_id] = s; });
+  const estimatesByMovie = {};
+  estimatesData.forEach(e => { estimatesByMovie[e.movie_id] = e; });
+  return { statsByMovie, estimatesByMovie };
+}
+
+// 1ページ目より後ろの映画(FIRST_PAGE_SIZE件目以降)を、初回描画を待たせずに
+// 裏で取得してMOVIESに追加結合する。statsByMovie/estimatesByMovieは
+// loadFullStatsAndEstimates()で取得済みの全件版をそのまま使う。
+async function loadRemainingMoviesInBackground(startOffset, plainMovieFilter, statsByMovie, estimatesByMovie){
+  try{
+    const restRows = await selectAllRows('movies', MOVIE_LIGHT_COLUMNS, plainMovieFilter, 'id', 2000, startOffset);
+    // 既にMOVIESにある分(1ページ目)と重複して結合しないよう、念のためidで除外する。
+    const existingIds = new Set(MOVIES.map(m => m.id));
+    const newRecords = restRows.filter(row => !existingIds.has(row.id)).map(row => buildMovieRecord(row, statsByMovie, estimatesByMovie));
+    MOVIES = MOVIES.concat(newRecords);
+    renderFeaturedBanner();
+    renderHomeRows();
+    renderResults();
+  }catch(err){
+    console.error('映画カタログの残り分の読み込みに失敗しました', err);
   }
 }
 
@@ -10323,7 +10430,20 @@ async function init(){
   autoSignInPromise = (!hasSupabaseSession && !sessionCheckFailed && !looksLikeAuthRedirect())
     ? autoSignInAnonymously()
     : Promise.resolve();
-  await Promise.all([loadMovies(), loadMyReviews(), loadMyTagVotes(), loadMyWatchLater(), loadMyPocket(), loadMyLists(), loadProfile(), loadMyLogs(), loadMySubmittedMovies(), loadLastSubmissionDate(), loadDiagnosisHistory(), loadRecentReviews(), checkAnimePreviewOwner()]);
+  // レビュー・ウォッチ後で・ポケット・リスト・プロフィール等の個人データは、
+  // カタログ本体(loadMovies)と違って初回描画をブロックする理由が無い。
+  // 以前はここで全部まとめてawaitしていたため、個人データのうち1つでも
+  // 遅いとカタログの表示自体が道連れで遅れ、スプラッシュが長引く原因に
+  // なっていた。loadMoviesだけ先に待ち、個人データは裏で並行取得して
+  // 揃い次第(下のpersonalDataPromise.then)静かに描き直す。
+  //
+  // 個人データの取得(12並列)をloadMoviesの最初の1ページ取得と同時に
+  // 投げると、匿名ロールの接続を取り合って体感が遅くなる(実測:
+  // movies 1ページ目だけを単独で叩くと0.5秒で返るのに、個人データ12並列と
+  // 同時に投げると数秒かかっていた)。スプラッシュを閉じる条件はloadMovies
+  // の完了だけなので、個人データはloadMoviesの後に回して競合を避ける。
+  await loadMovies();
+  const personalDataPromise = Promise.all([loadMyReviews(), loadMyTagVotes(), loadMyWatchLater(), loadMyPocket(), loadMyLists(), loadProfile(), loadMyLogs(), loadMySubmittedMovies(), loadLastSubmissionDate(), loadDiagnosisHistory(), loadRecentReviews(), checkAnimePreviewOwner()]);
 
   // 最初に開いた画面は常に映画から始める(前回アニメを見ていたとしても、
   // 開くたびにアニメから始まるのは望ましくないとのオーナーの指示)。
@@ -10353,37 +10473,53 @@ async function init(){
   document.getElementById('catalog-mode-drawer-backdrop').classList.toggle('enabled', animePreview);
   updateCatalogModeToggleUI();
 
-  // 上のPromise.allで一斉に叩いたcurrentAuthUser()が(希にある)gotrue-jsの
-  // ハングでタイムアウトした場合、profile/myLogs/mySubmittedMovies/
-  // myReviewRowsのどれかがこの時点でまだ読めていないことがある。何もしないと
-  // ユーザーが実際に操作する(プロフィールを開く・記録を書こうとする等)まで
-  // 直らず、その操作自体がrequireVerifiedUser()に「未登録」と誤判定されて
-  // ログイン画面に弾かれることさえある。表示はもう終わっているので、
-  // 数秒待って裏で読み直し、直っていたら静かに描き直す。
-  // checkAnimePreviewOwner()も同じcurrentAuthUser()に依存しており、同じ
-  // ハングの影響を受ける(オーナー本人なのにハンバーガーメニューごと
-  // 漫画/小説の切り替えが消えて見える事故が実際に起きた)。他の4つの
-  // 読み込みと違って専用のloadedフラグが無いため、animePreviewOwnerConfirmed
-  // がまだfalseなら同じタイミングで再確認し、有効になった場合だけ
-  // ハンバーガーメニューを出し直す。
-  if(!state.profileLoaded || !state.myLogsLoaded || !state.mySubmittedMoviesLoaded || !state.myReviewRowsLoaded || !animePreviewOwnerConfirmed){
-    wait(2000).then(async () => {
-      await Promise.all([
-        state.profileLoaded ? null : loadProfile(),
-        state.myLogsLoaded ? null : loadMyLogs(),
-        state.mySubmittedMoviesLoaded ? null : loadMySubmittedMovies(),
-        state.myReviewRowsLoaded ? null : loadMyReviews(),
-        animePreviewOwnerConfirmed ? null : checkAnimePreviewOwner()
-      ]);
-      updateHeader();
-      if(document.getElementById('view-profile').classList.contains('active')) goProfile();
-      const animePreviewRetried = isAnimePreviewEnabled();
-      document.getElementById('catalog-mode-toggle-inline').classList.toggle('enabled', animePreviewRetried);
-      document.getElementById('catalog-mode-toggle-side').classList.toggle('enabled', animePreviewRetried);
-      document.getElementById('catalog-mode-drawer').classList.toggle('enabled', animePreviewRetried);
-      document.getElementById('catalog-mode-drawer-backdrop').classList.toggle('enabled', animePreviewRetried);
-    });
-  }
+  // 個人データ(ハート・ポケット・ウォッチ後で等のバッジやヘッダーの
+  // プロフィール表示)が揃い次第、静かに描き直す。初回描画はこれを
+  // 待たずに済ませているため、揃うまでは未取得状態(例:まだ何も
+  // 愛していない)に見えるが、通常は一瞬で揃って上書きされる。
+  personalDataPromise.then(() => {
+    renderResults();
+    renderHomeRows();
+    updateHeader();
+    const animePreviewNow = isAnimePreviewEnabled();
+    document.getElementById('catalog-mode-toggle-inline').classList.toggle('enabled', animePreviewNow);
+    document.getElementById('catalog-mode-toggle-side').classList.toggle('enabled', animePreviewNow);
+    document.getElementById('catalog-mode-drawer').classList.toggle('enabled', animePreviewNow);
+    document.getElementById('catalog-mode-drawer-backdrop').classList.toggle('enabled', animePreviewNow);
+    updateCatalogModeToggleUI();
+
+    // personalDataPromiseに含まれるcurrentAuthUser()が(希にある)gotrue-jsの
+    // ハングでタイムアウトした場合、profile/myLogs/mySubmittedMovies/
+    // myReviewRowsのどれかがこの時点でまだ読めていないことがある。何もしないと
+    // ユーザーが実際に操作する(プロフィールを開く・記録を書こうとする等)まで
+    // 直らず、その操作自体がrequireVerifiedUser()に「未登録」と誤判定されて
+    // ログイン画面に弾かれることさえある。表示はもう終わっているので、
+    // 数秒待って裏で読み直し、直っていたら静かに描き直す。
+    // checkAnimePreviewOwner()も同じcurrentAuthUser()に依存しており、同じ
+    // ハングの影響を受ける(オーナー本人なのにハンバーガーメニューごと
+    // 漫画/小説の切り替えが消えて見える事故が実際に起きた)。他の4つの
+    // 読み込みと違って専用のloadedフラグが無いため、animePreviewOwnerConfirmed
+    // がまだfalseなら同じタイミングで再確認し、有効になった場合だけ
+    // ハンバーガーメニューを出し直す。
+    if(!state.profileLoaded || !state.myLogsLoaded || !state.mySubmittedMoviesLoaded || !state.myReviewRowsLoaded || !animePreviewOwnerConfirmed){
+      wait(2000).then(async () => {
+        await Promise.all([
+          state.profileLoaded ? null : loadProfile(),
+          state.myLogsLoaded ? null : loadMyLogs(),
+          state.mySubmittedMoviesLoaded ? null : loadMySubmittedMovies(),
+          state.myReviewRowsLoaded ? null : loadMyReviews(),
+          animePreviewOwnerConfirmed ? null : checkAnimePreviewOwner()
+        ]);
+        updateHeader();
+        if(document.getElementById('view-profile').classList.contains('active')) goProfile();
+        const animePreviewRetried = isAnimePreviewEnabled();
+        document.getElementById('catalog-mode-toggle-inline').classList.toggle('enabled', animePreviewRetried);
+        document.getElementById('catalog-mode-toggle-side').classList.toggle('enabled', animePreviewRetried);
+        document.getElementById('catalog-mode-drawer').classList.toggle('enabled', animePreviewRetried);
+        document.getElementById('catalog-mode-drawer-backdrop').classList.toggle('enabled', animePreviewRetried);
+      });
+    }
+  }).catch(err => console.error('個人データの読み込みに失敗しました', err));
 
   // 共有リンク(?share=<token>)から開かれた場合は、ログイン状態に関わらずそのリストだけを
   // 表示する。MOVIESの読み込み後(=上のPromise.all後)である必要がある。
