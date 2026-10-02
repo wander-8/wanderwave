@@ -4255,10 +4255,27 @@ function riskCategoryDescription(v){
   return "恐怖描写や性的な描写が、作品を通してはっきりと繰り返し含まれます";
 }
 
+// ジャンル・国・年代と同じ理由(選んでも0件のまま気づけない事故を防ぐ)で、
+// 感情タグも今のモード(+小説モードの本の種類)のプールに実際に1本も無い
+// ものはチップごと出さない。以前は常に10個全部を無条件で出していたため、
+// 例えば音楽モードでは「怖い」「悲しい」「笑い」が(対応するジャンルの
+// 気分タグマッピングが無く)選んでも必ず0件になる地雷として残っていた
+// (オーナー指摘)。
+function availableTags(){
+  const mode = currentCatalogMode();
+  const pool = bookTypeNarrowedPool(MOVIES.filter(m => isInCatalogMode(m, mode)), mode);
+  const set = new Set();
+  pool.forEach(m => (m.tags || []).forEach(t => set.add(t)));
+  return ALL_TAGS.filter(t => set.has(t));
+}
 function renderTagCloud(){
   const el = document.getElementById('tag-cloud');
   el.innerHTML = "";
-  ALL_TAGS.forEach(tag => {
+  const tags = availableTags();
+  // 選択中の感情タグが、モード切り替え等で選択肢から消えてしまった場合は
+  // 選択を解除する(ジャンル・国・年代と同じお掃除ロジック)。
+  [...state.activeTags].forEach(t => { if(!tags.includes(t)) state.activeTags.delete(t); });
+  tags.forEach(tag => {
     const chip = document.createElement('div');
     const isActive = state.activeTags.has(tag);
     const color = tagColor(tag);
@@ -4380,6 +4397,7 @@ function renderBookTypeSwitch(){
 function selectBookType(value){
   state.bookType = value;
   renderBookTypeSwitch();
+  renderTagCloud();
   renderGenreCloud();
   renderCountryCloud();
   renderDecadeCloud();
@@ -8475,7 +8493,8 @@ async function loadRemainingMoviesInBackground(startOffset, plainMovieFilter, st
     const newRecords = restRows.filter(row => !existingIds.has(row.id)).map(row => buildMovieRecord(row, statsByMovie, estimatesByMovie));
     MOVIES = MOVIES.concat(newRecords);
     // loadNonMovieCatalogInBackgroundと同じ理由: 残りの映画が増えた分だけ
-    // ジャンル・国・年代チップの選択肢も増えうるので、ここでも再計算する。
+    // 感情タグ・ジャンル・国・年代チップの選択肢も増えうるので、ここでも再計算する。
+    renderTagCloud();
     renderGenreCloud();
     renderCountryCloud();
     renderDecadeCloud();
@@ -8554,6 +8573,9 @@ async function loadNonMovieCatalogInBackground(statsByMovie, estimatesByMovie){
       // (=この読み込みが終わる前にrenderGenreCloud等が1度空のプールで
       // 呼ばれてしまった)場合、ジャンルが後から増えても二度と反映されず
       // 「詳しく絞り込む」の中身が空のまま固まって見える事故になっていた。
+      // 感情タグも同じ理由(今のモードに実在するものだけを出す仕組みを
+      // availableTags()に入れた)で再計算が必要。
+      renderTagCloud();
       renderGenreCloud();
       renderCountryCloud();
       renderDecadeCloud();
@@ -8568,6 +8590,7 @@ async function loadNonMovieCatalogInBackground(statsByMovie, estimatesByMovie){
       const newRecords = restRows.filter(row => !existingIds.has(row.id)).map(row => buildMovieRecord(row, statsByMovie, estimatesByMovie));
       MOVIES = MOVIES.concat(newRecords);
       if(state.catalogMode !== 'movie'){
+        renderTagCloud();
         renderGenreCloud();
         renderCountryCloud();
         renderDecadeCloud();
