@@ -19,6 +19,13 @@
 <meta name="twitter:image" content="https://wander-8.site/og-image.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<!-- 各メディア種別のポスター画像提供元へ事前に接続しておく。特に漫画(AniList)は
+     計測でTMDbの約10倍遅いCDNだったため、最初の1枚が表示されるまでのDNS・TLS
+     ハンドシェイク分だけでも前倒しで済ませておく狙い。 -->
+<link rel="preconnect" href="https://image.tmdb.org">
+<link rel="preconnect" href="https://s4.anilist.co">
+<link rel="preconnect" href="https://thumbnail.image.rakuten.co.jp">
+<link rel="preconnect" href="https://is1-ssl.mzstatic.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=M+PLUS+Rounded+1c:wght@400;500;700&family=Inter:wght@400;500;600;700&family=Baloo+2:wght@500;600;700;800&family=Limelight&display=swap">
 <style>
   :root{
@@ -225,6 +232,22 @@
     margin: 0 0 18px;
     color: #f0e6cf;
     line-height: 1.5;
+  }
+
+  /* 検索欄より控えめな、小説モード限定の本の種類切り替え(小説/絵本/図鑑/新書)。
+     検索欄と見た目の差がはっきり付くよう、文字を小さく・背景を透明気味にしてある。 */
+  .book-type-switch{
+    display:flex; gap:6px; flex-wrap:wrap;
+    margin-bottom:8px;
+  }
+  .book-type-switch-item{
+    font-size:12px; padding:5px 11px;
+    border-radius:999px; border:1px solid var(--line);
+    background:transparent; color:var(--ink-soft);
+    cursor:pointer; font-family:inherit;
+  }
+  .book-type-switch-item.active{
+    background: var(--plum-btn); border-color: var(--plum-btn); color:#fff;
   }
 
   .search-box{
@@ -2386,6 +2409,13 @@
       <div class="kicker">今日はどんな気分?</div>
       <h1>気分で作品を見つける、<br>あなたのためのサイト</h1>
 
+      <!-- 小説モード限定: 絵本・図鑑・新書は「詳しく絞り込む」の中のジャンル
+           チップの1つに過ぎず、開かないと存在に気づけなかった。検索欄より
+           目立たない小さい切り替えとして、検索欄のすぐ上に常時出しておく
+           (「詳しく絞り込む」のジャンルチップとは見た目を変え、小説/絵本/
+           図鑑/新書はこの4つから1つだけ選ぶ単一選択として扱う)。 -->
+      <div class="book-type-switch" id="book-type-switch" style="display:none;"></div>
+
       <div class="search-box">
         <input type="text" id="search-input" placeholder="映画名・ジャンル・雰囲気で探す" oninput="onSearchInput()">
         <button class="search-clear-btn" id="search-clear-btn" onclick="clearSearch()" style="display:none;">×</button>
@@ -2412,7 +2442,7 @@
             <div class="filter-group-label">ジャンル</div>
             <div class="genre-cloud" id="genre-cloud"></div>
           </div>
-          <div class="filter-group">
+          <div class="filter-group" id="country-filter-group">
             <div class="filter-group-label">国</div>
             <div class="country-cloud" id="country-cloud"></div>
           </div>
@@ -4150,6 +4180,33 @@ function availableCountries(){
   return FILTER_COUNTRIES.filter(c => set.has(c));
 }
 
+// 小説モード限定の本の種類切り替え(小説/絵本/図鑑/新書)。この4つの中から
+// 常に1つだけを選ぶ単一選択として扱う(「詳しく絞り込む」の中のジャンル
+// チップの複数選択とは別物)。「小説」は絵本・図鑑・新書のどれも選ばれて
+// いない状態を指すだけで、実データ上の固有ジャンル値を持たない。
+const BOOK_TYPES = ['絵本', '図鑑', '新書'];
+function renderBookTypeSwitch(){
+  const wrap = document.getElementById('book-type-switch');
+  if(currentCatalogMode() !== 'novel'){
+    wrap.style.display = 'none';
+    return;
+  }
+  wrap.style.display = 'flex';
+  const current = BOOK_TYPES.find(t => state.activeGenres.has(t)) || null;
+  const items = [{ label: '小説', value: null }, ...BOOK_TYPES.map(t => ({ label: t, value: t }))];
+  wrap.innerHTML = items.map(({ label, value }) => {
+    const active = value === current;
+    return `<button class="book-type-switch-item${active ? ' active' : ''}" onclick="selectBookType(${value ? `'${value}'` : 'null'})">${label}</button>`;
+  }).join('');
+}
+function selectBookType(value){
+  BOOK_TYPES.forEach(t => state.activeGenres.delete(t));
+  if(value) state.activeGenres.add(value);
+  renderBookTypeSwitch();
+  renderGenreCloud();
+  renderResults();
+}
+
 function renderGenreCloud(){
   const el = document.getElementById('genre-cloud');
   el.innerHTML = "";
@@ -4177,6 +4234,10 @@ function renderCountryCloud(){
   const el = document.getElementById('country-cloud');
   el.innerHTML = "";
   const countries = availableCountries();
+  // 小説・漫画・音楽のように実質「日本」しか選択肢が無いモードでは、
+  // 選んでも絞り込みの意味が無いチップが並ぶだけで邪魔なので、国の欄自体を
+  // 丸ごと隠す(選択肢が2つ以上ある時だけ出す)。
+  document.getElementById('country-filter-group').style.display = countries.length > 1 ? '' : 'none';
   [...state.activeCountries].forEach(c => { if(!countries.includes(c)) state.activeCountries.delete(c); });
   countries.forEach(country => {
     const chip = document.createElement('div');
@@ -4341,6 +4402,7 @@ function clearSearch(){
   renderGenreCloud();
   renderCountryCloud();
   renderDecadeCloud();
+  renderBookTypeSwitch();
   renderResults();
 }
 
@@ -10110,6 +10172,7 @@ async function init(){
   renderGenreCloud();
   renderDecadeCloud();
   renderCountryCloud();
+  renderBookTypeSwitch();
   renderResults();
   renderFormTags();
   renderFormPlatforms();
