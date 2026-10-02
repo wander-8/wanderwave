@@ -698,10 +698,15 @@
     cursor: pointer;
     background: var(--surface);
     border: 1px solid var(--line);
+    border-left-width: 3px;
     border-radius: 14px;
     padding: 10px;
   }
   .review-feed-card:active{ transform: scale(0.97); }
+  .review-feed-type{
+    font-size: 10px; font-weight: 700;
+    margin-bottom: 3px;
+  }
   .review-feed-poster{
     width: 44px; height: 62px;
     border-radius: 6px;
@@ -3885,14 +3890,39 @@ const TAG_COLORS = {
 
 // 「詳しく絞り込む」に出すジャンル・国の候補。moviesテーブル全体を集計した際に
 // 件数の多い主要なものだけに絞ってあり、表記ゆれ的な少数派(「犯罪」「伝記」等)は含めない。
-// 絵本・図鑑・新書は「詳しく絞り込む」のジャンルチップには出さない
+// 絵本・図鑑・新書そのものは「詳しく絞り込む」のジャンルチップには出さない
 // (book-type-switch(小説/絵本/図鑑/新書の単一選択)で既に選べるため、
 // 同じ値がジャンルチップにも重複して出ると紛らわしいという指摘を受けて除外)。
-const FILTER_GENRES = ["ドラマ","コメディ","アクション","スリラー","アドベンチャー","クライム","恋愛","ホラー","SF","ファンタジー","ミステリー","アニメーション","ファミリー","歴史","戦争","音楽","ドキュメンタリー","西部劇","特撮","TVムービー","J-Pop","K-Pop","Rock","Classical","Anime","Hip Hop/Rap"];
+// ただし新書だけは中身(人文・ビジネス・暮らし等)のサブジャンルが実在する
+// ので、新書を選んだ時に意味のある絞り込みができるよう、そのサブジャンル名は
+// 通常のジャンルと同列にここへ含める(rakuten-discover-novelのshinshoInfo
+// 参照)。
+const FILTER_GENRES = ["ドラマ","コメディ","アクション","スリラー","アドベンチャー","クライム","恋愛","ホラー","SF","ファンタジー","ミステリー","アニメーション","ファミリー","歴史","戦争","音楽","ドキュメンタリー","西部劇","特撮","TVムービー","J-Pop","K-Pop","Rock","Classical","Anime","Hip Hop/Rap","小説・エッセイ","暮らし・健康・料理","語学・学習参考書","旅行・留学・アウトドア","人文・思想・社会","ビジネス・経済・就職","パソコン・システム開発","科学・医学・技術","エンタメ"];
 const FILTER_COUNTRIES = ["アメリカ","イギリス","フランス","ドイツ","日本","海外","カナダ","イタリア","スペイン","中国","香港","韓国","インド","オーストラリア","ベルギー","メキシコ","スウェーデン","デンマーク","ブラジル","ロシア","アイルランド","オランダ","ポーランド","スイス","アルゼンチン","トルコ","ノルウェー","フィンランド","オーストリア","ルクセンブルク","ルーマニア","チェコ","台湾","ハンガリー","南アフリカ","タイ","ニュージーランド","ポルトガル"];
 
 function tagColor(tag){
   return TAG_COLORS[tag] || "#9a958f";
+}
+
+// 「みんなの声」はカタログモードを問わず全メディア種別の感想を一緒に
+// 流すため、カードを見ただけではどの種別の作品か分からなかった
+// (オーナーからの指摘)。isInCatalogMode()と同じ優先順位で種別を判定し、
+// カードの色分けに使う。
+const MEDIA_TYPE_COLORS = {
+  anime: '#e85d9e',
+  drama: '#e08a3c',
+  manga: '#6fb86f',
+  novel: '#9370b8',
+  music: '#e06c5c',
+  movie: '#5b9bd5',
+};
+function mediaTypeInfo(m){
+  if(m.isAnime) return { mode: 'anime', label: 'アニメ', color: MEDIA_TYPE_COLORS.anime };
+  if(m.isDrama) return { mode: 'drama', label: 'ドラマ', color: MEDIA_TYPE_COLORS.drama };
+  if(m.isManga) return { mode: 'manga', label: '漫画', color: MEDIA_TYPE_COLORS.manga };
+  if(m.isNovel) return { mode: 'novel', label: '本', color: MEDIA_TYPE_COLORS.novel };
+  if(m.isMusic) return { mode: 'music', label: '音楽', color: MEDIA_TYPE_COLORS.music };
+  return { mode: 'movie', label: '映画', color: MEDIA_TYPE_COLORS.movie };
 }
 
 // movie_reviewsはRLS上「誰でも投稿できる」公開レビューなので、他人の投稿を
@@ -4778,9 +4808,11 @@ function renderHomeRows(){
       if(!m || matchesExcludedWord(m)) return null;
       const snippet = r.review_text.length > 60 ? r.review_text.slice(0, 60) + '…' : r.review_text;
       const posterImg = (m.posterUrl && !shouldHidePosterForIntensity(m)) ? `<img src="${m.posterUrl}" alt="" loading="lazy" decoding="async">` : '';
+      const typeInfo = mediaTypeInfo(m);
       return `
-        <div class="review-feed-card" onclick="goDetail(${m.id})">
+        <div class="review-feed-card" onclick="goDetail(${m.id})" style="border-left-color:${typeInfo.color};">
           <div class="review-feed-poster" style="background:${m.posterColor}">${posterImg}</div>
+          <div class="review-feed-type" style="color:${typeInfo.color};">${typeInfo.label}</div>
           <div class="review-feed-title">${m.title}</div>
           <div class="review-feed-name">${escapeHtml((r.profiles && r.profiles.user_name) || 'ゲスト')}</div>
           <div class="review-feed-body">${escapeHtml(snippet)}</div>
@@ -7603,13 +7635,28 @@ async function submitReview(force){
     }
 
     if(!reviewTurnstileToken){
-      showToast('CAPTCHA認証を完了してください');
+      // 書いている間にCAPTCHAトークンの有効期限が切れている(数分で切れる)と、
+      // ここで止まったまま「投稿するを押しても何も起きない」ように見えていた。
+      // トークン切れだと分かる文言にした上で、ウィジェットを裏で再検証させて
+      // おき、次の一押しで通りやすくする。
+      showToast('認証の有効期限が切れました。もう一度「投稿する」を押してください');
+      renderReviewTurnstile();
       return;
     }
   }
 
   const m = MOVIES.find(x => x.id === state.currentMovieId);
   const wasEditing = editingMovieId === m.id;
+
+  // 連打で同時に2本リクエストが飛ぶと、後から通った方が「1人1映画1行」の
+  // 制約に引っかかって失敗し、実際には最初の1本が投稿できているのに
+  // 「投稿するを押しても通らない」ように見える事故になっていた
+  // (マジックリンク送信・お問い合わせフォームと同じ対策)。送信中は
+  // ボタンを無効化し、押したこと自体が分かる表示にする。
+  const submitBtn = document.getElementById('review-submit-btn');
+  const submitBtnOriginalLabel = submitBtn.textContent;
+  submitBtn.disabled = true;
+  submitBtn.textContent = '送信中…';
 
   const prevReasonTags = new Set(state.myReason[m.id] || []);
   const prevMoodTags = new Set(state.myTagVotes[m.id] || []);
@@ -7627,12 +7674,16 @@ async function submitReview(force){
     // RLS(1人1映画1行・レート制限・review_countゲート)はそのまま有効。
     // getSession()にもタイムアウトを付け、gotrue-jsが希にハングする既知の
     // 不具合で「送信ボタンを押したまま何も起きない」まま止まらないようにする。
+    // submit-review自体にもタイムアウトが無かったため、エッジ関数側が
+    // (接続過多等で)詰まった時に「投稿するを押しても何も起きない」まま
+    // 無限に待ち続けることがあった。ここにもタイムアウトを付け、詰まった
+    // 場合は数秒でエラーにしてfinally側でボタンを押し直せる状態に戻す。
     if(text){
       const { data: { session } } = await withTimeout(supabase.auth.getSession(), 6000);
-      const { data, error } = await supabase.functions.invoke('submit-review', {
+      const { data, error } = await withTimeout(supabase.functions.invoke('submit-review', {
         body: { movie_id: m.id, review_text: text, captcha_token: reviewTurnstileToken },
         headers: session ? { Authorization: `Bearer ${session.access_token}` } : undefined
-      });
+      }), 15000);
       if(error){
         // functions.invoke()は非2xxのとき、本文で返した{error: "..."}をerror.messageに
         // 乗せてくれないので、レスポンス本体を読み直して分かりやすいメッセージを取り出す。
@@ -7718,6 +7769,8 @@ async function submitReview(force){
   }finally{
     if(reviewTurnstileWidgetId !== null) turnstile.reset(reviewTurnstileWidgetId);
     reviewTurnstileToken = null;
+    submitBtn.disabled = false;
+    submitBtn.textContent = submitBtnOriginalLabel;
   }
 }
 

@@ -41,6 +41,36 @@ const DIRECT_BOOK_TYPE_MAP: Record<string, { ja: string; tags: string[]; baseTie
   "001020": { ja: "新書", tags: ["考えさせられる"], baseTier: 15 },
 };
 
+// 新書(001020)はサブジャンルの幅が広く、これまで一律「新書」として取り込んで
+// いたため、パズル本(001020003=ホビー・スポーツ・美術。実例:「難関数独」)や
+// 絵本・児童書と重複する001020004(実例:「四つ子ぐらし」)まで紛れ込み、
+// 「新書」の中身が雑多になっていた(オーナーからの指摘)。この2つは新書
+// パイプラインでは取り込まない(絵本・児童書は別途001003003で取り込み済み、
+// パズル本の対象ジャンルは今のところ無い)。残りのサブジャンルは実際の
+// ジャンル名をそのままgenreに使い、「詳しく絞り込む」で新書だけでも
+// 意味のある絞り込みができるようにする(サブジャンル不明時のみ「新書」の
+// まま)。
+const SHINSHO_EXCLUDED_SUBGENRES = new Set(["001020003", "001020004"]);
+const SHINSHO_SUBGENRE_NAMES: Record<string, string> = {
+  "001020001": "小説・エッセイ",
+  "001020002": "暮らし・健康・料理",
+  "001020005": "語学・学習参考書",
+  "001020006": "旅行・留学・アウトドア",
+  "001020007": "人文・思想・社会",
+  "001020008": "ビジネス・経済・就職",
+  "001020009": "パソコン・システム開発",
+  "001020010": "科学・医学・技術",
+  "001020011": "エンタメ",
+};
+function shinshoInfo(booksGenreId: string | null | undefined): { ja: string; excluded: boolean } {
+  const segs = genreSegments(booksGenreId);
+  if (segs.some((s) => SHINSHO_EXCLUDED_SUBGENRES.has(s))) return { ja: "新書", excluded: true };
+  for (const seg of segs) {
+    if (SHINSHO_SUBGENRE_NAMES[seg]) return { ja: SHINSHO_SUBGENRE_NAMES[seg], excluded: false };
+  }
+  return { ja: "新書", excluded: false }; // サブジャンルが未知の場合はこれまで通り「新書」のまま取り込む
+}
+
 // 「その他」は物語作品以外(占い本・絵本・実用書等)も同居しており、それらは
 // 別の上位ジャンルにも重複登録されていることが多い。そこで、この上位
 // ジャンル(6桁)が1つでも付いている商品は、小説の他ジャンルと重複していても
@@ -327,11 +357,17 @@ Deno.serve(async (req: Request) => {
     const rows: any[] = [];
     const estimates: any[] = [];
     const skipped: any[] = [];
+    const isShinsho = books_genre_id === "001020";
     for (const { key, item } of fresh) {
       // 非小説タイトルのブラックリスト(地球の歩き方等)は小説パイプライン用
       // なので、絵本・新書・図鑑では適用しない。
       if (!directBookType && isNonNovelTitle(item.title)) {
         skipped.push({ key, reason: "non_novel_title" });
+        continue;
+      }
+      if (isShinsho && shinshoInfo(item.booksGenreId).excluded) {
+        // パズル本・絵本児童書と重複するサブジャンルは新書として取り込まない。
+        skipped.push({ key, reason: "shinsho_excluded_subgenre" });
         continue;
       }
       if (isBundleTitle(item.title)) {
@@ -345,7 +381,9 @@ Deno.serve(async (req: Request) => {
         continue;
       }
       const caption = (item.itemCaption || "").trim();
-      const genreInfo = directBookType
+      const genreInfo = isShinsho
+        ? { ja: [shinshoInfo(item.booksGenreId).ja], tags: directBookType.tags, baseTier: directBookType.baseTier }
+        : directBookType
         ? { ja: [directBookType.ja], tags: directBookType.tags, baseTier: directBookType.baseTier }
         : genreInfoFor(item.booksGenreId);
       const year = saleDate ? saleDate.getUTCFullYear() : null;
