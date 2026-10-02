@@ -3319,7 +3319,10 @@ const TURNSTILE_SITE_KEY = '0x4AAAAAAEyRzv6vqgd53c5F';
 // w342は一覧のカード表示にちょうど良い解像度。ホームの大きな注目バナーなど
 // 表示サイズが大きい箇所ではw780を使う(movie.posterPathから組み立てる)。
 const TMDB_IMAGE_BASE = 'https://image.tmdb.org/t/p/w342';
-const TMDB_IMAGE_BASE_LARGE = 'https://image.tmdb.org/t/p/w780';
+// フィーチャーバナー(画面最上部、全幅表示)専用。w780だと画面幅の広い端末で
+// 引き伸ばされてぼやけて見えていたため、TMDbが提供する最大解像度に上げる。
+// 通常のカードサムネ(TMDB_IMAGE_BASE)とは別定数で、影響範囲はバナーのみ。
+const TMDB_IMAGE_BASE_LARGE = 'https://image.tmdb.org/t/p/original';
 let hasSupabaseSession = false;
 
 // 一部の環境(特にマジックリンクでURLにトークンが付いた状態で開いた直後)で
@@ -6124,7 +6127,16 @@ function renderPosterMood(m){
 
   // タイトルをポスターの主役として配置(Zパターンの視線の終着点=右下)
   const motifEl = document.getElementById('poster-motif');
-  motifEl.innerHTML = `<div class="poster-title-row"><div class="poster-title-type">${m.title}</div><div class="poster-year-type">${m.year}年公開</div></div>`;
+  motifEl.innerHTML = `<div class="poster-title-row"><div class="poster-title-type">${m.title}</div><div class="poster-year-type">${m.year}年${releaseVerb(m)}</div></div>`;
+}
+
+// 「公開」は映画・アニメ映画向けの言い方で、漫画・小説・音楽にそのまま
+// 使うと「本が公開される」のように不自然だった。メディア種別に応じて
+// 言い方を変える(TVアニメ・ドラマは「放送」、漫画・小説・音楽は「発売」)。
+function releaseVerb(m){
+  if(m.isMusic || m.isManga || m.isNovel) return '発売';
+  if(m.mediaType === 'tv' && (m.isAnime || m.isDrama)) return '放送';
+  return '公開';
 }
 
 function renderCommunityTags(m){
@@ -10166,7 +10178,7 @@ async function init(){
 // (CSS側の余分なanimation-delayと合わさって).hiddenで先にdisplay:noneに
 // なってしまい、再生されないまま消えることがあった。
 const splash = document.getElementById('splash');
-const SPLASH_MIN_MS = 700; // ロゴ演出が一瞬で終わって見えないための最低表示時間
+const SPLASH_MIN_MS = 500; // ロゴ演出が一瞬で終わって見えないための最低表示時間
 const SPLASH_CLOSE_MS = 400; // .splash.closingのirisClose継続時間と合わせる
 const SPLASH_MAX_MS = 8000; // 何らかの理由でinit()がいつまでも終わらない場合の保険(強制的に閉じる)
 function wait(ms){ return new Promise(resolve => setTimeout(resolve, ms)); }
