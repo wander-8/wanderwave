@@ -8474,6 +8474,11 @@ async function loadRemainingMoviesInBackground(startOffset, plainMovieFilter, st
     const existingIds = new Set(MOVIES.map(m => m.id));
     const newRecords = restRows.filter(row => !existingIds.has(row.id)).map(row => buildMovieRecord(row, statsByMovie, estimatesByMovie));
     MOVIES = MOVIES.concat(newRecords);
+    // loadNonMovieCatalogInBackgroundと同じ理由: 残りの映画が増えた分だけ
+    // ジャンル・国・年代チップの選択肢も増えうるので、ここでも再計算する。
+    renderGenreCloud();
+    renderCountryCloud();
+    renderDecadeCloud();
     renderFeaturedBanner();
     renderHomeRows();
     renderResults();
@@ -8543,6 +8548,15 @@ async function loadNonMovieCatalogInBackground(statsByMovie, estimatesByMovie){
     MOVIES = MOVIES.concat(firstPageRows.map(row => buildMovieRecord(row, statsByMovie, estimatesByMovie)));
     nonMovieCatalogLoaded = true;
     if(state.catalogMode !== 'movie'){
+      // ジャンル・国・年代チップは「今のモードのプールに実在するものだけ」を
+      // その都度計算して出す作りなので、このバックグラウンド読み込みが
+      // 終わった後も再計算しないと、ページを開いた直後にモードを切り替えた
+      // (=この読み込みが終わる前にrenderGenreCloud等が1度空のプールで
+      // 呼ばれてしまった)場合、ジャンルが後から増えても二度と反映されず
+      // 「詳しく絞り込む」の中身が空のまま固まって見える事故になっていた。
+      renderGenreCloud();
+      renderCountryCloud();
+      renderDecadeCloud();
       renderFeaturedBanner();
       renderHomeRows();
       renderResults();
@@ -8554,6 +8568,9 @@ async function loadNonMovieCatalogInBackground(statsByMovie, estimatesByMovie){
       const newRecords = restRows.filter(row => !existingIds.has(row.id)).map(row => buildMovieRecord(row, statsByMovie, estimatesByMovie));
       MOVIES = MOVIES.concat(newRecords);
       if(state.catalogMode !== 'movie'){
+        renderGenreCloud();
+        renderCountryCloud();
+        renderDecadeCloud();
         renderFeaturedBanner();
         renderHomeRows();
         renderResults();
