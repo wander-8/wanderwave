@@ -2362,7 +2362,7 @@
     <button class="catalog-mode-menu-item" id="catalog-mode-btn-anime-side" onclick="setCatalogMode('anime')">アニメ</button>
     <button class="catalog-mode-menu-item" id="catalog-mode-btn-drama-side" onclick="setCatalogMode('drama')">ドラマ</button>
     <button class="catalog-mode-menu-item" id="catalog-mode-btn-manga-side" onclick="setCatalogMode('manga')">漫画</button>
-    <button class="catalog-mode-menu-item" id="catalog-mode-btn-novel-side" onclick="setCatalogMode('novel')">小説</button>
+    <button class="catalog-mode-menu-item" id="catalog-mode-btn-novel-side" onclick="setCatalogMode('novel')">本</button>
     <button class="catalog-mode-menu-item" id="catalog-mode-btn-music-side" onclick="setCatalogMode('music')">音楽</button>
   </div>
 </div>
@@ -2378,7 +2378,7 @@
   <button class="catalog-mode-drawer-item" id="catalog-mode-btn-anime" onclick="setCatalogMode('anime')">アニメ</button>
   <button class="catalog-mode-drawer-item" id="catalog-mode-btn-drama" onclick="setCatalogMode('drama')">ドラマ</button>
   <button class="catalog-mode-drawer-item" id="catalog-mode-btn-manga" onclick="setCatalogMode('manga')">漫画</button>
-  <button class="catalog-mode-drawer-item" id="catalog-mode-btn-novel" onclick="setCatalogMode('novel')">小説</button>
+  <button class="catalog-mode-drawer-item" id="catalog-mode-btn-novel" onclick="setCatalogMode('novel')">本</button>
   <button class="catalog-mode-drawer-item" id="catalog-mode-btn-music" onclick="setCatalogMode('music')">音楽</button>
 </div>
 
@@ -2716,7 +2716,7 @@
          端末限定)。ここから開くとサイト全体のモードが自動で小説に
          切り替わる(goDetailWithMode参照)。 -->
     <div id="d-recommended-novel-wrap" style="display:none;">
-      <div class="section-label">こんな小説もおすすめ</div>
+      <div class="section-label">こんな本もおすすめ</div>
       <div class="results" id="d-recommended-novel"></div>
     </div>
 
@@ -5517,6 +5517,13 @@ function renderResults(){
   // クエリに一致する雰囲気検索のエイリアスは、作品ごとではなくクエリ1つに
   // つき1回だけ求めれば十分(relevantVibeKeywords参照)。
   const relevantVibeKws = relevantVibeKeywords(q);
+  // 検索欄に「絵本」「ホラー」等のジャンル名をそのまま打った時は、以前は
+  // タイトル・あらすじ・キーワード等も含めた通常の曖昧検索に流れてしまい、
+  // 「絵本」というジャンルの作品だけでなく、あらすじ中にたまたま「絵本」
+  // という言葉が出てくる無関係な作品まで混ざって出ていた(「絵本検索しても
+  // 絵本のみで検索できない」という報告の原因)。クエリが既知のジャンル名と
+  // 完全一致する時だけ、そのジャンルを持つ作品だけに絞る特別扱いにする。
+  const exactGenreQuery = FILTER_GENRES.find(g => normalizeForSearch(g) === q) || null;
   resultsFiltered = MOVIES.filter(m => {
     // ここは検索1文字打つたびに全作品(数万件)に対して走る一番ホットな
     // 経路なので、m.titleNorm等の「読み込み時に一度だけ正規化しておいた
@@ -5524,20 +5531,22 @@ function renderResults(){
     // 以前はここで毎回normalizeForSearchを呼んでおり、あらすじ(最大400字)
     // まで含め全作品を正規化し直していたため、検索1文字目で固まっていた。
     const matchQuery = q === ""
-      || m.titleNorm.includes(q)
-      || String(m.year).includes(q)
-      || (m.castNorm && m.castNorm.some(a => a.includes(q)))
-      || (m.directorNorm && m.directorNorm.includes(q))
-      || (m.countryNorm && m.countryNorm.includes(q))
-      || (m.genreNorm && m.genreNorm.some(g => g.includes(q)))
-      || (m.synopsisNorm && m.synopsisNorm.includes(q))
-      // TMDbのキーワード(英語)をそのまま検索対象にする。日本語の言い方は
-      // 上のVIBE_QUERY_ALIASESで別途対応するが、"gore"や"heist"のように
-      // 英単語のまま探す人にもそのまま応えられるようにしておく。
-      || (m.keywordsNorm && m.keywordsNorm.some(k => k.includes(q)))
-      || matchesCountryAlias(m, q)
-      || matchesVibeAlias(m, relevantVibeKws)
-      || matchesMarvelAlias(m, q);
+      || (exactGenreQuery
+        ? !!(m.genre && m.genre.includes(exactGenreQuery))
+        : m.titleNorm.includes(q)
+          || String(m.year).includes(q)
+          || (m.castNorm && m.castNorm.some(a => a.includes(q)))
+          || (m.directorNorm && m.directorNorm.includes(q))
+          || (m.countryNorm && m.countryNorm.includes(q))
+          || (m.genreNorm && m.genreNorm.some(g => g.includes(q)))
+          || (m.synopsisNorm && m.synopsisNorm.includes(q))
+          // TMDbのキーワード(英語)をそのまま検索対象にする。日本語の言い方は
+          // 上のVIBE_QUERY_ALIASESで別途対応するが、"gore"や"heist"のように
+          // 英単語のまま探す人にもそのまま応えられるようにしておく。
+          || (m.keywordsNorm && m.keywordsNorm.some(k => k.includes(q)))
+          || matchesCountryAlias(m, q)
+          || matchesVibeAlias(m, relevantVibeKws)
+          || matchesMarvelAlias(m, q));
     const matchTags = state.activeTags.size === 0 || [...state.activeTags].every(t => m.tags.includes(t));
     // 表現度フィルターは、タグを選んでいるかどうかに関係なく、選択中の
     // バンドだけで判定する(以前はactiveTags.size===0の時に無条件で
@@ -6837,7 +6846,7 @@ const CATALOG_MODES = [
   ['anime', 'アニメ'],
   ['drama', 'ドラマ'],
   ['manga', '漫画'],
-  ['novel', '小説'],
+  ['novel', '本'],
   ['music', '音楽'],
 ];
 function updateCatalogModeToggleUI(){
