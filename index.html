@@ -6855,6 +6855,43 @@ function updateCatalogModeToggleUI(){
   });
 }
 
+// ホーム画面を左右にスワイプすると、ハンバーガーメニューを開かずに
+// カテゴリ(映画→アニメ→ドラマ→漫画→小説→音楽)を順番に切り替えられる
+// ようにする。カード行(.results)は元々横スクロールするため、スワイプが
+// カード行の上で始まった場合はこちらのジェスチャーでは拾わず、行自体の
+// 横スクロールに任せる(ignoreSwipeで判定)。最後のカテゴリから更に
+// 同方向へ送ると最初に戻る・最初から逆方向へ送ると最後に戻る(無限ループ、
+// 途中で止まらない)。
+(function initCatalogSwipeGesture(){
+  const homeView = document.getElementById('view-home');
+  if(!homeView) return;
+  const SWIPE_MIN_DISTANCE = 60;
+  let startX = 0, startY = 0, ignoreSwipe = false;
+
+  homeView.addEventListener('touchstart', (e) => {
+    const t = e.touches[0];
+    startX = t.clientX;
+    startY = t.clientY;
+    ignoreSwipe = !!e.target.closest('.results');
+  }, { passive: true });
+
+  homeView.addEventListener('touchend', (e) => {
+    if(ignoreSwipe) return;
+    const t = e.changedTouches[0];
+    const dx = t.clientX - startX;
+    const dy = t.clientY - startY;
+    // 横方向が縦方向より十分大きい時だけスワイプとみなす(縦スクロールの
+    // 誤判定を防ぐ)。
+    if(Math.abs(dx) < SWIPE_MIN_DISTANCE || Math.abs(dx) < Math.abs(dy) * 1.5) return;
+    const idx = CATALOG_MODES.findIndex(([m]) => m === state.catalogMode);
+    if(idx === -1) return;
+    const nextIdx = dx < 0
+      ? (idx + 1) % CATALOG_MODES.length
+      : (idx - 1 + CATALOG_MODES.length) % CATALOG_MODES.length;
+    setCatalogMode(CATALOG_MODES[nextIdx][0]);
+  }, { passive: true });
+})();
+
 function renderMovieInfoPanel(m){
   // 漫画・小説は「監督」ではなく「作者」の方が自然なので、作品種別に応じてラベルを切り替える。
   document.getElementById('d-director-label').textContent = m.isMusic ? 'アーティスト' : (m.isManga || m.isNovel) ? '作者' : '監督';
