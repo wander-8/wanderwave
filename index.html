@@ -4343,6 +4343,21 @@ function availableCountries(){
 const BOOK_TYPES = ['絵本', '図鑑', '新書'];
 function renderBookTypeSwitch(){
   const wrap = document.getElementById('book-type-switch');
+  // 絵本・図鑑はそもそも楽天側にサブジャンルの区分が存在せず、新書も
+  // 既存データの作り直し(1件ずつ楽天に問い合わせて再分類)をしない限り
+  // 中身が揃わない。「詳しく絞り込む」ごと出しておくと中身がちぐはぐ・
+  // ほぼ空になるだけなので、本の種類を選んでいる間は「詳しく絞り込む」
+  // 自体を丸ごと隠す(小説を選んでいる時、および小説モード以外では今まで
+  // 通り出す)。
+  const disclosureBtn = document.getElementById('filter-disclosure-btn');
+  const disclosureBody = document.getElementById('filter-disclosure-body');
+  const hideDisclosure = currentCatalogMode() === 'novel' && !!state.bookType;
+  disclosureBtn.style.display = hideDisclosure ? 'none' : '';
+  if(hideDisclosure){
+    disclosureBtn.classList.remove('open');
+    disclosureBody.classList.remove('open');
+  }
+  disclosureBody.style.display = hideDisclosure ? 'none' : '';
   if(currentCatalogMode() !== 'novel'){
     wrap.style.display = 'none';
     return;
