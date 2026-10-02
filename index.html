@@ -3347,6 +3347,19 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/feather-icons/4.29.2/feather.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.4/dist/umd/supabase.js"></script>
 <script>
+// マジックリンク/OAuthログインから戻ってきた直後のURLかどうかを、この直後の
+// createClient()がdetectSessionInUrl機能で内部的にハッシュ(#access_token=…)を
+// 検出・消費してhistory.replaceState()で消してしまう前に、真っ先に記録しておく。
+// looksLikeAuthRedirect()が実際に呼ばれるのはこのスクリプトの末尾のinit()内で、
+// それまでに数千行のパース・他の同期処理が挟まるため、呼ばれる頃には
+// window.location.hashが既に空になっていることがある。その状態でライブの
+// location.hashを読むと「ログイン直後ではない」と誤判定し、自動匿名サインイン
+// (autoSignInAnonymously)が誤って走って、今まさに確立しようとしている本物の
+// セッションを後から匿名セッションが上書きしてしまう
+// (「何度ログインしてもゲスト表示に戻る」という報告の原因)。
+const INITIAL_AUTH_REDIRECT_HASH = window.location.hash || '';
+const INITIAL_AUTH_REDIRECT_SEARCH = window.location.search || '';
+
 // --- Supabase接続 -----------------------------------------------------
 // profiles(プロフィール)とmovie_logs(視聴ログ)はSupabaseに保存する。
 // 「愛を送る」だけは登録不要のゲスト機能として自動匿名サインインを使うが、
@@ -3429,9 +3442,11 @@ async function checkExistingSession(){
 // マジックリンクのURLである間は自動匿名サインインを行わず、GoTrue自身の
 // URL解析(=onAuthStateChangeのSIGNED_IN)に任せる。
 function looksLikeAuthRedirect(){
-  const hash = window.location.hash || '';
-  if(/access_token=|refresh_token=|type=magiclink|type=recovery|type=signup/.test(hash)) return true;
-  return new URLSearchParams(window.location.search).has('code');
+  // ライブのwindow.location.hash/searchではなく、スクリプト先頭(Supabase
+  // クライアント生成より前)で記録しておいた値を見る。理由は上のコメント
+  // (INITIAL_AUTH_REDIRECT_HASHの定義箇所)参照。
+  if(/access_token=|refresh_token=|type=magiclink|type=recovery|type=signup/.test(INITIAL_AUTH_REDIRECT_HASH)) return true;
+  return new URLSearchParams(INITIAL_AUTH_REDIRECT_SEARCH).has('code');
 }
 
 // getSession()と同じ理由(gotrue-jsが希にハングする)で、getUser()にも
