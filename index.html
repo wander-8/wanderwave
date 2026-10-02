@@ -2089,9 +2089,12 @@
   /* 視聴記録の「もっと見る」一覧は、タイトルを重ねた縦長タイルが並ぶだけの
      ページ。以前110px幅3列だとスマホ実機で詰まって見えたため150pxの2列に
      広げたが、今度は逆に1枚1枚が大きすぎるとの声を受け、3列に収まる
-     115pxまで戻す(110pxよりは少し余裕を持たせる)。 */
+     115pxまで戻した。それでも大きすぎるとの指摘が続いていた原因は、
+     minmax(115px,1fr)の1frが.appの最大幅(デスクトップでは1100pxまで広がる)
+     いっぱいに列を引き伸ばしていたため。1frをやめて上限130pxで頭打ちに
+     することで、画面が広くても1枚1枚のサイズは変わらないようにする。 */
   #viewing-record-grid.pocket-grid{
-    grid-template-columns: repeat(auto-fill, minmax(115px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(115px, 130px));
     gap: 14px 12px;
   }
   .pocket-grid .result-card{
@@ -2479,7 +2482,7 @@
       </button>
       <div class="filter-disclosure-body" id="filter-disclosure-body">
         <div class="filter-disclosure-inner">
-          <div class="filter-group">
+          <div class="filter-group" id="genre-filter-group">
             <div class="filter-group-label">ジャンル</div>
             <div class="genre-cloud" id="genre-cloud"></div>
           </div>
@@ -3899,6 +3902,11 @@ const TAG_COLORS = {
 // 参照)。
 const FILTER_GENRES = ["ドラマ","コメディ","アクション","スリラー","アドベンチャー","クライム","恋愛","ホラー","SF","ファンタジー","ミステリー","アニメーション","ファミリー","歴史","戦争","音楽","ドキュメンタリー","西部劇","特撮","TVムービー","J-Pop","K-Pop","Rock","Classical","Anime","Hip Hop/Rap","小説・エッセイ","暮らし・健康・料理","語学・学習参考書","旅行・留学・アウトドア","人文・思想・社会","ビジネス・経済・就職","パソコン・システム開発","科学・医学・技術","エンタメ"];
 const FILTER_COUNTRIES = ["アメリカ","イギリス","フランス","ドイツ","日本","海外","カナダ","イタリア","スペイン","中国","香港","韓国","インド","オーストラリア","ベルギー","メキシコ","スウェーデン","デンマーク","ブラジル","ロシア","アイルランド","オランダ","ポーランド","スイス","アルゼンチン","トルコ","ノルウェー","フィンランド","オーストリア","ルクセンブルク","ルーマニア","チェコ","台湾","ハンガリー","南アフリカ","タイ","ニュージーランド","ポルトガル"];
+// 新書のサブジャンル名(rakuten-discover-novelのSHINSHO_SUBGENRE_NAMESと同じ値)。
+// 「ある作品が新書かどうか」はis_novelだけでは分からず、genre配列にこの中の
+// 値が入っているかで判定する(絵本・図鑑はgenreに単に"絵本"/"図鑑"が入るだけ
+// なので区別できる)。
+const SHINSHO_GENRE_NAMES = ["新書","小説・エッセイ","暮らし・健康・料理","語学・学習参考書","旅行・留学・アウトドア","人文・思想・社会","ビジネス・経済・就職","パソコン・システム開発","科学・医学・技術","エンタメ"];
 
 function tagColor(tag){
   return TAG_COLORS[tag] || "#9a958f";
@@ -4197,7 +4205,7 @@ function shouldHidePosterForIntensity(m){
   return pct.sexual >= 40 || pct.violence >= 60;
 }
 
-let state = { query: "", activeTags: new Set(), currentMovieId: null, hasReviewed: {}, myReviewsById: {}, myReviewRows: [], myReviewRowsLoaded: false, myLove: {}, myIntensity: {}, myReason: {}, myTagVotes: {}, myWatchLater: {}, myPocket: [], myLists: [], currentListId: null, profile: null, profileLoaded: false, myLogs: [], myLogsLoaded: false, mySubmittedMovieIds: [], mySubmittedMovies: [], mySubmittedMoviesLoaded: false, lastSubmissionDate: null, todaySubmissionCount: 0, intensityFilter: 0, decadeFilter: 0, diagnosisHistory: [], activeGenres: new Set(), activeCountries: new Set(), catalogMode: 'movie' };
+let state = { query: "", activeTags: new Set(), currentMovieId: null, hasReviewed: {}, myReviewsById: {}, myReviewRows: [], myReviewRowsLoaded: false, myLove: {}, myIntensity: {}, myReason: {}, myTagVotes: {}, myWatchLater: {}, myPocket: [], myLists: [], currentListId: null, profile: null, profileLoaded: false, myLogs: [], myLogsLoaded: false, mySubmittedMovieIds: [], mySubmittedMovies: [], mySubmittedMoviesLoaded: false, lastSubmissionDate: null, todaySubmissionCount: 0, intensityFilter: 0, decadeFilter: 0, diagnosisHistory: [], activeGenres: new Set(), activeCountries: new Set(), catalogMode: 'movie', bookType: null };
 
 
 function riskLabel(v){
@@ -4274,16 +4282,55 @@ function renderTagCloud(){
 // 意味合いが違う(1本の映画が複数の国・ジャンルを持つのは普通なため)。
 // 年代フィルターと同じ理由(検索しても0件のまま気づけない事故を防ぐ)で、
 // ジャンル・国も今のモードのプールに実際に1本も無いものはチップごと出さない。
+//
+// 小説モードでは絵本・図鑑・新書・(どれも選んでいない)小説の4通りで
+// 中身の性質がまるで違う(新書には政治・経済・暮らし等の実在サブジャンルが
+// あるが、絵本・図鑑にはそもそも無い)のに、以前は小説モード全体のプールで
+// 集計していたため、新書を選んでいてもミステリー・恋愛のような小説側の
+// ジャンルや、絵本・図鑑には存在しない選択肢まで並んでいた。
+// bookTypeNarrowedPool()で選択中の本の種類だけにプールを絞ってから集計する。
+function isShinshoItem(m){
+  return (m.genre || []).some(g => SHINSHO_GENRE_NAMES.includes(g));
+}
+// 1冊がどの本の種類か(novelモード限定の分類)。絵本・図鑑は実データ上
+// genreに"絵本"/"図鑑"がそのまま入るので直接判定できるが、新書は
+// サブジャンルが判明している商品ほどgenreに「新書」という文字列が
+// 入らない(shinshoInfo参照)ため、isShinshoItem()で別途判定する。
+function itemBookType(m){
+  if((m.genre || []).includes('絵本')) return '絵本';
+  if((m.genre || []).includes('図鑑')) return '図鑑';
+  if(isShinshoItem(m)) return '新書';
+  return null; // 小説(絵本・図鑑・新書のいずれでもない)
+}
+// 本の種類の選択は、ジャンルチップの複数選択OR一致とは性質が違う
+// (常に1つだけを選ぶ排他選択で、しかも新書は「genreにこの文字列が
+// 入っているか」では判定できない)ため、以前はstate.activeGenresに
+// '絵本'/'図鑑'/'新書'という文字列をそのまま足し引きして間に合わせて
+// いたが、これだと①renderGenreCloud内の「選択肢から消えたジャンルは
+// 選択解除する」お掃除ロジックが、本の種類としての'新書'もジャンル
+// チップの選択肢(FILTER_GENRES)に無いと誤認して即座に消してしまう、
+// ②新書にサブジャンル名(「暮らし・健康・料理」等)が付いた商品は
+// genreに文字通り"新書"を持たないため検索結果の絞り込みにも引っかから
+// ない、という2つの実害があった。本の種類はactiveGenresとは別に
+// state.bookTypeとして独立に持つ。
+function currentBookType(){
+  return state.bookType;
+}
+function bookTypeNarrowedPool(pool, mode){
+  if(mode !== 'novel') return pool;
+  const bookType = currentBookType();
+  return pool.filter(m => itemBookType(m) === bookType);
+}
 function availableGenres(){
   const mode = currentCatalogMode();
-  const pool = MOVIES.filter(m => isInCatalogMode(m, mode));
+  const pool = bookTypeNarrowedPool(MOVIES.filter(m => isInCatalogMode(m, mode)), mode);
   const set = new Set();
   pool.forEach(m => (m.genre || []).forEach(g => set.add(g)));
   return FILTER_GENRES.filter(g => set.has(g));
 }
 function availableCountries(){
   const mode = currentCatalogMode();
-  const pool = MOVIES.filter(m => isInCatalogMode(m, mode));
+  const pool = bookTypeNarrowedPool(MOVIES.filter(m => isInCatalogMode(m, mode)), mode);
   const set = new Set();
   pool.forEach(m => { if(m.country) FILTER_COUNTRIES.forEach(c => { if(m.country.includes(c)) set.add(c); }); });
   return FILTER_COUNTRIES.filter(c => set.has(c));
@@ -4301,7 +4348,7 @@ function renderBookTypeSwitch(){
     return;
   }
   wrap.style.display = 'flex';
-  const current = BOOK_TYPES.find(t => state.activeGenres.has(t)) || null;
+  const current = state.bookType;
   const items = [{ label: '小説', value: null }, ...BOOK_TYPES.map(t => ({ label: t, value: t }))];
   wrap.innerHTML = items.map(({ label, value }) => {
     const active = value === current;
@@ -4309,10 +4356,11 @@ function renderBookTypeSwitch(){
   }).join('');
 }
 function selectBookType(value){
-  BOOK_TYPES.forEach(t => state.activeGenres.delete(t));
-  if(value) state.activeGenres.add(value);
+  state.bookType = value;
   renderBookTypeSwitch();
   renderGenreCloud();
+  renderCountryCloud();
+  renderDecadeCloud();
   renderResults();
 }
 
@@ -4320,6 +4368,12 @@ function renderGenreCloud(){
   const el = document.getElementById('genre-cloud');
   el.innerHTML = "";
   const genres = availableGenres();
+  // 絵本・図鑑のように、そもそも楽天側にサブジャンルの区分が存在しない
+  // 本の種類を選んでいる時はジャンルチップが1つも無くなる(新書の
+  // サブジャンルやgenre側の値と重複しないよう、"絵本""図鑑"自体は
+  // FILTER_GENRESに含めていないため)。空の棚を出しっぱなしにせず、
+  // 国の欄(country-filter-group)と同じく欄ごと隠す。
+  document.getElementById('genre-filter-group').style.display = genres.length > 0 ? '' : 'none';
   // 選択中のジャンルが、モード切り替え等で選択肢から消えてしまった場合は
   // 選択を解除する(消えたチップの分だけ絞り込みが宙に浮いて0件のまま
   // 気づけない、という事故を防ぐ)。
@@ -4461,7 +4515,7 @@ function decadeLabel(d){
 }
 function availableDecades(){
   const mode = currentCatalogMode();
-  const pool = MOVIES.filter(m => isInCatalogMode(m, mode));
+  const pool = bookTypeNarrowedPool(MOVIES.filter(m => isInCatalogMode(m, mode)), mode);
   const set = new Set();
   pool.forEach(m => { const d = movieDecadeBand(m); if(d != null) set.add(d); });
   return [...set].sort((a, b) => a - b);
@@ -4507,6 +4561,7 @@ function clearSearch(){
   state.activeGenres.clear();
   state.activeCountries.clear();
   state.decadeFilter = 0;
+  state.bookType = null;
   renderTagCloud(); // activeTagsが空になったのでintensityFilterも内部でリセットされる
   renderGenreCloud();
   renderCountryCloud();
@@ -5665,7 +5720,10 @@ function renderResults(){
     // ようにしておく。検索も映画⇔アニメ⇔ドラマの切り替え状態に従う
     // (isInCatalogMode参照)。
     const matchCatalogMode = isInCatalogMode(m, currentCatalogMode());
-    return matchQuery && matchTags && matchIntensity && matchDecade && matchGenre && matchCountry && !matchesExcludedWord(m) && matchCatalogMode;
+    // 小説モードの時だけ、本の種類の切り替え(小説/絵本/図鑑/新書)で
+    // 絞り込む。他のモードでは本の種類の概念自体が無いので素通りさせる。
+    const matchBookType = currentCatalogMode() !== 'novel' || itemBookType(m) === state.bookType;
+    return matchQuery && matchTags && matchIntensity && matchDecade && matchGenre && matchCountry && !matchesExcludedWord(m) && matchCatalogMode && matchBookType;
   });
 
   // 以前は並び順を一切指定しておらず、DBから返ってきた順(≒追加順)のまま
@@ -5737,7 +5795,7 @@ function dedupeByNormalizedTitleYear(movies){
 
 function renderRecommended(currentMovie){
   const root = document.getElementById('d-recommended');
-  const MIN_COUNT = 4;
+  const MIN_COUNT = 8; // 詳細ページのおすすめ欄をもっと見たいとの要望を受けて4→8に増量
   const animePreview = isAnimePreviewEnabled();
   const others = MOVIES.filter(m => m.id !== currentMovie.id);
 
@@ -7154,7 +7212,11 @@ function updateCatalogModeToggleUI(){
     const t = e.touches[0];
     startX = t.clientX;
     startY = t.clientY;
-    ignoreSwipe = !!e.target.closest('.results');
+    // .results(通常のカード行)に加えて.review-feed-marquee(「みんなの声」)も
+    // それ自体が横ドラッグでスクロールする欄なので、ここで拾わず素通りさせる
+    // (以前はここに入っておらず、「みんなの声」を触ろうとするとスワイプ扱い
+    // されてカテゴリが切り替わってしまっていた)。
+    ignoreSwipe = !!e.target.closest('.results, .review-feed-marquee');
     dragging = false;
     homeView.style.transition = 'none';
   }, { passive: true });

@@ -122,6 +122,22 @@ function isForeignNovel(booksGenreId: string | null | undefined): boolean {
   return genreSegments(booksGenreId).includes(FOREIGN_NOVEL_GENRE);
 }
 
+// 絵本(001003003)は小説と同様、楽天側に「絵本(日本)」001003003001と
+// 「絵本(外国)」001003003002という国別の子ジャンルが存在する(実例:
+// 「はらぺこあおむし」booksGenreId="001003003002")。ただしこれは
+// GENRE_PREFIX_MAPの3階層コード(9桁)と違い4階層コード(12桁)なので、
+// genreSegments()の9桁切り詰めを通すと001003003001/002が同じ
+// "001003003"に潰れてしまい判定できない。切り詰め無しの生セグメントを
+// 別途見る必要がある。
+const FOREIGN_PICTURE_BOOK_GENRE = "001003003002";
+function rawGenreSegments(booksGenreId: string | null | undefined): string[] {
+  return (booksGenreId || "").split("/").filter(Boolean);
+}
+function isForeignBook(booksGenreId: string | null | undefined): boolean {
+  if (isForeignNovel(booksGenreId)) return true;
+  return rawGenreSegments(booksGenreId).some((s) => s.startsWith(FOREIGN_PICTURE_BOOK_GENRE));
+}
+
 const TIER = { LOW: 15, MILD: 40, STRONG: 65, INTENSE: 85 };
 const HEAVY_WORDS = ["惨殺", "拷問", "陵辱", "強姦", "グロテスク", "残虐", "自殺", "虐待"];
 const SEXUAL_WORDS = ["性的", "ヌード", "官能", "濡れ場", "エッチ"];
@@ -417,7 +433,7 @@ Deno.serve(async (req: Request) => {
         // 一切出てこなかった。genreSegmentsは既に"/"区切りの全パスを
         // 見ているので、この中に外国の小説ジャンルが含まれるかどうかで
         // 判定する。
-        country: isForeignNovel(item.booksGenreId) ? "海外" : "日本",
+        country: isForeignBook(item.booksGenreId) ? "海外" : "日本",
         synopsis: caption ? caption.slice(0, SYNOPSIS_MAX_LEN) : null,
         poster_path: coverUrl,
         japan_release_date: null,
