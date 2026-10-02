@@ -490,8 +490,12 @@
     flex:0 0 auto; padding:6px 14px; border-radius:999px;
     border:1px solid var(--line); background:transparent;
     color: var(--ink-soft); font-size:13px; font-weight:600; cursor:pointer;
-    transition: all .18s ease;
+    transition: all .18s ease, transform .12s ease;
   }
+  /* ジャンル・国チップ(.genre-chip:active等)には元々ある、触った瞬間に
+     少し縮むタップフィードバックが、このタブにだけ無かった(オーナー指摘)。
+     同じ動きに揃える。 */
+  .filter-tab:active{ transform: scale(0.92); }
   .filter-tab.active{ border-color: var(--ink-soft); color: var(--ink); background: var(--surface); }
   .filter-pages-viewport{ overflow:hidden; }
   .filter-pages-track{ display:flex; }
