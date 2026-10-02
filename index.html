@@ -2492,7 +2492,7 @@
         <div class="movie-info-label" id="d-director-label">監督</div>
         <div class="movie-info-value" id="d-director">情報がまだありません</div>
       </div>
-      <div class="movie-info-row">
+      <div class="movie-info-row" id="d-cast-row">
         <div class="movie-info-label">主演</div>
         <div class="movie-info-value" id="d-cast">情報がまだありません</div>
       </div>
@@ -3354,6 +3354,11 @@ const TMDB_IMAGE_BASE = 'https://image.tmdb.org/t/p/w342';
 // 通常のカードサムネ(TMDB_IMAGE_BASE)とは別定数で、影響範囲はバナーのみ。
 const TMDB_IMAGE_BASE_LARGE = 'https://image.tmdb.org/t/p/original';
 let hasSupabaseSession = false;
+// init()が発火させる自動匿名サインインの進行中プロミス。ハートのタップ等、
+// 匿名サインインさえ済んでいれば使える操作から「今ちょうど進行中なら
+// 待ってから使う」ために参照できるよう、グローバルに持っておく
+// (cycleLove参照)。
+let autoSignInPromise = null;
 
 // 一部の環境(特にマジックリンクでURLにトークンが付いた状態で開いた直後)で
 // supabase.auth.getSession()が返ってこないことがあり、これに巻き込まれると
@@ -4565,7 +4570,11 @@ function isAnimeWork(m){
 // 中途半端になるため、表紙さえあれば英語名でも構わない、という同じ
 // 考え方で除外する。
 function isInCatalogMode(m, mode){
-  if(mode === 'anime') return (m.isAnime && (!looksLikeEnglishTitle(m.title) || m.trailerKey)) || looksLikeAnimeFilm(m);
+  // 以前は英語名タイトルのアニメを予告編が無いと除外していたが(見た目が
+  // 寂しいとの声による措置)、見つからない作品自体を増やしてほしいとの
+  // 要望を受けて撤廃。予告編の有無に関わらず、アニメと判定された作品は
+  // 全て含める。
+  if(mode === 'anime') return m.isAnime || looksLikeAnimeFilm(m);
   if(mode === 'drama') return !!m.isDrama;
   if(mode === 'manga') return !!m.isManga && (!looksLikeEnglishTitle(m.title) || !!m.posterUrl);
   if(mode === 'novel') return !!m.isNovel && (!looksLikeEnglishTitle(m.title) || !!m.posterUrl);
@@ -5621,9 +5630,13 @@ function renderRecommended(currentMovie){
   // 「鬼滅の刃」(TVアニメ)と「劇場版鬼滅の刃 無限列車編」(アニメ映画)の
   // ようなTV↔劇場版↔OVAをまたいだ同一フランチャイズをseries列だけでは
   // 結び付けられない。同じメディア種別同士に限り、記号や巻数表記等を
-  // 除いたタイトルの部分一致で簡易的に同じシリーズとみなす(短すぎる
-  // タイトル同士の誤爆を避けるため、4文字未満は対象外にする)。
-  // 元はアニメ専用だったが、漫画・小説・音楽にも同じ考え方を当てはめる。
+  // 除いたタイトルの部分一致で簡易的に同じシリーズとみなす。
+  // 元はアニメ専用(4文字未満除外・部分一致どこでも可)だったが、漫画・
+  // 小説・音楽にも同じ考え方を広げたところ、カタログが数万件規模になり
+  // 「Happy!」が無関係な「Happy Dream?」に部分一致するような誤マッチが
+  // 実データで見つかった。巻数・特装版等の表記は必ずタイトルの「後ろに
+  // 続く」形なので、どこでも部分一致ではなく前方一致(startsWith)に絞り、
+  // 短い単語同士の偶然の一致を減らすため最低文字数も6文字に上げた。
   function seriesTitleKey(title){
     return (title || '')
       .replace(/[「」『』（）()\[\]:：\-−~〜!！?？.,、。\s　]/g, '')
@@ -5633,10 +5646,10 @@ function renderRecommended(currentMovie){
     if(!sameCategory(a) || !sameCategory(b)) return false;
     const ka = seriesTitleKey(a.title);
     const kb = seriesTitleKey(b.title);
-    if(ka.length < 4 || kb.length < 4) return false;
+    if(ka.length < 6 || kb.length < 6) return false;
     const shorter = ka.length <= kb.length ? ka : kb;
     const longer = ka.length <= kb.length ? kb : ka;
-    return longer.includes(shorter);
+    return longer.startsWith(shorter);
   }
 
   // シリーズの他の作品(公開年順)。実写はTMDbのcollection一致(series列)、
@@ -5774,8 +5787,10 @@ function renderRecommended(currentMovie){
   // 「アニメ」に自動で切り替わる。
   const animeWrap = document.getElementById('d-recommended-anime-wrap');
   if(animePreview && (currentIsAnimeTv || currentIsAnimeFilm || currentIsAnimeThemeMusic)){
-    const animePool = others.filter(m =>
-      (m.isAnime && (!looksLikeEnglishTitle(m.title) || m.trailerKey)) || looksLikeAnimeFilm(m));
+    // アニメ欄に出す条件は、メインのアニメ一覧(isInCatalogMode)と常に
+    // 揃えておく(ここだけ別の条件だと、一覧には出るのにおすすめには
+    // 出ない、という食い違いになるため)。
+    const animePool = others.filter(m => isInCatalogMode(m, 'anime'));
     const animeList = scoreAndPick(animePool, MIN_COUNT + 2);
     if(animeList.length){
       animeWrap.style.display = 'block';
@@ -6336,9 +6351,21 @@ async function cycleLove(evt){
   // 自動匿名サインイン(autoSignInAnonymously)だけでできる操作。レビュー投稿・
   // 映画追加など文章を伴う投稿だけを荒らし対策としてメール確認済みユーザーに絞る
   // 設計であり、ハートのタップにその制限をかけてはいけない。
+  //
+  // 以前はhasSupabaseSessionがまだfalseの間にタップすると即座に諦めて
+  // いたが、自動匿名サインインはスプラッシュを閉じる条件から意図的に
+  // 外してあるため、画面が触れるようになった直後はまだサインインの
+  // 途中であることが珍しくない(=ページを開いてすぐハートを押すと
+  // 高確率で失敗する)。進行中のサインインがあれば少しだけ待ってから
+  // 再確認する。
   if(!hasSupabaseSession){
-    showToast('少し待ってから、もう一度お試しください');
-    return;
+    if(autoSignInPromise){
+      try{ await withTimeout(autoSignInPromise, 4000); }catch{ /* タイムアウトはこの後のfalseチェックに委ねる */ }
+    }
+    if(!hasSupabaseSession){
+      showToast('少し待ってから、もう一度お試しください');
+      return;
+    }
   }
 
   const m = MOVIES.find(x => x.id === state.currentMovieId);
@@ -6780,7 +6807,12 @@ function renderMovieInfoPanel(m){
   // 漫画・小説は「監督」ではなく「作者」の方が自然なので、作品種別に応じてラベルを切り替える。
   document.getElementById('d-director-label').textContent = m.isMusic ? 'アーティスト' : (m.isManga || m.isNovel) ? '作者' : '監督';
   document.getElementById('d-director').textContent = m.director || '情報がまだありません';
-  document.getElementById('d-cast').textContent = (m.cast && m.cast.length > 0) ? m.cast.join('、') : '情報がまだありません';
+  // 「主演」は実写・アニメ向けの項目で、小説・漫画・音楽には俳優がいないため
+  // 常に「情報がまだありません」としか出ない空欄になっていた。該当しない
+  // メディア種別では行ごと隠す。
+  const hasCastField = !m.isNovel && !m.isManga && !m.isMusic;
+  document.getElementById('d-cast-row').style.display = hasCastField ? '' : 'none';
+  if(hasCastField) document.getElementById('d-cast').textContent = (m.cast && m.cast.length > 0) ? m.cast.join('、') : '情報がまだありません';
   document.getElementById('d-country').textContent = m.country || '情報がまだありません';
   // 音楽アルバムに「あらすじ」は無いので、この行ごと隠す(代わりに
   // tracks-wrapの「収録曲を見る」で曲目を出す)。
@@ -10188,7 +10220,9 @@ async function init(){
   // renderTagCloud以降の描画も道連れで遅れてしまい(=検索欄・感情タグ・ジャンル/国の
   // 絞り込みが軒並み動かないまま固まって見える)、狙った並列化になっていなかった。
   // サインインの完了を待たずに描画へ進めるよう、Promise.allの外に出す。
-  const signInPromise = (!hasSupabaseSession && !sessionCheckFailed && !looksLikeAuthRedirect())
+  // グローバルのautoSignInPromiseに保持しておき、ハートのタップ等
+  // (cycleLove)がこの直後に発生した場合はそちらで少しだけ待てるようにする。
+  autoSignInPromise = (!hasSupabaseSession && !sessionCheckFailed && !looksLikeAuthRedirect())
     ? autoSignInAnonymously()
     : Promise.resolve();
   await Promise.all([loadMovies(), loadMyReviews(), loadMyTagVotes(), loadMyWatchLater(), loadMyPocket(), loadMyLists(), loadProfile(), loadMyLogs(), loadMySubmittedMovies(), loadLastSubmissionDate(), loadDiagnosisHistory(), loadRecentReviews(), checkAnimePreviewOwner()]);
