@@ -3885,7 +3885,10 @@ const TAG_COLORS = {
 
 // 「詳しく絞り込む」に出すジャンル・国の候補。moviesテーブル全体を集計した際に
 // 件数の多い主要なものだけに絞ってあり、表記ゆれ的な少数派(「犯罪」「伝記」等)は含めない。
-const FILTER_GENRES = ["ドラマ","コメディ","アクション","スリラー","アドベンチャー","クライム","恋愛","ホラー","SF","ファンタジー","ミステリー","アニメーション","ファミリー","歴史","戦争","音楽","ドキュメンタリー","西部劇","特撮","TVムービー","絵本","図鑑","新書","J-Pop","K-Pop","Rock","Classical","Anime","Hip Hop/Rap"];
+// 絵本・図鑑・新書は「詳しく絞り込む」のジャンルチップには出さない
+// (book-type-switch(小説/絵本/図鑑/新書の単一選択)で既に選べるため、
+// 同じ値がジャンルチップにも重複して出ると紛らわしいという指摘を受けて除外)。
+const FILTER_GENRES = ["ドラマ","コメディ","アクション","スリラー","アドベンチャー","クライム","恋愛","ホラー","SF","ファンタジー","ミステリー","アニメーション","ファミリー","歴史","戦争","音楽","ドキュメンタリー","西部劇","特撮","TVムービー","J-Pop","K-Pop","Rock","Classical","Anime","Hip Hop/Rap"];
 const FILTER_COUNTRIES = ["アメリカ","イギリス","フランス","ドイツ","日本","海外","カナダ","イタリア","スペイン","中国","香港","韓国","インド","オーストラリア","ベルギー","メキシコ","スウェーデン","デンマーク","ブラジル","ロシア","アイルランド","オランダ","ポーランド","スイス","アルゼンチン","トルコ","ノルウェー","フィンランド","オーストリア","ルクセンブルク","ルーマニア","チェコ","台湾","ハンガリー","南アフリカ","タイ","ニュージーランド","ポルトガル"];
 
 function tagColor(tag){
@@ -6598,6 +6601,12 @@ function resetTracksUI(m){
   tracksOpen = false;
   tracksCache = null;
   tracksLoadToken++;
+  // 前の作品の取得がまだ進行中でも、このPromiseへの参照は手放す(前の
+  // 作品向けのfetch自体はtracksLoadToken/currentMovieIdのチェックで
+  // 安全に無視されるので中断しなくてよいが、次の作品でloadAlbumTracksOnce
+  // が呼ばれた時に「進行中の取得がある」と誤判定して古い方に相乗りして
+  // しまわないようにする)。
+  tracksLoadPromise = null;
   document.getElementById('tracks-wrap').style.display = m.isMusic ? 'block' : 'none';
   document.getElementById('poster-play-btn').style.display = m.isMusic ? 'flex' : 'none';
   document.getElementById('tracks-toggle-btn').classList.remove('open');
@@ -6612,8 +6621,26 @@ async function toggleTracksSection(){
   document.getElementById('tracks-toggle-btn').classList.toggle('open', tracksOpen);
   document.getElementById('tracks-body').classList.toggle('open', tracksOpen);
   if(tracksOpen && tracksCache === null){
-    await loadAlbumTracks(state.currentMovieId);
+    await loadAlbumTracksOnce(state.currentMovieId);
   }
+}
+
+// 収録曲の取得は、詳細ページを開いた時の自動再生(autoPlayAlbumPreview)と
+// ポスタータップ(togglePosterMusicPlayback)・「収録曲を見る」展開
+// (toggleTracksSection)のどれからでも呼ばれうる。以前はそれぞれが
+// 個別に「tracksCacheがnullなら取得」と判定していたため、詳細ページを
+// 開いた直後(自動再生の取得がまだ終わっていない間)にポスターを
+// タップすると、同じ作品の収録曲取得が2本同時に走ってしまい、後から
+// 返ってきた方が先に届いていた正常なデータを上書きして「見つかりません」
+// になる事故が実際に起きていた。進行中の取得があればそれに相乗りし、
+// 新しいリクエストを重ねて投げないようにする。
+let tracksLoadPromise = null;
+async function loadAlbumTracksOnce(movieId){
+  if(tracksCache !== null) return;
+  if(!tracksLoadPromise){
+    tracksLoadPromise = loadAlbumTracks(movieId).finally(() => { tracksLoadPromise = null; });
+  }
+  await tracksLoadPromise;
 }
 
 function formatTrackDuration(ms){
@@ -6653,11 +6680,15 @@ async function loadAlbumTracks(movieId){
 async function autoPlayAlbumPreview(m){
   if(!m.isMusic) return;
   const myMovieId = m.id;
-  if(tracksCache === null){
-    await loadAlbumTracks(myMovieId);
-  }
+  await loadAlbumTracksOnce(myMovieId);
   // 読み込みに時間がかかっている間に別の作品に移動していたら何もしない
   if(state.currentMovieId !== myMovieId) return;
+  // 読み込みを待っている間にポスタータップ(togglePosterMusicPlayback)で
+  // 既に再生が始まっていたら、ここで改めてtoggleTrackPreview()を呼ばない。
+  // 同じindexを渡すと「既に再生中のトラックをもう一度押した」scenarioと
+  // 区別が付かず、トグルで即座に停止させてしまう(=再生したそばから
+  // 無音に戻って「試聴できる曲が見つからない」ように見える事故になっていた)。
+  if(playingTrackIndex != null) return;
   const tracks = tracksCache || [];
   const idx = tracks.findIndex(t => t.previewUrl);
   if(idx === -1) return;
@@ -6675,10 +6706,12 @@ async function togglePosterMusicPlayback(){
     stopTrackPreview();
     return;
   }
-  if(tracksCache === null){
-    await loadAlbumTracks(m.id);
-    if(state.currentMovieId !== m.id) return; // 読み込み中に別の作品に移動していたら何もしない
-  }
+  await loadAlbumTracksOnce(m.id);
+  if(state.currentMovieId !== m.id) return; // 読み込み中に別の作品に移動していたら何もしない
+  // autoPlayAlbumPreview()と同じ理由: 取得を待っている間に自動再生側が
+  // 先に再生を始めていたら、ここでは何もしない(二重にtoggleTrackPreview()を
+  // 呼ぶと、後から呼んだ方が「トグルで停止」と誤判定してしまうため)。
+  if(playingTrackIndex != null) return;
   const tracks = tracksCache || [];
   const idx = tracks.findIndex(t => t.previewUrl);
   if(idx === -1){ showToast('試聴できる曲が見つかりませんでした'); return; }
