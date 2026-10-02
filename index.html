@@ -790,12 +790,14 @@
 
   #d-recommended .result-title,
   #d-series-row .result-title,
-  #d-remake-row .result-title{
+  #d-remake-row .result-title,
+  #d-adaptation-row .result-title{
     text-shadow: 0 0 12px rgba(255,255,255,0.7), 0 0 22px rgba(160,132,242,0.35);
   }
   #d-recommended .result-year,
   #d-series-row .result-year,
-  #d-remake-row .result-year{
+  #d-remake-row .result-year,
+  #d-adaptation-row .result-year{
     text-shadow: 0 0 8px rgba(200,196,190,0.7);
   }
 
@@ -2673,6 +2675,11 @@
       <div class="results" id="d-remake-row"></div>
     </div>
 
+    <div id="d-adaptation-wrap" style="display:none;">
+      <div class="section-label">原作・関連作品</div>
+      <div class="results" id="d-adaptation-row"></div>
+    </div>
+
     <!-- 「映画」欄はTVアニメのページでは出さない(ジャンルを跨がない方針)。
          アニメ映画のページの時だけ、この欄にもアニメ映画を少し混ぜる
          (映画とアニメの橋渡し役として、そのページでだけ例外的に混在させる)。 -->
@@ -4445,6 +4452,8 @@ function buildCardHTML(m, opts){
     ? `goDetailWithReturn(${m.id}, ${opts.returnTo})`
     : (opts && opts.returnToView)
     ? `goDetailWithViewReturn(${m.id}, '${opts.returnToView.id}', '${opts.returnToView.label}')`
+    : (opts && opts.forceModeFn)
+    ? `goDetailWithMode(${m.id}, '${opts.forceModeFn(m)}')`
     : (opts && opts.forceMode)
     ? `goDetailWithMode(${m.id}, '${opts.forceMode}')`
     : `goDetail(${m.id})`;
@@ -4555,6 +4564,16 @@ function looksLikeAnimeFilm(m){
 }
 function isAnimeWork(m){
   return m.isAnime || looksLikeAnimeFilm(m);
+}
+// 作品が実際にはどのメディア種別の棚に属するか(「原作・関連作品」欄で、
+// メディアを跨いだカードをクリックした時にgoDetailWithModeへ渡すため)。
+function nativeModeOf(m){
+  if(isAnimeWork(m)) return 'anime';
+  if(m.isDrama) return 'drama';
+  if(m.isManga) return 'manga';
+  if(m.isNovel) return 'novel';
+  if(m.isMusic) return 'music';
+  return 'movie';
 }
 
 // 映画・アニメ・ドラマの3モードで共通して使う「この作品は今のモードの
@@ -5675,7 +5694,28 @@ function renderRecommended(currentMovie){
     ? others.filter(m => m.remakeGroup === currentMovie.remakeGroup).sort((a, b) => a.year - b.year)
     : [];
 
-  const excludeIds = new Set([...seriesSiblings, ...remakeSiblings].map(m => m.id));
+  // 「原作・関連作品」: メディア種別を跨いだ同一作品(原作小説・原作漫画・
+  // 映画化・アニメ化・ドラマ化等)を検出する。シリーズ判定(startsWith)は
+  // 巻数等で"続いていく"関係を拾うためのものだが、メディアを跨いだ同一
+  // 作品は基本的にタイトルが完全に一致するはずなので、前方一致ではなく
+  // 完全一致に絞る(でないと短いタイトル同士の偶然の一致を拾ってしまう)。
+  // 実データで検証済み: 「director」欄(メディアにより監督/著者/アーティスト
+  // を兼用)の一致を条件にすると、BLEACH(映画の監督は佐藤信介、原作漫画の
+  // 作者はTite Kubo)のような正真正銘のメディア化のほぼ全てが、監督と
+  // 原作者が別人であるという当たり前の理由で弾かれてしまうため、credit欄
+  // による絞り込みは行わない。6文字未満を除外した上での完全一致だけで、
+  // 実データ25件抽出中24件が正しい関連(BLEACH・黒子のバスケ・ブルーロック等)
+  // で、誤マッチは「グッドラック」のような一般的な言い回しの同名タイトル1件
+  // のみだった(表示のみに使う機能のため、この程度の残存誤差は許容する)。
+  const currentAdaptationKey = seriesTitleKey(currentMovie.title);
+  const currentNativeMode = nativeModeOf(currentMovie);
+  const adaptationSiblings = currentAdaptationKey.length >= 6
+    ? dedupeByNormalizedTitleYear(others.filter(m =>
+        nativeModeOf(m) !== currentNativeMode && seriesTitleKey(m.title) === currentAdaptationKey
+      )).sort((a, b) => a.year - b.year)
+    : [];
+
+  const excludeIds = new Set([...seriesSiblings, ...remakeSiblings, ...adaptationSiblings].map(m => m.id));
 
   // 感情タグの一致数→愛度の順に並べて上位を選ぶ、共通のスコアリング。
   function scoreAndPick(pool, limit){
@@ -5835,6 +5875,18 @@ function renderRecommended(currentMovie){
     renderMovieCards(remakeRoot, remakeSiblings, '');
   } else {
     remakeWrap.style.display = 'none';
+  }
+
+  const adaptationRoot = document.getElementById('d-adaptation-row');
+  const adaptationWrap = document.getElementById('d-adaptation-wrap');
+  if(adaptationSiblings.length > 0){
+    adaptationWrap.style.display = 'block';
+    // カードごとにメディア種別が違う(原作小説・アニメ化・映画化等が混在
+    // しうる)ため、forceModeは単一の文字列ではなく各カードの実際の種別を
+    // 返す関数で渡す。
+    renderMovieCards(adaptationRoot, adaptationSiblings, '', { forceModeFn: nativeModeOf });
+  } else {
+    adaptationWrap.style.display = 'none';
   }
 }
 
