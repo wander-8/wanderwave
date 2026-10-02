@@ -1907,6 +1907,15 @@
     0%{ opacity: 0; transform: translateY(10px) scale(0.98); }
     100%{ opacity: 1; transform: translateY(0) scale(1); }
   }
+  /* 投稿パネルを閉じる時用(soft-revealの逆再生)。開く時より少し短くして、
+     閉じる操作はきびきび終わる印象にする。 */
+  .soft-dismiss{
+    animation: softDismiss 0.32s cubic-bezier(.4,0,.6,1) forwards;
+  }
+  @keyframes softDismiss{
+    0%{ opacity: 1; transform: translateY(0) scale(1); }
+    100%{ opacity: 0; transform: translateY(8px) scale(0.98); }
+  }
 
   .pocket-diagnosis{
     background: var(--surface); border:1px solid var(--line);
@@ -2056,12 +2065,12 @@
     gap: 10px;
   }
   /* 視聴記録の「もっと見る」一覧は、タイトルを重ねた縦長タイルが並ぶだけの
-     ページなので、110px幅3列だとスマホ実機ではギチギチに詰まって見える。
-     もう少し幅を広げて2列にし、余白も増やす(タイトルは画像の上に重ねず
-     renderRecordTileHTML側で下に分離済み)。 */
+     ページ。以前110px幅3列だとスマホ実機で詰まって見えたため150pxの2列に
+     広げたが、今度は逆に1枚1枚が大きすぎるとの声を受け、3列に収まる
+     115pxまで戻す(110pxよりは少し余裕を持たせる)。 */
   #viewing-record-grid.pocket-grid{
-    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-    gap: 18px 16px;
+    grid-template-columns: repeat(auto-fill, minmax(115px, 1fr));
+    gap: 14px 12px;
   }
   .pocket-grid .result-card{
     flex: none; width: 100%;
@@ -6183,19 +6192,41 @@ function onIntensitySliderInput(value){
 let tagVoteOpen = false;
 
 let postPanelOpen = false;
+const POST_PANEL_DISMISS_MS = 320; // soft-dismissアニメーションの長さ(CSS側)と合わせる
 
 function togglePostPanel(){
-  postPanelOpen = !postPanelOpen;
+  if(postPanelOpen) closePostPanel();
+  else openPostPanel();
+}
+
+function openPostPanel(){
+  postPanelOpen = true;
   const body = document.getElementById('post-panel-body');
-  body.style.display = postPanelOpen ? 'block' : 'none';
-  document.getElementById('post-panel-chevron').classList.toggle('open', postPanelOpen);
-  if(postPanelOpen){
-    body.classList.remove('soft-reveal');
-    void body.offsetWidth;
-    body.classList.add('soft-reveal');
-    renderReviewTurnstile();
-    delete intensitySoundBandByTracker.review;
-  }
+  body.classList.remove('soft-dismiss');
+  body.style.display = 'block';
+  document.getElementById('post-panel-chevron').classList.add('open');
+  body.classList.remove('soft-reveal');
+  void body.offsetWidth;
+  body.classList.add('soft-reveal');
+  renderReviewTurnstile();
+  delete intensitySoundBandByTracker.review;
+}
+
+// レビュー投稿後や、パネルのタイトルを押して閉じた時に使う。即座にdisplay:noneに
+// するのではなく、soft-dismissでふわっと縮みながら消えてから隠すことで、
+// 「投稿が受け取られてパネルがしまわれた」ことが目に見えるようにする
+// (オーナーの要望: 投稿したらモーションと共に元に戻ってほしい)。
+function closePostPanel(){
+  if(!postPanelOpen) return;
+  postPanelOpen = false;
+  const body = document.getElementById('post-panel-body');
+  document.getElementById('post-panel-chevron').classList.remove('open');
+  body.classList.remove('soft-reveal');
+  body.classList.add('soft-dismiss');
+  setTimeout(() => {
+    body.style.display = 'none';
+    body.classList.remove('soft-dismiss');
+  }, POST_PANEL_DISMISS_MS);
 }
 
 function toggleTagVote(){
@@ -6855,7 +6886,10 @@ document.addEventListener('click', (e) => {
 // 切り替えた直後の選択を後から上書きしてしまう事故を防ぐためのフラグ。
 let userHasSwitchedCatalogMode = false;
 
-function setCatalogMode(mode){
+// dirはスワイプ由来の切り替えの時だけ渡す(1=次へ/-1=前へ)。ハンバーガー
+// メニューのタップ等、方向の無い切り替えではundefinedのまま(従来通りの
+// フェード)。
+function setCatalogMode(mode, dir){
   closeCatalogModeMenu();
   if(!isAnimePreviewEnabled() || !CATALOG_MODES.some(([m]) => m === mode)) return;
   if(state.catalogMode === mode) return;
@@ -6868,11 +6902,47 @@ function setCatalogMode(mode){
   // 切り替えるたびに検索・絞り込み状態をリセットして、片方のモードで選んだ
   // 条件がもう片方に持ち越されて「0件」になる事故を防ぐ。
   clearSearch();
+  const homeView = document.getElementById('view-home');
+
+  if(dir){
+    // スワイプ由来: 指を離した方向にそのまま滑り切ってから、中身を差し替えて
+    // 反対側から新しい棚がスライドインしてくるようにする(initCatalogSwipeGesture
+    // の追従と繋がる形で、「送った」手応えが単純なフェードより伝わる)。
+    homeView.style.transition = 'transform 0.2s cubic-bezier(.4,0,.6,1), opacity 0.2s cubic-bezier(.4,0,.6,1)';
+    homeView.style.transform = `translateX(${dir * -140}px)`;
+    homeView.style.opacity = '0';
+    setTimeout(() => {
+      let ok = false;
+      try{
+        renderFeaturedBanner();
+        renderHomeRows();
+        switchView('view-home');
+        updateCatalogModeToggleUI();
+        ok = true;
+      } finally {
+        if(ok){
+          homeView.style.transition = 'none';
+          homeView.style.transform = `translateX(${dir * 140}px)`;
+          void homeView.offsetWidth;
+          homeView.style.transition = 'transform 0.32s cubic-bezier(.22,.8,.32,1), opacity 0.32s cubic-bezier(.22,.8,.32,1)';
+          homeView.style.transform = '';
+          homeView.style.opacity = '';
+        } else {
+          // 描画自体が失敗した場合、画面が滑り切ったまま(見えない状態)で
+          // 固まらないよう即座に戻す。
+          homeView.style.transition = '';
+          homeView.style.transform = '';
+          homeView.style.opacity = '';
+        }
+      }
+    }, 200);
+    return;
+  }
+
   // 既にホーム画面を見ている状態でモードを切り替える場合、view側の
   // active/非activeは変わらないためviewEnterアニメーションが再生されない。
   // 一旦フェードアウトしてから中身を差し替え、フェードインすることで、
   // 棚が一斉に入れ替わったことがひと目で伝わるようにする。
-  const homeView = document.getElementById('view-home');
   homeView.classList.add('mode-switch-fade');
   setTimeout(() => {
     // renderFeaturedBanner()等が例外を投げると(実例: 対象モードのデータが
@@ -6923,33 +6993,69 @@ function updateCatalogModeToggleUI(){
 // 横スクロールに任せる(ignoreSwipeで判定)。最後のカテゴリから更に
 // 同方向へ送ると最初に戻る・最初から逆方向へ送ると最後に戻る(無限ループ、
 // 途中で止まらない)。
+//
+// 以前はtouchstart/touchendだけを見ており、指を動かしている間は画面が
+// 一切反応せず、離した瞬間にいきなりクロスフェードするだけだった(「ただの
+// ボタン連打と同じ」との指摘)。touchmoveで指に軽く追従させ、しきい値を
+// 超えて離した時だけ(setCatalogMode側の方向つきスライドで)最後まで
+// 送り切るようにする。
 (function initCatalogSwipeGesture(){
   const homeView = document.getElementById('view-home');
   if(!homeView) return;
   const SWIPE_MIN_DISTANCE = 60;
-  let startX = 0, startY = 0, ignoreSwipe = false;
+  let startX = 0, startY = 0, ignoreSwipe = false, dragging = false;
+
+  function resetDrag(animated){
+    homeView.style.transition = animated
+      ? 'transform 0.22s cubic-bezier(.22,.8,.32,1), opacity 0.22s cubic-bezier(.22,.8,.32,1)'
+      : '';
+    homeView.style.transform = '';
+    homeView.style.opacity = '';
+  }
 
   homeView.addEventListener('touchstart', (e) => {
     const t = e.touches[0];
     startX = t.clientX;
     startY = t.clientY;
     ignoreSwipe = !!e.target.closest('.results');
+    dragging = false;
+    homeView.style.transition = 'none';
+  }, { passive: true });
+
+  homeView.addEventListener('touchmove', (e) => {
+    if(ignoreSwipe) return;
+    const t = e.touches[0];
+    const dx = t.clientX - startX;
+    const dy = t.clientY - startY;
+    if(!dragging){
+      // 横方向が縦方向よりはっきり優勢になるまでは何もしない
+      // (縦スクロールを邪魔しないため)。
+      if(Math.abs(dx) < 12 || Math.abs(dx) < Math.abs(dy) * 1.5) return;
+      dragging = true;
+    }
+    // 指にそのまま追従させつつ、動かしすぎても暴れないよう軽く頭打ちにする。
+    const damped = Math.sign(dx) * Math.min(Math.abs(dx) * 0.6, 120);
+    homeView.style.transform = `translateX(${damped}px)`;
+    homeView.style.opacity = String(1 - Math.min(Math.abs(damped) / 300, 0.3));
   }, { passive: true });
 
   homeView.addEventListener('touchend', (e) => {
-    if(ignoreSwipe) return;
+    if(ignoreSwipe || !dragging){ resetDrag(false); return; }
+    dragging = false;
     const t = e.changedTouches[0];
     const dx = t.clientX - startX;
     const dy = t.clientY - startY;
     // 横方向が縦方向より十分大きい時だけスワイプとみなす(縦スクロールの
     // 誤判定を防ぐ)。
-    if(Math.abs(dx) < SWIPE_MIN_DISTANCE || Math.abs(dx) < Math.abs(dy) * 1.5) return;
+    if(Math.abs(dx) < SWIPE_MIN_DISTANCE || Math.abs(dx) < Math.abs(dy) * 1.5){
+      resetDrag(true); // しきい値未満ならスナップバックするだけ(切り替えない)
+      return;
+    }
     const idx = CATALOG_MODES.findIndex(([m]) => m === state.catalogMode);
-    if(idx === -1) return;
-    const nextIdx = dx < 0
-      ? (idx + 1) % CATALOG_MODES.length
-      : (idx - 1 + CATALOG_MODES.length) % CATALOG_MODES.length;
-    setCatalogMode(CATALOG_MODES[nextIdx][0]);
+    if(idx === -1){ resetDrag(true); return; }
+    const dir = dx < 0 ? 1 : -1; // 1=次へ(左にスワイプ) / -1=前へ(右にスワイプ)
+    const nextIdx = (idx + dir + CATALOG_MODES.length) % CATALOG_MODES.length;
+    setCatalogMode(CATALOG_MODES[nextIdx][0], dir);
   }, { passive: true });
 })();
 
@@ -7501,6 +7607,9 @@ async function submitReview(force){
       showToast('送信しました。ありがとうございます');
     }
     celebrateSubmission(document.getElementById('review-submit-wrap'), 'ありがとうございます');
+    // 「ありがとうございます」の演出が一瞬見えてから、投稿パネルをモーション付きで
+    // 閉じる(即座に閉じるとお礼の吹き出しごと消えてしまうため少し間を置く)。
+    setTimeout(() => closePostPanel(), 700);
 
     document.getElementById('review-text').value = "";
     if(text){
