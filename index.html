@@ -7141,6 +7141,16 @@ function updateCatalogModeToggleUI(){
   }
 
   homeView.addEventListener('touchstart', (e) => {
+    if(e.touches.length > 1){
+      // ピンチズーム等、指が2本以上触れている状態。スワイプとしては
+      // 一切扱わない(以前はここを見ておらず、ピンチズームしようとすると
+      // 指1本分の動きを拾ってスワイプ扱いになり、ズームしようとしただけで
+      // カテゴリが切り替わってしまう事故になっていた)。
+      ignoreSwipe = true;
+      dragging = false;
+      resetDrag(false);
+      return;
+    }
     const t = e.touches[0];
     startX = t.clientX;
     startY = t.clientY;
@@ -7150,6 +7160,13 @@ function updateCatalogModeToggleUI(){
   }, { passive: true });
 
   homeView.addEventListener('touchmove', (e) => {
+    if(e.touches.length > 1){
+      // 1本指で始まった後に2本目が触れた(=ピンチズームに切り替わった)場合も、
+      // ここで追従をやめて元の位置に戻す。
+      if(dragging){ dragging = false; resetDrag(false); }
+      ignoreSwipe = true;
+      return;
+    }
     if(ignoreSwipe) return;
     const t = e.touches[0];
     const dx = t.clientX - startX;
@@ -7167,6 +7184,10 @@ function updateCatalogModeToggleUI(){
   }, { passive: true });
 
   homeView.addEventListener('touchend', (e) => {
+    if(e.touches.length > 0){
+      // まだ他の指が触れたまま(マルチタッチの途中)。確定させない。
+      return;
+    }
     if(ignoreSwipe || !dragging){ resetDrag(false); return; }
     dragging = false;
     const t = e.changedTouches[0];
