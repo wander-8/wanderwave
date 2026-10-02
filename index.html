@@ -1125,6 +1125,23 @@
   .poster-info-btn:active{ background: rgba(5,8,15,0.75); }
   .poster-info-btn svg{ width:18px; height:18px; }
 
+  .poster-play-btn{
+    position: absolute; top: 50%; left: 50%;
+    z-index: 6;
+    width: 60px; height: 60px; border-radius: 50%;
+    background: rgba(5,8,15,0.55);
+    border: 1px solid rgba(255,255,255,0.4);
+    color: #fff;
+    display:flex; align-items:center; justify-content:center;
+    cursor:pointer;
+    backdrop-filter: blur(4px);
+    transform: translate(-50%, -50%) scale(1);
+    transition: transform .15s cubic-bezier(.22,.8,.32,1), background .15s ease;
+  }
+  .poster-play-btn:active{ background: rgba(5,8,15,0.75); transform: translate(-50%, -50%) scale(0.92); }
+  .poster-play-btn svg{ width:26px; height:26px; margin-left: 2px; }
+  .poster-play-btn.playing svg{ margin-left: 0; }
+
   .trailer-btn{
     position: absolute; left: 12px; bottom: 12px;
     z-index: 6;
@@ -2496,6 +2513,13 @@
       <div class="poster-motif" id="poster-motif"></div>
       <button class="poster-info-btn" onclick="toggleMovieInfoPanel()" title="作品情報">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M12 11v5.5" stroke-linecap="round"/><circle cx="12" cy="7.8" r="0.75" fill="currentColor" stroke="none"/></svg>
+      </button>
+      <!-- 音楽作品限定: ポスター(アルバムアート代わり)自体をタップして試聴を
+           再生・一時停止できるようにする(収録曲欄まで降りて探さなくても
+           済むように、とのオーナーの要望)。表示の有無はresetTracksUI()で
+           m.isMusicに応じて切り替える。 -->
+      <button class="poster-play-btn" id="poster-play-btn" style="display:none;" onclick="togglePosterMusicPlayback()" title="試聴の再生・停止">
+        <svg id="poster-play-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
       </button>
       <!-- 予告編: 押すまではポスターの見た目を一切変えない、静かな追加要素。
            押すとこの箱の中身だけがiframeに差し替わる(周りのレイアウトは動かない)。
@@ -6575,6 +6599,7 @@ function resetTracksUI(m){
   tracksCache = null;
   tracksLoadToken++;
   document.getElementById('tracks-wrap').style.display = m.isMusic ? 'block' : 'none';
+  document.getElementById('poster-play-btn').style.display = m.isMusic ? 'flex' : 'none';
   document.getElementById('tracks-toggle-btn').classList.remove('open');
   document.getElementById('tracks-body').classList.remove('open');
   document.getElementById('tracks-toggle-label').textContent = '収録曲を見る';
@@ -6639,6 +6664,27 @@ async function autoPlayAlbumPreview(m){
   toggleTrackPreview(idx, tracks[idx].previewUrl);
 }
 
+// ポスター(アルバムアート代わり)をタップした時の再生・一時停止。既に何か
+// 再生中ならそれを止めるだけ、何も再生していなければ収録曲欄を開かなくても
+// 1曲目(試聴可能な最初のトラック)を再生する(autoPlayAlbumPreviewと同じ
+// 選び方)。
+async function togglePosterMusicPlayback(){
+  const m = MOVIES.find(x => x.id === state.currentMovieId);
+  if(!m || !m.isMusic) return;
+  if(playingTrackIndex != null){
+    stopTrackPreview();
+    return;
+  }
+  if(tracksCache === null){
+    await loadAlbumTracks(m.id);
+    if(state.currentMovieId !== m.id) return; // 読み込み中に別の作品に移動していたら何もしない
+  }
+  const tracks = tracksCache || [];
+  const idx = tracks.findIndex(t => t.previewUrl);
+  if(idx === -1){ showToast('試聴できる曲が見つかりませんでした'); return; }
+  toggleTrackPreview(idx, tracks[idx].previewUrl);
+}
+
 // iTunesはプレビュー用(30秒)の試聴音源を公式に提供している。フル楽曲の
 // 取得・配信はしない(著作権的にそこまでは踏み込まない)。再生中のトラックは
 // 1つだけに絞り、別の曲を押したら前の曲を止めてから切り替える(複数同時に
@@ -6654,6 +6700,20 @@ let playingTrackIndex = null;
 // ボタンが「再生中」表示のまま固まらないようにする(ended と同じ扱いで復帰)
 previewAudio.addEventListener('error', () => stopTrackPreview());
 
+// ポスター上の再生ボタン(アルバムアート代わり)のアイコンを、今の再生状態に
+// 合わせて描き直す。収録曲欄のミニボタンとは別に、ここだけ単独で
+// 押されることもある(収録曲欄を一度も開かないまま)ため、両方からの
+// 変化を一箇所で反映できるようstopTrackPreview/toggleTrackPreviewの中で呼ぶ。
+function updatePosterPlayButton(){
+  const btn = document.getElementById('poster-play-btn');
+  if(!btn) return;
+  const playing = playingTrackIndex != null;
+  btn.classList.toggle('playing', playing);
+  document.getElementById('poster-play-icon').outerHTML = playing
+    ? '<svg id="poster-play-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M7 5h4v14H7zM13 5h4v14h-4z"/></svg>'
+    : '<svg id="poster-play-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>';
+}
+
 function stopTrackPreview(){
   previewAudio.pause();
   if(playingTrackIndex != null){
@@ -6661,6 +6721,7 @@ function stopTrackPreview(){
     if(prevBtn) prevBtn.textContent = '▶';
   }
   playingTrackIndex = null;
+  updatePosterPlayButton();
 }
 
 function toggleTrackPreview(index, url){
@@ -6673,6 +6734,7 @@ function toggleTrackPreview(index, url){
   previewAudio.src = url;
   playingTrackIndex = index;
   if(btn) btn.textContent = '⏸';
+  updatePosterPlayButton();
   previewAudio.play().catch(() => {
     // play()が拒否された場合(壊れたURL・通信エラー等)、ボタンが
     // 「再生中(⏸)」表示のまま固まって二度と反応しなくなっていたのを修正。
