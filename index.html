@@ -8233,17 +8233,23 @@ async function fetchFreshCatalogAndContinue(FIRST_PAGE_SIZE, plainMovieFilter){
         loadRemainingMoviesInBackground(FIRST_PAGE_SIZE, plainMovieFilter, statsByMovie, estimatesByMovie)
       );
 
-  // loadMovieBigFieldsInBackground()はMOVIES全件をid引きで埋めるため、
-  // 残りページの結合(restMoviesLoadedPromise)が終わってから走らせないと、
-  // 後から結合された分のsynopsis/castが永久に埋まらないまま欠けてしまう。
-  restMoviesLoadedPromise.then(() => loadMovieBigFieldsInBackground()).then(() => {
-    if(broadFetch){
-      fullStatsPromise.then(({ statsByMovie, estimatesByMovie }) => {
-        loadNonMovieCatalogInBackground(statsByMovie, estimatesByMovie).then(() => {
-          loadNonMovieBigFieldsInBackground();
-        });
-      });
-    }
+  // 以前はここでloadMovieBigFieldsInBackground(映画のsynopsis/cast埋め)を
+  // 先に待ってからloadNonMovieCatalogInBackground(アニメ・ドラマ・漫画・
+  // 小説・音楽の軽量カタログ)を走らせていたため、映画タブは速いのに
+  // 他のタブへ切り替えると長く待たされる(=映画の文章埋めという表示上
+  // 急がない処理が、他タブの最低限の表示をブロックしていた)という
+  // 報告につながっていた。優先順位を入れ替え、他タブの軽量カタログを
+  // 先に、映画のsynopsis/cast埋め(どのタブでも表示には影響しない)は
+  // 後回しにする。loadMovieBigFieldsInBackground()はMOVIES全件をid引きで
+  // 埋めるため、残りページの結合(restMoviesLoadedPromise)が終わってから
+  // 走らせる必要があるのは変わらない。
+  restMoviesLoadedPromise.then(() => {
+    if(!broadFetch) return null;
+    return fullStatsPromise.then(({ statsByMovie, estimatesByMovie }) =>
+      loadNonMovieCatalogInBackground(statsByMovie, estimatesByMovie)
+    );
+  }).then(() => loadMovieBigFieldsInBackground()).then(() => {
+    if(broadFetch) loadNonMovieBigFieldsInBackground();
   });
 }
 
@@ -8322,26 +8328,45 @@ async function loadMovieBigFieldsInBackground(){
   }
 }
 
-// アニメ・ドラマ・漫画・小説分を、初期表示を待たせずに裏で追加取得する。
+// アニメ・ドラマ・漫画・小説・音楽分を、初期表示を待たせずに裏で追加取得する。
 // 完了時、既に映画以外のモードを見ていたら(=このデータが無いと0件表示に
 // なってしまうため)、その場で棚を描き直す。映画モードのままなら見た目に
 // 影響が無いので何もしない。
+//
+// 以前はsynopsis/cast_members込みの全カラムを一度に取っていたが、
+// ハンバーガーメニューを全ユーザーに公開した(isAnimePreviewEnabled()が
+// 常にtrue)ことで、この取得がオーナー限定の稀な処理から全訪問者が毎回
+// 待つ処理に変わった。しかもアニメ・ドラマ・漫画・小説・音楽の合計が
+// 4万件を超え、実測で10秒以上かかるようになっていた。映画と同じ考え方で、
+// まず1ページ分だけ先に取ってnonMovieCatalogLoadedを早く立て、残りは
+// 裏で続けて取る(synopsis/cast_membersは引き続きloadNonMovieBigFieldsInBackground
+// に回す)。「映画とアニメ以外(切り替え先のタブ)の読み込みが遅い」という
+// 報告の主因がこれだった。
 async function loadNonMovieCatalogInBackground(statsByMovie, estimatesByMovie){
+  const NON_MOVIE_FIRST_PAGE_SIZE = 2000;
+  const nonMovieFilter = (q) => q.or('is_anime.eq.true,is_drama.eq.true,is_manga.eq.true,is_novel.eq.true,is_music.eq.true');
   try{
-    // 以前はsynopsis/cast_members込みの全カラムを一度に取っていたが、
-    // ハンバーガーメニューを全ユーザーに公開した(isAnimePreviewEnabled()が
-    // 常にtrue)ことで、この取得がオーナー限定の稀な処理から全訪問者が毎回
-    // 待つ処理に変わった。しかもアニメ・ドラマ・漫画・小説・音楽の合計が
-    // 4万件を超え、実測で10秒以上かかるようになっていた。映画と同じく
-    // 軽量カラムだけを先に取ってnonMovieCatalogLoadedを早く立て、
-    // synopsis/cast_membersは後段のloadNonMovieBigFieldsInBackground()に回す。
-    const rows = await selectAllRows('movies', MOVIE_LIGHT_COLUMNS, (q) => q.or('is_anime.eq.true,is_drama.eq.true,is_manga.eq.true,is_novel.eq.true,is_music.eq.true'), 'id', 1500);
-    MOVIES = MOVIES.concat(rows.map(row => buildMovieRecord(row, statsByMovie, estimatesByMovie)));
+    const { data: firstPageData, error: firstPageError } = await nonMovieFilter(supabase.from('movies').select(MOVIE_LIGHT_COLUMNS)).order('id', { ascending: true }).range(0, NON_MOVIE_FIRST_PAGE_SIZE - 1);
+    if(firstPageError) throw firstPageError;
+    const firstPageRows = firstPageData || [];
+    MOVIES = MOVIES.concat(firstPageRows.map(row => buildMovieRecord(row, statsByMovie, estimatesByMovie)));
     nonMovieCatalogLoaded = true;
     if(state.catalogMode !== 'movie'){
       renderFeaturedBanner();
       renderHomeRows();
       renderResults();
+    }
+
+    if(firstPageRows.length === NON_MOVIE_FIRST_PAGE_SIZE){
+      const restRows = await selectAllRows('movies', MOVIE_LIGHT_COLUMNS, nonMovieFilter, 'id', 1500, NON_MOVIE_FIRST_PAGE_SIZE);
+      const existingIds = new Set(MOVIES.map(m => m.id));
+      const newRecords = restRows.filter(row => !existingIds.has(row.id)).map(row => buildMovieRecord(row, statsByMovie, estimatesByMovie));
+      MOVIES = MOVIES.concat(newRecords);
+      if(state.catalogMode !== 'movie'){
+        renderFeaturedBanner();
+        renderHomeRows();
+        renderResults();
+      }
     }
   }catch(err){
     console.error('アニメ・ドラマ・漫画・小説カタログの読み込みに失敗しました', err);
