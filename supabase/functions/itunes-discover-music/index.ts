@@ -84,8 +84,29 @@ const DEFAULT_TAGS = ["楽しい"];
 const BASE_TIER = 15;
 const HEAVY_WORDS = ["Explicit"];
 
+// 以前はjp/us/gb/kr/fr/deの6ヶ国しかここに無く、他の国を指定して取り込むと
+// (例: country="br")日本語化されず生のISOコード("br"等)がcountry列に
+// そのまま入ってしまっていた(「詳しく絞り込む」のFILTER_COUNTRIESとも
+// 一致せず、絞り込みにも詳細ページの表示にも使えない壊れた値だった)。
+// 実際に取り込み済みの国を全てここに追加する。
 const COUNTRY_NAME_JA: Record<string, string> = {
   jp: "日本", us: "アメリカ", gb: "イギリス", kr: "韓国", fr: "フランス", de: "ドイツ",
+  it: "イタリア", es: "スペイン", ca: "カナダ", mx: "メキシコ", se: "スウェーデン", dk: "デンマーク",
+  br: "ブラジル", ru: "ロシア", ie: "アイルランド", nl: "オランダ", pl: "ポーランド", ch: "スイス",
+  ar: "アルゼンチン", tr: "トルコ", no: "ノルウェー", fi: "フィンランド", at: "オーストリア",
+  lu: "ルクセンブルク", ro: "ルーマニア", tw: "台湾", za: "南アフリカ", nz: "ニュージーランド",
+  pt: "ポルトガル", in: "インド", hk: "香港", be: "ベルギー", au: "オーストラリア", cn: "中国",
+  th: "タイ", hu: "ハンガリー", cz: "チェコ", cl: "チリ",
+  gr: "ギリシャ", vn: "ベトナム", id: "インドネシア", sg: "シンガポール", il: "イスラエル",
+  co: "コロンビア", eg: "エジプト", ve: "ベネズエラ", pe: "ペルー", my: "マレーシア",
+  ng: "ナイジェリア", ph: "フィリピン", ae: "アラブ首長国連邦", sk: "スロバキア",
+  sa: "サウジアラビア", ua: "ウクライナ", bg: "ブルガリア", si: "スロベニア", kz: "カザフスタン",
+  lt: "リトアニア", ee: "エストニア", uz: "ウズベキスタン", cr: "コスタリカ", lv: "ラトビア",
+  by: "ベラルーシ", am: "アルメニア", gt: "グアテマラ", mt: "マルタ", la: "ラオス",
+  cy: "キプロス", bn: "ブルネイ", ke: "ケニア", tt: "トリニダード・トバゴ",
+  do: "ドミニカ共和国", lb: "レバノン", hn: "ホンジュラス", jo: "ヨルダン", az: "アゼルバイジャン",
+  om: "オマーン", pa: "パナマ", ec: "エクアドル", bh: "バーレーン", py: "パラグアイ",
+  qa: "カタール", kh: "カンボジア", bo: "ボリビア", md: "モルドバ", ni: "ニカラグア", sv: "エルサルバドル",
 };
 
 function sleep(ms: number) {
@@ -191,7 +212,10 @@ Deno.serve(async (req: Request) => {
         genre: genreName ? [genreName] : null,
         director: artist,
         cast_members: null,
-        country: COUNTRY_NAME_JA[country] || country,
+        // 万一この先さらに新しい国コードで取り込む時のための保険。生コードを
+        // そのまま入れる(今回の不具合と同じ形)よりは、「海外」とだけ分かる
+        // 方がまだ安全(絞り込み・表示どちらでも破綻しない)。
+        country: COUNTRY_NAME_JA[country] || "海外",
         synopsis: trackCount ? `収録曲数: ${trackCount}曲` : null,
         poster_path: artworkUrl,
         japan_release_date: country === "jp" && releaseLabel ? releaseLabel.slice(0, 10) : null,
