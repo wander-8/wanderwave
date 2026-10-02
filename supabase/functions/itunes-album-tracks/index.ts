@@ -4,6 +4,17 @@ import { createClient } from "jsr:@supabase/supabase-js@2";
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
+// 他のフロント向けedge function(tmdb-movie-reviews等)と違い、このfunctionは
+// CORSヘッダーを一切返していなかった。curl等のサーバー間通信は普通に成功する
+// ため気づきにくいが、ブラウザから叩くとOPTIONSプリフライトがここで弾かれ、
+// 実際の本番サイトでは常にnet::ERR_FAILEDになって「試聴できる曲が見つかり
+// ませんでした」という誤った表示につながっていた(オーナー報告で判明)。
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
+};
+
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -59,6 +70,7 @@ function pickBest(results: any[], title: string, artist: string) {
 }
 
 Deno.serve(async (req: Request) => {
+  if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   try {
     const { movie_id } = await req.json().catch(() => ({}));
     if (!movie_id) throw new Error("movie_id is required");
@@ -86,7 +98,7 @@ Deno.serve(async (req: Request) => {
 
     if (!best) {
       return new Response(JSON.stringify({ found: false, tracks: [] }), {
-        headers: { "Content-Type": "application/json" },
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
@@ -110,12 +122,12 @@ Deno.serve(async (req: Request) => {
 
     return new Response(
       JSON.stringify({ found: tracks.length > 0, album: best.collectionName, tracks }),
-      { headers: { "Content-Type": "application/json" } },
+      { headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
   } catch (err: any) {
     return new Response(JSON.stringify({ error: err?.message || String(err) }), {
       status: 500,
-      headers: { "Content-Type": "application/json" },
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }
 });
