@@ -6149,6 +6149,15 @@ function friendlyErrorMessage(err, fallback){
 }
 
 function switchView(id){
+  // 詳細ページ(音楽の試聴)から別の画面(一覧・プロフィール等)へ離れる時は
+  // 必ず試聴を止める。以前はgoDetail()内のresetTracksUI()だけが試聴停止の
+  // 唯一の出口で、「戻る」で一覧に戻る(goHome()等、別の作品のgoDetail()を
+  // 経由しない)経路では一切呼ばれず、試聴中の曲が鳴り続けたまま一覧に
+  // 戻ってしまう事故になっていた。
+  const detailView = document.getElementById('view-detail');
+  if(id !== 'view-detail' && detailView && detailView.classList.contains('active') && playingTrackIndex != null){
+    stopTrackPreview();
+  }
   document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
   document.getElementById(id).classList.add('active');
   window.scrollTo({top:0, behavior:'instant'});
@@ -6853,6 +6862,11 @@ async function togglePosterMusicPlayback(){
 // 1つだけに絞り、別の曲を押したら前の曲を止めてから切り替える(複数同時に
 // 鳴り続けるのを防ぐ)。
 const previewAudio = new Audio();
+// デフォルト(1.0=最大)のままだと、特に詳細ページを開いた瞬間に自動再生
+// (autoPlayAlbumPreview)される分、本人の意図より大きい音で急に鳴り始める
+// という指摘があった。根拠のある正確な数値ではないが、ひとまず控えめな
+// 0.6に下げる(デバイス側の音量を下げても大きく感じる、という報告のため)。
+previewAudio.volume = 0.6;
 // 30秒で単発停止すると「開いたらすぐ無音に戻る」体験になり寂しいため、
 // 同じ試聴区間をそのままループさせる(オーナーの要望)。loopがtrueの間は
 // 'ended'イベント自体が発火しない(ブラウザがループ再生する)ため、
