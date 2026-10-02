@@ -5955,7 +5955,7 @@ function dedupeByNormalizedTitleYear(movies){
 
 function renderRecommended(currentMovie){
   const root = document.getElementById('d-recommended');
-  const MIN_COUNT = 8; // 詳細ページのおすすめ欄をもっと見たいとの要望を受けて4→8に増量
+  const MIN_COUNT = 12; // 詳細ページのおすすめ欄をもっと見たいとの要望を受けて4→8→12に増量
   const animePreview = isAnimePreviewEnabled();
   const others = MOVIES.filter(m => m.id !== currentMovie.id);
 
@@ -6045,13 +6045,20 @@ function renderRecommended(currentMovie){
   const excludeIds = new Set([...seriesSiblings, ...remakeSiblings, ...adaptationSiblings].map(m => m.id));
 
   // 感情タグの一致数→愛度の順に並べて上位を選ぶ、共通のスコアリング。
-  function scoreAndPick(pool, limit){
-    return pool
+  // 以前はここで厳密に上位limit件を切り出すだけだったため、同じ作品の
+  // 詳細ページを何度開いても(カタログが変わらない限り)全く同じ並びの
+  // おすすめが永遠に出続けていた(オーナー指摘:「おすすめしてくる作品が
+  // 一定」)。ホームの「気分の棚」で使っている日替わりシャッフル
+  // (seededShuffle)と同じ考え方で、関連度が高い候補を少し広めに取った
+  // 上でシャッフルし、そこから選ぶ(関連度が低い作品まで混ざることは無い。
+  // 幅を広げただけで、順位そのものは捨てていない)。
+  function scoreAndPick(pool, limit, saltKey){
+    const scored = pool
       .filter(m => !excludeIds.has(m.id))
       .map(m => ({ m, sharedTags: m.tags.filter(t => currentMovie.tags.includes(t)).length }))
-      .sort((a, b) => (b.sharedTags - a.sharedTags) || (loveAverage(b.m) - loveAverage(a.m)))
-      .slice(0, limit)
-      .map(x => x.m);
+      .sort((a, b) => (b.sharedTags - a.sharedTags) || (loveAverage(b.m) - loveAverage(a.m)));
+    const widePool = scored.slice(0, Math.max(limit * 3, limit + 12)).map(x => x.m);
+    return seededShuffle(widePool, `rec:${currentMovie.id}:${saltKey}`).slice(0, limit);
   }
 
   // 「ドラマ」欄: TVドラマのページに加えて、普通の実写
@@ -6062,7 +6069,7 @@ function renderRecommended(currentMovie){
   const dramaWrap = document.getElementById('d-recommended-drama-wrap');
   if(animePreview && (currentIsDrama || currentIsRegularMovie)){
     const dramaPool = others.filter(m => m.isDrama);
-    const dramaList = scoreAndPick(dramaPool, MIN_COUNT + 2);
+    const dramaList = scoreAndPick(dramaPool, MIN_COUNT + 2, 'drama');
     if(dramaList.length){
       dramaWrap.style.display = 'block';
       renderMovieCards(document.getElementById('d-recommended-drama'), dramaList, '', { forceMode: 'drama' });
@@ -6079,7 +6086,7 @@ function renderRecommended(currentMovie){
   const mangaWrap = document.getElementById('d-recommended-manga-wrap');
   if(animePreview && currentIsManga){
     const mangaPool = others.filter(m => m.isManga);
-    const mangaList = scoreAndPick(mangaPool, MIN_COUNT + 2);
+    const mangaList = scoreAndPick(mangaPool, MIN_COUNT + 2, 'manga');
     if(mangaList.length){
       mangaWrap.style.display = 'block';
       renderMovieCards(document.getElementById('d-recommended-manga'), mangaList, '', { forceMode: 'manga' });
@@ -6095,7 +6102,7 @@ function renderRecommended(currentMovie){
   const novelWrap = document.getElementById('d-recommended-novel-wrap');
   if(animePreview && currentIsNovel){
     const novelPool = others.filter(m => m.isNovel);
-    const novelList = scoreAndPick(novelPool, MIN_COUNT + 2);
+    const novelList = scoreAndPick(novelPool, MIN_COUNT + 2, 'novel');
     if(novelList.length){
       novelWrap.style.display = 'block';
       renderMovieCards(document.getElementById('d-recommended-novel'), novelList, '', { forceMode: 'novel' });
@@ -6111,7 +6118,7 @@ function renderRecommended(currentMovie){
   const musicWrap = document.getElementById('d-recommended-music-wrap');
   if(currentIsMusic){
     const musicPool = others.filter(m => m.isMusic);
-    const musicList = scoreAndPick(musicPool, MIN_COUNT + 2);
+    const musicList = scoreAndPick(musicPool, MIN_COUNT + 2, 'music');
     if(musicList.length){
       musicWrap.style.display = 'block';
       renderMovieCards(document.getElementById('d-recommended-music'), musicList, '', { forceMode: 'music' });
@@ -6138,7 +6145,7 @@ function renderRecommended(currentMovie){
   } else {
     movieWrap.style.display = 'block';
     const liveActionPool = others.filter(m => !m.isAnime && !looksLikeAnimeFilm(m));
-    const movieList = scoreAndPick(liveActionPool, MIN_COUNT);
+    const movieList = scoreAndPick(liveActionPool, MIN_COUNT, 'movie');
     if(animePreview && currentIsAnimeFilm){
       const animeFilmPool = others.filter(m => looksLikeAnimeFilm(m)
         && !movieList.some(x => x.id === m.id) && !excludeIds.has(m.id));
@@ -6158,7 +6165,7 @@ function renderRecommended(currentMovie){
     // 揃えておく(ここだけ別の条件だと、一覧には出るのにおすすめには
     // 出ない、という食い違いになるため)。
     const animePool = others.filter(m => isInCatalogMode(m, 'anime'));
-    const animeList = scoreAndPick(animePool, MIN_COUNT + 2);
+    const animeList = scoreAndPick(animePool, MIN_COUNT + 2, 'anime');
     if(animeList.length){
       animeWrap.style.display = 'block';
       renderMovieCards(document.getElementById('d-recommended-anime'), animeList, '', { forceMode: 'anime' });
