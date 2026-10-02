@@ -6419,6 +6419,7 @@ let tracksCache = null;
 let tracksLoadToken = 0;
 
 function resetTracksUI(m){
+  stopTrackPreview(); // 別の作品の詳細ページに移動したら、試聴中の曲も必ず止める
   tracksOpen = false;
   tracksCache = null;
   tracksLoadToken++;
@@ -6470,15 +6471,50 @@ async function loadAlbumTracks(movieId){
   }
 }
 
+// iTunesはプレビュー用(30秒)の試聴音源を公式に提供している。フル楽曲の
+// 取得・配信はしない(著作権的にそこまでは踏み込まない)。再生中のトラックは
+// 1つだけに絞り、別の曲を押したら前の曲を止めてから切り替える(複数同時に
+// 鳴り続けるのを防ぐ)。
+const previewAudio = new Audio();
+let playingTrackIndex = null;
+previewAudio.addEventListener('ended', () => stopTrackPreview());
+
+function stopTrackPreview(){
+  previewAudio.pause();
+  if(playingTrackIndex != null){
+    const prevBtn = document.getElementById(`track-play-${playingTrackIndex}`);
+    if(prevBtn) prevBtn.textContent = '▶';
+  }
+  playingTrackIndex = null;
+}
+
+function toggleTrackPreview(index, url){
+  const btn = document.getElementById(`track-play-${index}`);
+  if(playingTrackIndex === index){
+    stopTrackPreview();
+    return;
+  }
+  stopTrackPreview();
+  previewAudio.src = url;
+  previewAudio.play().catch(err => console.error('試聴の再生に失敗しました', err));
+  playingTrackIndex = index;
+  if(btn) btn.textContent = '⏸';
+}
+
 function renderTracksGrid(tracks){
   const root = document.getElementById('tracks-grid');
-  root.innerHTML = tracks.map(t => `
+  root.innerHTML = tracks.map((t, i) => `
     <div class="episode-card">
       <div class="episode-thumb">${t.trackNumber || '♪'}</div>
       <div class="episode-meta">
         <div class="episode-num">${t.trackNumber ? `${t.trackNumber}曲目` : ''}</div>
         <div class="episode-name">${escapeHtml(t.trackName)}</div>
-        ${t.trackTimeMillis ? `<div class="episode-love-hint">${formatTrackDuration(t.trackTimeMillis)}</div>` : ''}
+        <div class="episode-love-row">
+          ${t.previewUrl ? `
+            <button class="heart-single-btn mini" id="track-play-${i}" onclick="toggleTrackPreview(${i}, '${t.previewUrl}')">▶</button>
+            <span class="episode-love-hint">30秒試聴${t.trackTimeMillis ? `・${formatTrackDuration(t.trackTimeMillis)}` : ''}</span>
+          ` : (t.trackTimeMillis ? `<span class="episode-love-hint">${formatTrackDuration(t.trackTimeMillis)}</span>` : '')}
+        </div>
       </div>
     </div>
   `).join('');
