@@ -219,9 +219,18 @@ function isForeignBook(booksGenreId: string | null | undefined): boolean {
 // 外国人名の日本語表記、例:「ルイス・キャロル」)が高い確率で出るので、
 // それを海外判定の追加signalとして使う(ジャンル側の判定に"OR"で足すだけ
 // なので、既に正しく海外判定されているものを日本に戻すことはない)。
+// 「カタカナ・カタカナ」パターンは外国人名だけでなく、日本の制作会社名
+// (例:「トムス・エンタテインメント」=アンパンマンのアニメ制作会社)にも
+// 一致してしまい、生粋の日本作品(アンパンマン)が16件「海外」に誤判定
+// されていた(オーナー指摘)。既知の日本法人名はここで明示的に除外する。
+const KNOWN_JAPANESE_COMPANY_NAMES = new Set(["トムス・エンタテインメント"]);
 function isForeignAuthorName(author: string | null | undefined): boolean {
   if (!author) return false;
-  return author.split("/").some((seg) => /[ァ-ヴー]{2,}・[ァ-ヴー]{2,}/.test(seg.trim()));
+  return author.split("/").some((seg) => {
+    const trimmed = seg.trim();
+    if (KNOWN_JAPANESE_COMPANY_NAMES.has(trimmed)) return false;
+    return /[ァ-ヴー]{2,}・[ァ-ヴー]{2,}/.test(trimmed);
+  });
 }
 
 const TIER = { LOW: 15, MILD: 40, STRONG: 65, INTENSE: 85 };

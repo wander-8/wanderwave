@@ -67,9 +67,16 @@ function inferMoodTags(title: string, caption: string | null | undefined, fallba
   return result;
 }
 
+// トムス・エンタテインメント(アンパンマンの制作会社)等、日本の法人名が
+// 「カタカナ・カタカナ」パターンに誤って一致するのを防ぐ(オーナー指摘)。
+const KNOWN_JAPANESE_COMPANY_NAMES = new Set(["トムス・エンタテインメント"]);
 function isForeignAuthorName(author: string | null | undefined): boolean {
   if (!author) return false;
-  return author.split("/").some((seg) => /[ァ-ヴー]{2,}・[ァ-ヴー]{2,}/.test(seg.trim()));
+  return author.split("/").some((seg) => {
+    const trimmed = seg.trim();
+    if (KNOWN_JAPANESE_COMPANY_NAMES.has(trimmed)) return false;
+    return /[ァ-ヴー]{2,}・[ァ-ヴー]{2,}/.test(trimmed);
+  });
 }
 
 // directBookType.tags(rakuten-discover-novel)と同じ値。感情タグ推定が
