@@ -50,6 +50,12 @@ const DIRECT_BOOK_TYPE_MAP: Record<string, { ja: string; tags: string[]; baseTie
   // サブジャンルごとに実際のジャンル名・気分タグを割り当てる(artInfo参照)。
   // ここのtags/jaは「サブジャンルが未知だった場合」のフォールバック用。
   "001009009": { ja: "美術", tags: ["美しい", "考えさせられる"], baseTier: 15 },
+  // 写真は001009009(美術)の子ではなく別の親(001013=写真集・タレント)の
+  // 子「動物・自然」(001013003)。同じ親の「グラビアアイドル・タレント
+  // 写真集」(001013001)・「その他」(001013002、アイドル写真集が混在)は
+  // 美術的な鑑賞目的と言えないので対象外にした(オーナーが写真の追加を
+  // 要望したが、アイドル写真集まで混ぜると図鑑のドリル混入と同じ問題になる)。
+  "001013003": { ja: "写真", tags: ["美しい", "リラックス"], baseTier: 15 },
 };
 
 // 美術(001009009)のサブジャンル。ぬりえ・ちぎり絵/切り絵は「鑑賞する美術」
@@ -200,6 +206,18 @@ function isForeignBook(booksGenreId: string | null | undefined): boolean {
   return FOREIGN_BOOK_GENRE_CODES.some((code) => segs.some((s) => s.startsWith(code)));
 }
 
+// 絵本(外国)・児童書(外国)以外(図鑑・新書・児童文庫・民話・美術)には
+// 国別の子ジャンル自体が存在しないため、isForeignBookだけでは判定できず
+// 国別絞り込みが実質"日本"一色になっていた(オーナー指摘)。これらの
+// 著者名には翻訳物特有の「カタカナ名・カタカナ名」表記(中点区切りの
+// 外国人名の日本語表記、例:「ルイス・キャロル」)が高い確率で出るので、
+// それを海外判定の追加signalとして使う(ジャンル側の判定に"OR"で足すだけ
+// なので、既に正しく海外判定されているものを日本に戻すことはない)。
+function isForeignAuthorName(author: string | null | undefined): boolean {
+  if (!author) return false;
+  return author.split("/").some((seg) => /[ァ-ヴー]{2,}・[ァ-ヴー]{2,}/.test(seg.trim()));
+}
+
 const TIER = { LOW: 15, MILD: 40, STRONG: 65, INTENSE: 85 };
 const HEAVY_WORDS = ["惨殺", "拷問", "陵辱", "強姦", "グロテスク", "残虐", "自殺", "虐待"];
 const SEXUAL_WORDS = ["性的", "ヌード", "官能", "濡れ場", "エッチ"];
@@ -219,10 +237,86 @@ function isNonNovelTitle(title: string): boolean {
 const NON_REFERENCE_BOOK_PATTERNS = [
   "ドリル", "パズル", "プリント", "ワーク", "レッスン", "対決", "検定",
   "カレンダー", "シール", "【特典】", "ぬりえ", "塗り絵", "カード",
+  // 美術(001009009)の「その他」等に練習帳・実用書が紛れ込む
+  // (例:「美しく正しい字が書ける　ペン字練習帳」が美術として取り込まれた、
+  // オーナー指摘)。鑑賞する美術と練習する実用書は別物として除外する。
+  "練習", "ペン字", "書道", "硬筆", "毛筆", "美文字", "お手本",
+  "試験", "資格",
 ];
 function isNonReferenceBookTitle(title: string): boolean {
   return NON_REFERENCE_BOOK_PATTERNS.some((w) => title.includes(w));
 }
+
+// 絵本・図鑑・児童書・児童文庫・民話・むかし話は、楽天側のジャンルツリーに
+// テーマ分岐が無い(絵本は日本/外国の2つだけ、図鑑と民話はジャンル分岐
+// ゼロ、児童文庫は出版社レーベル分岐のみ)ため、今まで本の種類1つに
+// つき感情タグを固定2個で決め打ちしていた(例:絵本は全1864件が
+// [楽しい,美しい]固定)。実際には中身が全然違う(おやすみ系の絵本と
+// しかけ絵本は気分が別)のに、感情で絞り込んでも常に同じ2タグしか
+// 出てこなかった(オーナー指摘)。商品説明文(synopsis)にはちゃんと
+// 中身の違いが出ているので、タイトル+説明文のキーワードから実際に
+// 近い気分タグを個別に推定する。
+const MOOD_KEYWORDS: Record<string, string[]> = {
+  "ワクワク": [
+    "しかけ", "とびだす", "ぼうけん", "冒険", "たんけん", "探検", "きょうりゅう", "恐竜",
+    "うちゅう", "宇宙", "ロケット", "のりもの", "でんしゃ", "電車", "しょうぼうしゃ", "救急車",
+    "へんしん", "変身", "たからもの", "宝物", "たからじま", "まほう", "魔法", "忍者", "にんじゃ",
+    "怪盗", "ヒーロー", "どうぶつ", "動物", "こんちゅう", "昆虫",
+  ],
+  "感動": [
+    "感動", "涙", "泣ける", "ほろり", "じんわり", "心温まる", "家族の絆", "ありがとう",
+    "いのちの大切さ", "命の大切さ", "再会", "旅立ち", "親子の愛",
+  ],
+  "リラックス": [
+    "おやすみ", "ねむる", "ねんね", "眠り", "子守", "こもりうた", "寝かしつけ", "まったり",
+    "ほっこり", "スキンシップ", "あかちゃん", "赤ちゃん", "語りかけ",
+  ],
+  "怖い": [
+    "おばけ", "ゆうれい", "幽霊", "ようかい", "妖怪", "おに", "鬼", "やみ", "闇",
+    "のろい", "呪い", "ホラー", "魔女", "こわい話", "怖い話",
+  ],
+  "美しい": [
+    "うつくしい", "美しい", "きれい", "綺麗", "花", "はな", "自然", "しぜん", "四季",
+    "季節", "星空", "海の", "虹", "名画", "絵画", "しょくぶつ", "植物",
+  ],
+  "ドキドキ": ["どきどき", "ハラハラ", "スリル", "追いかけ", "対決", "勝負", "レース", "競争", "サスペンス"],
+  "笑い": [
+    "おもしろい", "面白い", "ギャグ", "コメディ", "ユーモア", "へんてこ", "どたばた",
+    "わらえる", "笑える", "げらげら", "くすっと",
+  ],
+  "悲しい": ["さびしい", "寂しい", "悲しい", "かなしい", "なみだ", "別れ", "さよなら", "いなくなっ"],
+  "考えさせられる": [
+    "いのち", "命", "せんそう", "戦争", "へいわ", "平和", "しゃかい", "社会", "かんきょう",
+    "環境", "人権", "じんせい", "人生", "せかい", "世界の", "差別", "貧困", "災害", "震災",
+  ],
+  "楽しい": [
+    "たのしい", "楽しい", "あそぶ", "遊ぶ", "ゆかい", "愉快", "うた", "歌", "おどる", "踊る",
+    "パーティー", "えがお", "笑顔",
+  ],
+};
+// キーワードが1つも当たらない場合は本の種類ごとの既定2タグにフォールバック、
+// 1つしか当たらなかった場合は既定タグから不足分を補って必ず2タグ返す。
+function inferMoodTags(title: string, caption: string | null | undefined, fallback: string[]): string[] {
+  const text = `${title} ${caption || ""}`;
+  const scores: [string, number][] = [];
+  for (const [tag, words] of Object.entries(MOOD_KEYWORDS)) {
+    const hits = words.filter((w) => text.includes(w)).length;
+    if (hits > 0) scores.push([tag, hits]);
+  }
+  scores.sort((a, b) => b[1] - a[1]);
+  const ranked = scores.map(([tag]) => tag);
+  if (ranked.length === 0) return fallback;
+  const result = ranked.slice(0, 2);
+  for (const t of fallback) {
+    if (result.length >= 2) break;
+    if (!result.includes(t)) result.push(t);
+  }
+  return result;
+}
+// このロジックを適用する本の種類(感情ごとのテーマ分岐がジャンル側に
+// 無いもの)。新書・美術はサブジャンルで既に実ジャンル名ベースのタグが
+// 付くので対象外。写真は分岐が無いので対象にする。
+const MOOD_INFER_BOOK_TYPES = new Set(["001003003", "001003006", "001003001", "001003002", "001003004", "001013003"]);
 
 function estimateExpression(genreId: string | null | undefined, caption: string): { level: number; reasonTags: string[]; basis: string } {
   const info = genreInfoFor(genreId);
@@ -499,7 +593,13 @@ Deno.serve(async (req: Request) => {
         : isArt
         ? { ja: [artInfo(item.booksGenreId).ja], tags: artInfo(item.booksGenreId).tags, baseTier: directBookType.baseTier }
         : directBookType
-        ? { ja: [directBookType.ja], tags: directBookType.tags, baseTier: directBookType.baseTier }
+        ? {
+            ja: [directBookType.ja],
+            tags: MOOD_INFER_BOOK_TYPES.has(books_genre_id)
+              ? inferMoodTags(item.title, item.itemCaption, directBookType.tags)
+              : directBookType.tags,
+            baseTier: directBookType.baseTier,
+          }
         : genreInfoFor(item.booksGenreId);
       const year = saleDate ? saleDate.getUTCFullYear() : null;
       // 表紙画像が無い商品には楽天の「NO IMAGE」プレースホルダー画像が
@@ -532,7 +632,7 @@ Deno.serve(async (req: Request) => {
         // 一切出てこなかった。genreSegmentsは既に"/"区切りの全パスを
         // 見ているので、この中に外国の小説ジャンルが含まれるかどうかで
         // 判定する。
-        country: isForeignBook(item.booksGenreId) ? "海外" : "日本",
+        country: (isForeignBook(item.booksGenreId) || isForeignAuthorName(item.author)) ? "海外" : "日本",
         synopsis: caption ? caption.slice(0, SYNOPSIS_MAX_LEN) : null,
         poster_path: coverUrl,
         japan_release_date: null,
