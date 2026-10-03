@@ -5087,6 +5087,28 @@ function renderHomeRows(){
     `;
   }
 
+  // 「巻数少ないけど推せる名作」棚: 漫画モード限定。有名無名を問わず、
+  // 巻数が少なくて読み始めやすい作品を紹介したいとの要望(オーナー)。
+  // volume_countはmanga-volume-backfillで後から埋めている最中のため、
+  // 現時点でまだ値が入っていない作品も多い(その場合は単に候補に入らない
+  // だけで、裏の集計が進むにつれて自然と充実していく)。
+  const SHORT_MANGA_MAX_VOLUMES = 5;
+  if(catalogMode === 'manga'){
+    const shortMangaPool = discoveryMovies.filter(m =>
+      m.volumeCount != null && m.volumeCount > 0 && m.volumeCount <= SHORT_MANGA_MAX_VOLUMES
+    );
+    const shortManga = seededShuffle(shortMangaPool, 'short-manga').slice(0, 12);
+    if(shortManga.length){
+      html += `
+        <div class="mood-row-header">
+          <div class="mood-row-kicker">巻数少ないけど推せる</div>
+          <div class="mood-row-tag" style="color:var(--safe)">短編の名作</div>
+        </div>
+        <div class="results">${shortManga.map(buildCardHTML).join('')}</div>
+      `;
+    }
+  }
+
   // 配信サービスごとの棚(実際に配信情報がある作品だけ)
   const platformSet = new Set();
   visibleMovies.forEach(m => (m.platforms || []).forEach(p => platformSet.add(p)));
@@ -8487,7 +8509,7 @@ async function selectAllRows(table, columns, applyFilterFn, orderColumn = 'id', 
 // 遅くしている最大の要因だった。検索の根幹であるkeywordsは(サイトの
 // 存在意義に関わるため)初回取得に残したまま、この2つだけ後から
 // バックグラウンドで取得する(loadMovieBigFieldsInBackground参照)。
-const MOVIE_LIGHT_COLUMNS = 'id, title, release_year, emotion_tags, genre, director, country, poster_path, japan_release_date, keywords, series, trailer_key, media_type, is_anime, is_drama, is_manga, is_novel, is_music';
+const MOVIE_LIGHT_COLUMNS = 'id, title, release_year, emotion_tags, genre, director, country, poster_path, japan_release_date, keywords, series, trailer_key, media_type, is_anime, is_drama, is_manga, is_novel, is_music, volume_count';
 const MOVIE_BIG_COLUMNS = 'id, synopsis, cast_members';
 // アニメ・ドラマ・漫画・小説側(オーナー限定プレビュー)は、今のところ
 // 軽量/追加取得の二段構えにはせず、従来通り一括取得する(この取得自体が
@@ -8510,6 +8532,7 @@ function buildMovieRecord(row, statsByMovie, estimatesByMovie){
   const genreArr = row.genre || undefined;
   const castArr = row.cast_members || undefined;
   const keywordsArr = row.keywords || [];
+  const volumeCount = row.volume_count || null;
 
   return {
     id: row.id,
@@ -8546,6 +8569,7 @@ function buildMovieRecord(row, statsByMovie, estimatesByMovie){
     posterPath: row.poster_path || null,
     japanReleaseDate: row.japan_release_date || null,
     keywords: keywordsArr,
+    volumeCount: volumeCount,
     series: row.series || null,
     trailerKey: row.trailer_key || null,
     mediaType: row.media_type || 'movie',
