@@ -3297,6 +3297,23 @@
     </div>
   </div>
 
+  <!-- ============ VIEWING RECORD (ALL) VIEW ============ -->
+  <!-- 他の.viewと違い、以前はここより後ろ(.appの外側)に置かれていたため、
+       .appのmax-width/paddingが効かず全画面幅に広がって表示されていた
+       (デスクトップで極端に多い列数・隙間が詰まって見える原因。オーナー
+       指摘のスクリーンショットで判明)。他の.viewと同じ場所に戻す。 -->
+  <div class="view" id="view-viewing-record">
+    <button class="back-btn" onclick="goProfile()">← プロフィールに戻る</button>
+    <div class="detail-head">
+      <div style="display:flex; align-items:baseline; justify-content:space-between; gap:10px;">
+        <h2>視聴記録</h2>
+        <span id="viewing-record-count" class="sub" style="margin-bottom:0; flex-shrink:0;"></span>
+      </div>
+      <div class="sub">これまでの記録を、新しい順に並べています</div>
+    </div>
+    <div id="viewing-record-grid" class="pocket-grid"></div>
+  </div>
+
 </div>
 
 <!-- <button class="fab" onclick="goAdd()">+ 映画を追加</button> 承認フローが整うまで一時的に非表示 -->
@@ -3357,19 +3374,6 @@
     </div>
     <div id="series-list-items" class="pocket-grid"></div>
   </div>
-</div>
-
-<!-- ============ VIEWING RECORD (ALL) VIEW ============ -->
-<div class="view" id="view-viewing-record">
-  <button class="back-btn" onclick="goProfile()">← プロフィールに戻る</button>
-  <div class="detail-head">
-    <div style="display:flex; align-items:baseline; justify-content:space-between; gap:10px;">
-      <h2>視聴記録</h2>
-      <span id="viewing-record-count" class="sub" style="margin-bottom:0; flex-shrink:0;"></span>
-    </div>
-    <div class="sub">これまでの記録を、新しい順に並べています</div>
-  </div>
-  <div id="viewing-record-grid" class="pocket-grid"></div>
 </div>
 
 <!-- この2つは以前<head>にあり、ページ本体のHTML(スプラッシュ画面を含む)より
