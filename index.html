@@ -4511,11 +4511,25 @@ function goToFilterPage(key){
   filterPageIndex = FILTER_PAGE_KEYS.indexOf(key);
   renderFilterTabs();
 }
+// filterPageIndexはFILTER_PAGE_KEYS(genre/country/decade)の「配列上の
+// 位置」だが、国の選択肢が1つ以下の時はcountry-filter-group自体に
+// display:noneを付けて隠しており、これはflexの.filter-pageとしての幅も
+// 無くなる(=track内の実際のスロット数が2枚に減る)。そのため
+// filterPageIndexをそのままtranslateXの枚数として使うと、国が隠れている
+// 時に「年代」(配列上2番目)を開いても実際には存在しない3枚目まで
+// スクロールしようとして空欄になったり(そもそも無い)、国の表示/非表示が
+// 切り替わった直後にタブとズレて別の中身が出たり(逆に表示される)していた
+// (オーナー指摘)。実際に見えているページの中での位置に変換してから使う。
+function visibleFilterIndex(){
+  const visibleKeys = FILTER_PAGE_KEYS.filter(filterPageIsVisible);
+  const idx = visibleKeys.indexOf(FILTER_PAGE_KEYS[filterPageIndex]);
+  return idx === -1 ? 0 : idx;
+}
 function positionFilterTrack(animated){
   const viewport = document.getElementById('filter-pages-viewport');
   const track = document.getElementById('filter-pages-track');
   track.style.transition = animated === false ? 'none' : 'transform 0.26s cubic-bezier(.22,.8,.32,1)';
-  track.style.transform = `translateX(-${filterPageIndex * viewport.offsetWidth}px)`;
+  track.style.transform = `translateX(-${visibleFilterIndex() * viewport.offsetWidth}px)`;
 }
 // タブ行自体を横にドラッグしてもページを切り替えられるようにする
 // (チップの横スクロールと競合しないよう、ドラッグの起点をタブ行だけに
@@ -4539,7 +4553,7 @@ function positionFilterTrack(animated){
       dragging = true;
     }
     const viewport = document.getElementById('filter-pages-viewport');
-    const base = -filterPageIndex * viewport.offsetWidth;
+    const base = -visibleFilterIndex() * viewport.offsetWidth;
     track.style.transform = `translateX(${base + dx}px)`;
   }, { passive: true });
   tabs.addEventListener('touchend', (e) => {
