@@ -4366,8 +4366,11 @@ function isShinshoItem(m){
 function itemBookType(m){
   if((m.genre || []).includes('絵本')) return '絵本';
   if((m.genre || []).includes('図鑑')) return '図鑑';
+  if((m.genre || []).includes('児童書')) return '児童書';
+  if((m.genre || []).includes('児童文庫')) return '児童文庫';
+  if((m.genre || []).includes('民話・むかし話')) return '民話・むかし話';
   if(isShinshoItem(m)) return '新書';
-  return null; // 小説(絵本・図鑑・新書のいずれでもない)
+  return null; // 小説(どの本の種類でもない)
 }
 // 本の種類の選択は、ジャンルチップの複数選択OR一致とは性質が違う
 // (常に1つだけを選ぶ排他選択で、しかも新書は「genreにこの文字列が
@@ -4403,28 +4406,21 @@ function availableCountries(){
   return FILTER_COUNTRIES.filter(c => set.has(c));
 }
 
-// 小説モード限定の本の種類切り替え(小説/絵本/図鑑/新書)。この4つの中から
-// 常に1つだけを選ぶ単一選択として扱う(「詳しく絞り込む」の中のジャンル
-// チップの複数選択とは別物)。「小説」は絵本・図鑑・新書のどれも選ばれて
-// いない状態を指すだけで、実データ上の固有ジャンル値を持たない。
-const BOOK_TYPES = ['絵本', '図鑑', '新書'];
+// 小説モード限定の本の種類切り替え(小説/絵本/図鑑/新書/児童書/児童文庫/
+// 民話・むかし話)。この中から常に1つだけを選ぶ単一選択として扱う
+// (「詳しく絞り込む」の中のジャンルチップの複数選択とは別物)。「小説」は
+// このどれも選ばれていない状態を指すだけで、実データ上の固有ジャンル値を
+// 持たない。児童書・児童文庫・民話は絵本・図鑑と同じ親ジャンル(楽天の
+// 001003=絵本・児童書・図鑑)の兄弟で、実件数(児童書16,649件・児童文庫
+// 7,537件・民話747件)を確認した上で追加した。
+const BOOK_TYPES = ['絵本', '図鑑', '新書', '児童書', '児童文庫', '民話・むかし話'];
 function renderBookTypeSwitch(){
   const wrap = document.getElementById('book-type-switch');
-  // 絵本・図鑑はそもそも楽天側にサブジャンルの区分が存在せず、新書も
-  // 既存データの作り直し(1件ずつ楽天に問い合わせて再分類)をしない限り
-  // 中身が揃わない。「詳しく絞り込む」ごと出しておくと中身がちぐはぐ・
-  // ほぼ空になるだけなので、本の種類を選んでいる間は「詳しく絞り込む」
-  // 自体を丸ごと隠す(小説を選んでいる時、および小説モード以外では今まで
-  // 通り出す)。
-  const disclosureBtn = document.getElementById('filter-disclosure-btn');
-  const disclosureBody = document.getElementById('filter-disclosure-body');
-  const hideDisclosure = currentCatalogMode() === 'novel' && !!state.bookType;
-  disclosureBtn.style.display = hideDisclosure ? 'none' : '';
-  if(hideDisclosure){
-    disclosureBtn.classList.remove('open');
-    disclosureBody.classList.remove('open');
-  }
-  disclosureBody.style.display = hideDisclosure ? 'none' : '';
+  // 以前は絵本・図鑑・新書を選んでいる間「詳しく絞り込む」ごと隠していたが、
+  // 絵本には国(日本/海外)の区分が実在する(isForeignBook参照)し、年代は
+  // どの本の種類でも常に何かしら出る。ジャンル・国それぞれの空き具合は
+  // renderFilterTabs側でタブ単位にすでに判定済みなので、ここで丸ごと隠すのは
+  // やめ、タブの出し分けに任せる(オーナー指摘: 絵本で国別を見たかった)。
   if(currentCatalogMode() !== 'novel'){
     wrap.style.display = 'none';
     return;

@@ -39,6 +39,12 @@ const DIRECT_BOOK_TYPE_MAP: Record<string, { ja: string; tags: string[]; baseTie
   "001003003": { ja: "絵本", tags: ["楽しい", "美しい"], baseTier: 15 },
   "001003006": { ja: "図鑑", tags: ["考えさせられる", "美しい"], baseTier: 15 },
   "001020": { ja: "新書", tags: ["考えさせられる"], baseTier: 15 },
+  // 絵本・図鑑と同じ親(001003=絵本・児童書・図鑑)の兄弟ジャンル。件数を
+  // 確認した上で追加(児童書16,649件・児童文庫7,537件・民話747件、
+  // しかけ絵本はほぼ0件だったので対象外にした)。
+  "001003001": { ja: "児童書", tags: ["楽しい", "考えさせられる"], baseTier: 15 },
+  "001003002": { ja: "児童文庫", tags: ["楽しい", "ワクワク"], baseTier: 15 },
+  "001003004": { ja: "民話・むかし話", tags: ["考えさせられる", "美しい"], baseTier: 15 },
 };
 
 // 新書(001020)はサブジャンルの幅が広く、これまで一律「新書」として取り込んで
@@ -62,13 +68,30 @@ const SHINSHO_SUBGENRE_NAMES: Record<string, string> = {
   "001020010": "科学・医学・技術",
   "001020011": "エンタメ",
 };
-function shinshoInfo(booksGenreId: string | null | undefined): { ja: string; excluded: boolean } {
+// 新書はサブジャンル名(genre列)こそ実際のものを入れていたが、感情タグは
+// directBookType.tags(「考えさせられる」固定)を一律で使っていたため、
+// 新書を選ぶと感情タグが実質1種類しか無く「感情検索が無いのと同じ」状態
+// だった(オーナー指摘)。せっかくサブジャンルを判定しているので、
+// サブジャンルごとに妥当な気分タグを割り当てる(itunes-discover-musicの
+// GENRE_TAG_MAPと同じ考え方)。
+const SHINSHO_SUBGENRE_TAGS: Record<string, string[]> = {
+  "001020001": ["考えさせられる", "感動"], // 小説・エッセイ
+  "001020002": ["リラックス", "楽しい"], // 暮らし・健康・料理
+  "001020005": ["考えさせられる"], // 語学・学習参考書
+  "001020006": ["ワクワク", "美しい"], // 旅行・留学・アウトドア
+  "001020007": ["考えさせられる"], // 人文・思想・社会
+  "001020008": ["考えさせられる"], // ビジネス・経済・就職
+  "001020009": ["考えさせられる"], // パソコン・システム開発
+  "001020010": ["考えさせられる", "美しい"], // 科学・医学・技術
+  "001020011": ["楽しい", "ワクワク"], // エンタメ
+};
+function shinshoInfo(booksGenreId: string | null | undefined): { ja: string; tags: string[]; excluded: boolean } {
   const segs = genreSegments(booksGenreId);
-  if (segs.some((s) => SHINSHO_EXCLUDED_SUBGENRES.has(s))) return { ja: "新書", excluded: true };
+  if (segs.some((s) => SHINSHO_EXCLUDED_SUBGENRES.has(s))) return { ja: "新書", tags: ["考えさせられる"], excluded: true };
   for (const seg of segs) {
-    if (SHINSHO_SUBGENRE_NAMES[seg]) return { ja: SHINSHO_SUBGENRE_NAMES[seg], excluded: false };
+    if (SHINSHO_SUBGENRE_NAMES[seg]) return { ja: SHINSHO_SUBGENRE_NAMES[seg], tags: SHINSHO_SUBGENRE_TAGS[seg], excluded: false };
   }
-  return { ja: "新書", excluded: false }; // サブジャンルが未知の場合はこれまで通り「新書」のまま取り込む
+  return { ja: "新書", tags: ["考えさせられる"], excluded: false }; // サブジャンルが未知の場合はこれまで通り「新書」のまま取り込む
 }
 
 // 「その他」は物語作品以外(占い本・絵本・実用書等)も同居しており、それらは
@@ -122,20 +145,20 @@ function isForeignNovel(booksGenreId: string | null | undefined): boolean {
   return genreSegments(booksGenreId).includes(FOREIGN_NOVEL_GENRE);
 }
 
-// 絵本(001003003)は小説と同様、楽天側に「絵本(日本)」001003003001と
-// 「絵本(外国)」001003003002という国別の子ジャンルが存在する(実例:
-// 「はらぺこあおむし」booksGenreId="001003003002")。ただしこれは
-// GENRE_PREFIX_MAPの3階層コード(9桁)と違い4階層コード(12桁)なので、
-// genreSegments()の9桁切り詰めを通すと001003003001/002が同じ
-// "001003003"に潰れてしまい判定できない。切り詰め無しの生セグメントを
-// 別途見る必要がある。
-const FOREIGN_PICTURE_BOOK_GENRE = "001003003002";
+// 絵本(001003003)・児童書(001003001)は小説と同様、楽天側に「(日本)」
+// 「(外国)」という国別の子ジャンルが存在する(実例: 「はらぺこあおむし」
+// booksGenreId="001003003002"=絵本(外国))。ただしこれはGENRE_PREFIX_MAPの
+// 3階層コード(9桁)と違い4階層コード(12桁)なので、genreSegments()の
+// 9桁切り詰めを通すと(日本)(外国)が同じ9桁に潰れてしまい判定できない。
+// 切り詰め無しの生セグメントを別途見る必要がある。
+const FOREIGN_BOOK_GENRE_CODES = ["001003003002", "001003001002"]; // 絵本(外国)・児童書(外国)
 function rawGenreSegments(booksGenreId: string | null | undefined): string[] {
   return (booksGenreId || "").split("/").filter(Boolean);
 }
 function isForeignBook(booksGenreId: string | null | undefined): boolean {
   if (isForeignNovel(booksGenreId)) return true;
-  return rawGenreSegments(booksGenreId).some((s) => s.startsWith(FOREIGN_PICTURE_BOOK_GENRE));
+  const segs = rawGenreSegments(booksGenreId);
+  return FOREIGN_BOOK_GENRE_CODES.some((code) => segs.some((s) => s.startsWith(code)));
 }
 
 const TIER = { LOW: 15, MILD: 40, STRONG: 65, INTENSE: 85 };
@@ -147,6 +170,19 @@ const SEXUAL_WORDS = ["性的", "ヌード", "官能", "濡れ場", "エッチ"]
 const NON_NOVEL_TITLE_PATTERNS = ["地球の歩き方", "設定資料集", "公式ガイドブック", "コンプリートガイド"];
 function isNonNovelTitle(title: string): boolean {
   return NON_NOVEL_TITLE_PATTERNS.some((w) => title.includes(w));
+}
+
+// 図鑑(001003006)はRakuten側にサブジャンルが一切無く絞り込みようが無い
+// ため、ドリル・ワーク・カード教材・カレンダー・シール帳のような実用品が
+// 「図鑑っぽくない図鑑」として大量に紛れ込んでいた(実データで図鑑817件
+// 中59件がこのパターンに一致、オーナー指摘)。絵本・児童書等も同じ親
+// ジャンルの便乗品が多いため、directBookType経由の取り込み全体に適用する。
+const NON_REFERENCE_BOOK_PATTERNS = [
+  "ドリル", "パズル", "プリント", "ワーク", "レッスン", "対決", "検定",
+  "カレンダー", "シール", "【特典】", "ぬりえ", "塗り絵", "カード",
+];
+function isNonReferenceBookTitle(title: string): boolean {
+  return NON_REFERENCE_BOOK_PATTERNS.some((w) => title.includes(w));
 }
 
 function estimateExpression(genreId: string | null | undefined, caption: string): { level: number; reasonTags: string[]; basis: string } {
@@ -381,6 +417,12 @@ Deno.serve(async (req: Request) => {
         skipped.push({ key, reason: "non_novel_title" });
         continue;
       }
+      // 絵本・図鑑・児童書等(directBookType経由)側はこちら: ドリル・ワーク・
+      // カード教材等の実用品ブラックリスト。
+      if (directBookType && isNonReferenceBookTitle(item.title)) {
+        skipped.push({ key, reason: "non_reference_book_title" });
+        continue;
+      }
       if (isShinsho && shinshoInfo(item.booksGenreId).excluded) {
         // パズル本・絵本児童書と重複するサブジャンルは新書として取り込まない。
         skipped.push({ key, reason: "shinsho_excluded_subgenre" });
@@ -398,7 +440,7 @@ Deno.serve(async (req: Request) => {
       }
       const caption = (item.itemCaption || "").trim();
       const genreInfo = isShinsho
-        ? { ja: [shinshoInfo(item.booksGenreId).ja], tags: directBookType.tags, baseTier: directBookType.baseTier }
+        ? { ja: [shinshoInfo(item.booksGenreId).ja], tags: shinshoInfo(item.booksGenreId).tags, baseTier: directBookType.baseTier }
         : directBookType
         ? { ja: [directBookType.ja], tags: directBookType.tags, baseTier: directBookType.baseTier }
         : genreInfoFor(item.booksGenreId);
