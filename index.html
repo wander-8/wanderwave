@@ -6036,8 +6036,12 @@ function renderRecommended(currentMovie){
   const currentIsMusic = !!currentMovie.isMusic;
   const musicWrap = document.getElementById('d-recommended-music-wrap');
   if(currentIsMusic){
+    // 音楽の「こんな音楽もおすすめ」は他欄より件数を絞りすぎていて、横に
+    // スクロールしてもすぐ尽きてしまうとの指摘(オーナー)。他欄と同じ
+    // MIN_COUNT+2(14件)ではなく、もっと見れるよう大きく増やす。
+    const MUSIC_REC_COUNT = 30;
     const musicPool = others.filter(m => m.isMusic);
-    const musicList = scoreAndPick(musicPool, MIN_COUNT + 2, 'music');
+    const musicList = scoreAndPick(musicPool, MUSIC_REC_COUNT, 'music');
     if(musicList.length){
       musicWrap.style.display = 'block';
       renderMovieCards(document.getElementById('d-recommended-music'), musicList, '', { forceMode: 'music' });
