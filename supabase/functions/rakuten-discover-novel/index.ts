@@ -276,6 +276,20 @@ const ARCHITECTURE_EXCLUDED_PATTERNS = [
 function isNonArtArchitectureTitle(title: string): boolean {
   return ARCHITECTURE_EXCLUDED_PATTERNS.some((w) => title.includes(w));
 }
+// 美術(001009009)専用の技法書判定。「光と色のチュートリアル」「〇〇の
+// 描き方」のようなイラスト技法書・描き方指南本が「イラスト」サブジャンル
+// に大量に混入していた(実データでイラスト等224件中29件がこのパターンに
+// 一致、オーナー指摘)。鑑賞する美術と、描き方を練習する技法書は中身が
+// 別物なので、除外はせず「技法書」という独立ジャンルにまとめる(オーナー
+// 指摘: 「書き方系はジャンルでまとめて欲しい」)。「入門」は「知識ゼロ
+// からの西洋絵画史入門」のような鑑賞寄りの入門書にも使われるためあえて
+// 入れていない。
+const ART_TECHNIQUE_PATTERNS = [
+  "描き方", "チュートリアル", "テクニック", "おえかき", "お絵描き", "上達", "講座",
+];
+function isArtTechniqueTitle(title: string): boolean {
+  return ART_TECHNIQUE_PATTERNS.some((w) => title.includes(w));
+}
 function isNonReferenceBookTitle(title: string): boolean {
   return NON_REFERENCE_BOOK_PATTERNS.some((w) => title.includes(w));
 }
@@ -393,8 +407,14 @@ function stripBonusPrefix(title: string): string {
 // 「【楽天ブックス限定特典】彼方から 小冊子付き愛蔵版 4(ミニ複製原画風
 // カード1枚)」のような特典グッズのSKUは、括弧内が特典の説明文になって
 // いるため、タグを取り除いた後にその説明もまとめて切り落とす。
+// 「【楽天ブックス限定デジタル特典】PHOTO ARK BABIES...」「【発売記念
+// 特典銀牙伝説ぷくぷくシール付き】高橋よしひろ 犬マンガの世界」のように、
+// 「特典」を含む【】表記は語順・前後の語が揺れる(オーナー指摘で発見、
+// 完全一致だった旧正規表現では素通りしていた)。括弧内のどこかに「特典」
+// が含まれていればほぼ確実に特典SKUの表記なので、固定の候補一覧ではなく
+// 「特典」を含む【】という条件に緩める。
 function stripRetailTags(title: string): string {
-  const m = title.match(/^【(バーゲン本|サイン本|楽天ブックス限定特典|特典)】\s*(.+)$/u);
+  const m = title.match(/^【(バーゲン本|サイン本|[^】]*特典[^】]*)】\s*(.+)$/u);
   if (!m) return title.trim();
   const rest = m[2];
   const parenIdx = rest.search(/[\(（]/u);
@@ -508,7 +528,7 @@ async function selectAllRows(supabase: any, table: string, columns: string): Pro
   let all: any[] = [];
   let from = 0;
   while (true) {
-    const { data, error } = await supabase.from(table).select(columns).range(from, from + PAGE_SIZE - 1);
+    const { data, error } = await supabase.from(table).select(columns).order("id", { ascending: true }).range(from, from + PAGE_SIZE - 1);
     if (error) throw error;
     all = all.concat(data || []);
     if (!data || data.length < PAGE_SIZE) break;
@@ -640,7 +660,13 @@ Deno.serve(async (req: Request) => {
       const genreInfo = isShinsho
         ? { ja: [shinshoInfo(item.booksGenreId).ja], tags: shinshoInfo(item.booksGenreId).tags, baseTier: directBookType.baseTier }
         : isArt
-        ? { ja: [artInfo(item.booksGenreId).ja], tags: artInfo(item.booksGenreId).tags, baseTier: directBookType.baseTier }
+        ? (isArtTechniqueTitle(item.title)
+            // 「光と色のチュートリアル」「〇〇の描き方」のような技法書は、
+            // 除外するのではなく「技法書」という独立したジャンルにまとめて
+            // ほしいとの要望(オーナー指摘)。美術(鑑賞)のサブジャンルとは
+            // 別扱いにして、同じ美術タブの中で区別できるようにする。
+            ? { ja: ["技法書"], tags: inferMoodTags(item.title, item.itemCaption, ["考えさせられる", "ワクワク"]), baseTier: directBookType.baseTier }
+            : { ja: [artInfo(item.booksGenreId).ja], tags: artInfo(item.booksGenreId).tags, baseTier: directBookType.baseTier })
         : directBookType
         ? {
             ja: [directBookType.ja],

@@ -753,6 +753,7 @@
     transition: transform 0.2s cubic-bezier(.22,.8,.32,1);
   }
   .review-feed-card{
+    position: relative;
     flex: 0 0 180px;
     scroll-snap-align: start;
     cursor: pointer;
@@ -764,8 +765,12 @@
   }
   .review-feed-card:active{ transform: scale(0.97); }
   .review-feed-type{
+    position: absolute;
+    top: 10px; right: 10px;
     font-size: 10px; font-weight: 700;
-    margin-bottom: 3px;
+    background: var(--bg);
+    padding: 2px 8px;
+    border-radius: 999px;
   }
   .review-feed-poster{
     width: 44px; height: 62px;
@@ -1691,10 +1696,16 @@
   .photo-crop-img{
     position: absolute;
     width: 100%; height: 100%;
-    background-size: 150%; background-position: 50% 50%;
+    background-size: cover; background-position: 50% 50%;
     background-repeat: no-repeat;
     pointer-events: none;
   }
+  .photo-zoom-row{
+    display:flex; align-items:center; gap:8px;
+    margin-top: 10px;
+  }
+  .photo-zoom-row svg{ flex-shrink:0; color: var(--ink-soft); }
+  .photo-zoom-slider{ flex:1; }
   .small-btn{ font-size: 12px; padding: 8px 12px; }
   .color-swatch{
     width: 34px; height: 34px; border-radius: 50%;
@@ -2866,9 +2877,14 @@
             <input type="file" id="p-photo-input" accept="image/*" style="display:none;" onchange="onProfilePhotoSelected(event)">
           </div>
           <div id="p-photo-editor" style="display:none; margin-top:12px;">
-            <div class="note" style="margin-bottom:8px;">ドラッグして位置を調整できます</div>
+            <div class="note" style="margin-bottom:8px;">ドラッグして位置を調整できます。最初は写真全体が見える大きさです。</div>
             <div id="p-photo-crop-area" class="photo-crop-area">
               <div id="p-photo-crop-img" class="photo-crop-img"></div>
+            </div>
+            <div class="photo-zoom-row">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3M8 11h6"/></svg>
+              <input type="range" id="p-photo-zoom" class="photo-zoom-slider" min="100" max="250" value="100" oninput="onAvatarZoomInput(this.value)">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3M11 8v6M8 11h6"/></svg>
             </div>
             <button class="ghost-btn small-btn" type="button" onclick="confirmAvatarPosition()" style="width:100%; margin-top:10px;">この位置に決定</button>
           </div>
@@ -3337,7 +3353,10 @@
 <div class="view" id="view-viewing-record">
   <button class="back-btn" onclick="goProfile()">← プロフィールに戻る</button>
   <div class="detail-head">
-    <h2>視聴記録</h2>
+    <div style="display:flex; align-items:baseline; justify-content:space-between; gap:10px;">
+      <h2>視聴記録</h2>
+      <span id="viewing-record-count" class="sub" style="margin-bottom:0; flex-shrink:0;"></span>
+    </div>
     <div class="sub">これまでの記録を、新しい順に並べています</div>
   </div>
   <div id="viewing-record-grid" class="pocket-grid"></div>
@@ -3863,7 +3882,7 @@ const TAG_COLORS = {
 // ほぼ意味が無いもの(1〜十数件)は除き、ある程度まとまった件数があるものを
 // 追加する(availableGenres()が実在するものだけ自動で絞ってチップ化する
 // ので、ここに増やした分だけ選択肢が広がる)。
-const FILTER_GENRES = ["ドラマ","コメディ","アクション","スリラー","アドベンチャー","クライム","恋愛","ホラー","SF","ファンタジー","ミステリー","アニメーション","ファミリー","歴史","戦争","音楽","ドキュメンタリー","西部劇","特撮","TVムービー","J-Pop","K-Pop","Rock","Classical","Anime","Hip Hop/Rap","Pop","R&B/Soul","Jazz","Soundtrack","World","Alternative","Christian & Gospel","Electronic","New Age","Dance","Vocal","Country","Opera","Singer/Songwriter","Heavy Metal","Pop in Spanish","Latin","Arena Rock","Classical Crossover","Hard Rock","Salsa y Tropical","House","Musicals","Folk","Alternative & Rock in Spanish","Cantopop","Mandopop","French Pop","Children's Music","Blues","Reggae","Indie Rock","Regional Mexicano","Ambient","Electronica","Funk","Bollywood","Gospel","Spoken Word","Video Game","Soul","小説・エッセイ","暮らし・健康・料理","語学・学習参考書","旅行・留学・アウトドア","人文・思想・社会","ビジネス・経済・就職","パソコン・システム開発","科学・医学・技術","エンタメ","日本美術","東洋美術","西洋美術","デザイン","イラスト","美術館","写真","建築"];
+const FILTER_GENRES = ["ドラマ","コメディ","アクション","スリラー","アドベンチャー","クライム","恋愛","ホラー","SF","ファンタジー","ミステリー","アニメーション","ファミリー","歴史","戦争","音楽","ドキュメンタリー","西部劇","特撮","TVムービー","J-Pop","K-Pop","Rock","Classical","Anime","Hip Hop/Rap","Pop","R&B/Soul","Jazz","Soundtrack","World","Alternative","Christian & Gospel","Electronic","New Age","Dance","Vocal","Country","Opera","Singer/Songwriter","Heavy Metal","Pop in Spanish","Latin","Arena Rock","Classical Crossover","Hard Rock","Salsa y Tropical","House","Musicals","Folk","Alternative & Rock in Spanish","Cantopop","Mandopop","French Pop","Children's Music","Blues","Reggae","Indie Rock","Regional Mexicano","Ambient","Electronica","Funk","Bollywood","Gospel","Spoken Word","Video Game","Soul","小説・エッセイ","暮らし・健康・料理","語学・学習参考書","旅行・留学・アウトドア","人文・思想・社会","ビジネス・経済・就職","パソコン・システム開発","科学・医学・技術","エンタメ","日本美術","東洋美術","西洋美術","デザイン","イラスト","美術館","写真","建築","技法書"];
 const FILTER_COUNTRIES = ["アメリカ","イギリス","フランス","ドイツ","日本","海外","カナダ","イタリア","スペイン","中国","香港","韓国","インド","オーストラリア","ベルギー","メキシコ","スウェーデン","デンマーク","ブラジル","ロシア","アイルランド","オランダ","ポーランド","スイス","アルゼンチン","トルコ","ノルウェー","フィンランド","オーストリア","ルクセンブルク","ルーマニア","チェコ","台湾","ハンガリー","南アフリカ","タイ","ニュージーランド","ポルトガル"];
 // 新書のサブジャンル名(rakuten-discover-novelのSHINSHO_SUBGENRE_NAMESと同じ値)。
 // 「ある作品が新書かどうか」はis_novelだけでは分からず、genre配列にこの中の
@@ -3872,7 +3891,7 @@ const FILTER_COUNTRIES = ["アメリカ","イギリス","フランス","ドイ�
 const SHINSHO_GENRE_NAMES = ["新書","小説・エッセイ","暮らし・健康・料理","語学・学習参考書","旅行・留学・アウトドア","人文・思想・社会","ビジネス・経済・就職","パソコン・システム開発","科学・医学・技術","エンタメ"];
 // 美術のサブジャンル名(rakuten-discover-novelのART_SUBGENRE_NAMESと同じ値)。
 // 新書と同じ理由で、genreにこの中の値が入っているかで「美術」かどうかを判定する。
-const ART_GENRE_NAMES = ["美術","日本美術","東洋美術","西洋美術","デザイン","イラスト","美術館","写真","建築"];
+const ART_GENRE_NAMES = ["美術","日本美術","東洋美術","西洋美術","デザイン","イラスト","美術館","写真","建築","技法書"];
 
 function tagColor(tag){
   return TAG_COLORS[tag] || "#9a958f";
@@ -6161,9 +6180,14 @@ function renderRecommended(currentMovie){
       const longer = ka.length <= kb.length ? kb : ka;
       if(longer.startsWith(shorter)) return true;
     }
+    // 「半沢直樹　3　ロスジェネの逆襲」のような、核の部分(先頭の区切り文字
+    // より前)が4文字の人名タイトルは6文字未満のため上の判定に乗らず、
+    // シリーズとして全く結び付けられなかった(オーナー指摘)。coreSeriesKeyは
+    // 前方一致ではなく完全一致だけを見るため、startsWith判定より元々
+    // 偶然一致のリスクが低く、閾値を4文字まで下げても安全と判断する。
     const ca = coreSeriesKey(a.title);
     const cb = coreSeriesKey(b.title);
-    return ca.length >= 6 && ca === cb;
+    return ca.length >= 4 && ca === cb;
   }
 
   // シリーズの他の作品(公開年順)。実写はTMDbのcollection一致(series列)、
@@ -6234,10 +6258,17 @@ function renderRecommended(currentMovie){
   // (seededShuffle)と同じ考え方で、関連度が高い候補を少し広めに取った
   // 上でシャッフルし、そこから選ぶ(関連度が低い作品まで混ざることは無い。
   // 幅を広げただけで、順位そのものは捨てていない)。
-  function scoreAndPick(pool, limit, saltKey){
+  // minSharedは「ドラマ」「漫画」等、別メディア種別への橋渡し専用の棚
+  // (本来のメディアが変わっても見れる、という趣旨の欄)で使う。母数が
+  // 薄いジャンルの作品だと、気分タグが1つも重ならない(=内容的に無関係な)
+  // 作品まで幅出しのために混ざってしまい、「関係ある作品以外消して」との
+  // 指摘につながった(オーナー指摘)。同じメディア種別同士のおすすめ
+  // (movie/anime等)は母数が十分あるため今まで通り0のままでよい。
+  function scoreAndPick(pool, limit, saltKey, minShared = 0){
     const scored = pool
       .filter(m => !excludeIds.has(m.id))
       .map(m => ({ m, sharedTags: m.tags.filter(t => currentMovie.tags.includes(t)).length }))
+      .filter(x => x.sharedTags >= minShared)
       .sort((a, b) => (b.sharedTags - a.sharedTags) || (loveAverage(b.m) - loveAverage(a.m)));
     const widePool = scored.slice(0, Math.max(limit * 3, limit + 12)).map(x => x.m);
     return seededShuffle(widePool, `rec:${currentMovie.id}:${saltKey}`).slice(0, limit);
@@ -6251,7 +6282,7 @@ function renderRecommended(currentMovie){
   const dramaWrap = document.getElementById('d-recommended-drama-wrap');
   if(animePreview && (currentIsDrama || currentIsRegularMovie)){
     const dramaPool = others.filter(m => m.isDrama);
-    const dramaList = scoreAndPick(dramaPool, MIN_COUNT + 2, 'drama');
+    const dramaList = scoreAndPick(dramaPool, MIN_COUNT + 2, 'drama', 1);
     if(dramaList.length){
       dramaWrap.style.display = 'block';
       renderMovieCards(document.getElementById('d-recommended-drama'), dramaList, '', { forceMode: 'drama' });
@@ -6268,7 +6299,7 @@ function renderRecommended(currentMovie){
   const mangaWrap = document.getElementById('d-recommended-manga-wrap');
   if(animePreview && currentIsManga){
     const mangaPool = others.filter(m => m.isManga);
-    const mangaList = scoreAndPick(mangaPool, MIN_COUNT + 2, 'manga');
+    const mangaList = scoreAndPick(mangaPool, MIN_COUNT + 2, 'manga', 1);
     if(mangaList.length){
       mangaWrap.style.display = 'block';
       renderMovieCards(document.getElementById('d-recommended-manga'), mangaList, '', { forceMode: 'manga' });
@@ -6413,7 +6444,19 @@ function renderRecommended(currentMovie){
   const universeWrap = document.getElementById('d-universe-wrap');
   if(universeSiblings.length > 0){
     universeWrap.style.display = 'block';
-    renderMovieCards(universeRoot, universeSiblings, '', { forceModeFn: nativeModeOf });
+    // アベンジャーズ等、世界観が大きい作品だと数十件になりスライドで
+    // 見切れない(オーナー指摘)。シリーズ棚と同じ「もっと見る」カード+
+    // モーダル一覧のパターンで、横一列には上限件数だけ出す。
+    const visibleUniverse = universeSiblings.slice(0, SERIES_ROW_LIMIT);
+    renderMovieCards(universeRoot, visibleUniverse, '', { forceModeFn: nativeModeOf });
+    if(universeSiblings.length > SERIES_ROW_LIMIT){
+      const fullUniverseIdsJson = escapeHtml(JSON.stringify(universeSiblings.map(m => m.id)));
+      universeRoot.innerHTML += `
+        <div class="result-card series-more-card" data-ids="${fullUniverseIdsJson}" data-origin="${currentMovie.id}" onclick="openSeriesListModal('同じ世界観の作品', JSON.parse(this.dataset.ids), Number(this.dataset.origin))">
+          <div class="poster-thumb series-more-thumb">もっと見る<br>(全${universeSiblings.length}作品)</div>
+        </div>
+      `;
+    }
   } else {
     universeWrap.style.display = 'none';
   }
@@ -9139,7 +9182,8 @@ async function saveProfile(){
     localStorage.setItem(ONBOARDED_KEY, 'true');
     localStorage.setItem(AVATAR_CROP_KEY, JSON.stringify({
       x: state.profile.avatarPhotoPosX,
-      y: state.profile.avatarPhotoPosY
+      y: state.profile.avatarPhotoPosY,
+      zoom: state.profile.avatarPhotoZoom
     }));
   }catch(err){
     console.error(err);
@@ -9185,10 +9229,10 @@ async function loadProfile(){
     }
     localStorage.setItem(ONBOARDED_KEY, 'true');
 
-    let crop = { x: 50, y: 50 };
+    let crop = { x: 50, y: 50, zoom: 100 };
     try{
       const saved = JSON.parse(localStorage.getItem(AVATAR_CROP_KEY));
-      if(saved) crop = saved;
+      if(saved) crop = { x: 50, y: 50, zoom: 100, ...saved };
     }catch(e){ /* 位置情報がなければ中央寄せのまま */ }
 
     state.profile = {
@@ -9197,6 +9241,7 @@ async function loadProfile(){
       avatarPhoto: data.avatar_photo_url || null,
       avatarPhotoPosX: crop.x,
       avatarPhotoPosY: crop.y,
+      avatarPhotoZoom: crop.zoom,
       reviewCount: data.review_count || 0,
       listsShareToken: data.lists_share_token,
       excludedWords: (prefs && prefs.excluded_words) || [],
@@ -9394,6 +9439,28 @@ function requireVerifiedUser(){
   return false;
 }
 
+// 写真の縦横比は人それぞれなので、常に「写真全体が見える倍率」を基準(cover)
+// にして、そこから拡大したい分だけズームできるようにする(オーナー指摘:
+// 固定150%ズームだと写真によって肝心な部分が常に枠外に出て動かせず
+// 「配置しにくい」)。cover自体はどんな比率の画像でも正しく収まるが、
+// それより拡大する場合は軸(縦/横どちらが先に枠に接するか)を知る必要があり、
+// それには画像の実サイズが要る。data URLなのでネットワークは発生しない。
+function applyAvatarPhoto(el, photoUrl, posX, posY, zoom){
+  el.textContent = '';
+  el.style.backgroundImage = `url(${photoUrl})`;
+  el.style.backgroundPosition = `${posX != null ? posX : 50}% ${posY != null ? posY : 50}%`;
+  el.style.backgroundSize = 'cover';
+  const z = (zoom != null ? zoom : 100) / 100;
+  if(z > 1){
+    const img = new Image();
+    img.onload = () => {
+      const ar = img.naturalWidth / (img.naturalHeight || 1);
+      el.style.backgroundSize = ar >= 1 ? `auto ${100 * z}%` : `${100 * z}% auto`;
+    };
+    img.src = photoUrl;
+  }
+}
+
 function updateHeader(){
   const name = currentNickname();
   const color = (state.profile && state.profile.avatarColor) ? state.profile.avatarColor : '#3a3a40';
@@ -9403,10 +9470,7 @@ function updateHeader(){
   const avatarEl = document.getElementById('header-avatar');
   document.getElementById('header-name').textContent = name;
   if(photo){
-    avatarEl.style.backgroundImage = `url(${photo})`;
-    avatarEl.style.backgroundSize = `${AVATAR_FIXED_ZOOM}%`;
-    avatarEl.style.backgroundPosition = `${(state.profile.avatarPhotoPosX != null ? state.profile.avatarPhotoPosX : 50)}% ${(state.profile.avatarPhotoPosY != null ? state.profile.avatarPhotoPosY : 50)}%`;
-    avatarEl.textContent = '';
+    applyAvatarPhoto(avatarEl, photo, state.profile.avatarPhotoPosX, state.profile.avatarPhotoPosY, state.profile.avatarPhotoZoom);
   } else {
     avatarEl.style.backgroundImage = '';
     avatarEl.style.background = color;
@@ -9443,10 +9507,7 @@ function updateProfilePreview(){
   const nickname = document.getElementById('p-nickname').value.trim();
   const preview = document.getElementById('p-avatar-preview');
   if(pendingAvatarPhoto){
-    preview.style.backgroundImage = `url(${pendingAvatarPhoto})`;
-    preview.style.backgroundSize = `${AVATAR_FIXED_ZOOM}%`;
-    preview.style.backgroundPosition = `${pendingAvatarPosX}% ${pendingAvatarPosY}%`;
-    preview.textContent = '';
+    applyAvatarPhoto(preview, pendingAvatarPhoto, pendingAvatarPosX, pendingAvatarPosY, pendingAvatarZoom);
   } else {
     preview.style.backgroundImage = '';
     preview.textContent = nickname ? nickname.charAt(0) : '?';
@@ -9454,8 +9515,7 @@ function updateProfilePreview(){
   }
 }
 
-let pendingAvatarPosX = 50, pendingAvatarPosY = 50;
-const AVATAR_FIXED_ZOOM = 150;
+let pendingAvatarPosX = 50, pendingAvatarPosY = 50, pendingAvatarZoom = 100;
 let cropDragState = null;
 
 function onProfilePhotoSelected(evt){
@@ -9475,7 +9535,7 @@ function onProfilePhotoSelected(evt){
       const ctx = canvas.getContext('2d');
       ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
       pendingAvatarPhoto = canvas.toDataURL('image/jpeg', 0.85);
-      pendingAvatarPosX = 50; pendingAvatarPosY = 50;
+      pendingAvatarPosX = 50; pendingAvatarPosY = 50; pendingAvatarZoom = 100;
       document.getElementById('p-photo-clear').style.display = 'inline-block';
       setupPhotoCropEditor();
       renderColorSwatches();
@@ -9492,6 +9552,7 @@ function setupPhotoCropEditor(){
   if(!pendingAvatarPhoto){ editor.style.display = 'none'; return; }
   editor.style.display = 'block';
   cropImg.style.backgroundImage = `url(${pendingAvatarPhoto})`;
+  document.getElementById('p-photo-zoom').value = pendingAvatarZoom;
   updateCropImgStyle();
 
   const area = document.getElementById('p-photo-crop-area');
@@ -9520,9 +9581,14 @@ function setupPhotoCropEditor(){
 
 function updateCropImgStyle(){
   const cropImg = document.getElementById('p-photo-crop-img');
-  if(!cropImg) return;
-  cropImg.style.backgroundSize = `${AVATAR_FIXED_ZOOM}%`;
-  cropImg.style.backgroundPosition = `${pendingAvatarPosX}% ${pendingAvatarPosY}%`;
+  if(!cropImg || !pendingAvatarPhoto) return;
+  applyAvatarPhoto(cropImg, pendingAvatarPhoto, pendingAvatarPosX, pendingAvatarPosY, pendingAvatarZoom);
+}
+
+function onAvatarZoomInput(val){
+  pendingAvatarZoom = Number(val);
+  updateCropImgStyle();
+  updateProfilePreview();
 }
 
 function confirmAvatarPosition(){
@@ -9532,7 +9598,7 @@ function confirmAvatarPosition(){
 
 function clearProfilePhoto(){
   pendingAvatarPhoto = null;
-  pendingAvatarPosX = 50; pendingAvatarPosY = 50;
+  pendingAvatarPosX = 50; pendingAvatarPosY = 50; pendingAvatarZoom = 100;
   document.getElementById('p-photo-clear').style.display = 'none';
   document.getElementById('p-photo-input').value = '';
   document.getElementById('p-photo-editor').style.display = 'none';
@@ -9572,6 +9638,7 @@ function goProfile(){
   pendingAvatarPhoto = existing ? (existing.avatarPhoto || null) : null;
   pendingAvatarPosX = existing && existing.avatarPhotoPosX != null ? existing.avatarPhotoPosX : 50;
   pendingAvatarPosY = existing && existing.avatarPhotoPosY != null ? existing.avatarPhotoPosY : 50;
+  pendingAvatarZoom = existing && existing.avatarPhotoZoom != null ? existing.avatarPhotoZoom : 100;
   document.getElementById('p-nickname').value = hasNickname ? existing.nickname : "";
   document.getElementById('profile-heading').textContent = hasNickname ? "プロフィール編集" : "ニックネーム登録";
   document.getElementById('profile-submit-btn').textContent = hasNickname ? "保存する" : "登録する";
@@ -9588,10 +9655,7 @@ function goProfile(){
     const { tier } = computeTrust();
     const summaryAvatar = document.getElementById('profile-summary-avatar');
     if(existing.avatarPhoto){
-      summaryAvatar.style.backgroundImage = `url(${existing.avatarPhoto})`;
-      summaryAvatar.style.backgroundSize = `${AVATAR_FIXED_ZOOM}%`;
-      summaryAvatar.style.backgroundPosition = `${(existing.avatarPhotoPosX != null ? existing.avatarPhotoPosX : 50)}% ${(existing.avatarPhotoPosY != null ? existing.avatarPhotoPosY : 50)}%`;
-      summaryAvatar.textContent = '';
+      applyAvatarPhoto(summaryAvatar, existing.avatarPhoto, existing.avatarPhotoPosX, existing.avatarPhotoPosY, existing.avatarPhotoZoom);
     } else {
       summaryAvatar.style.backgroundImage = '';
       summaryAvatar.style.background = existing.avatarColor;
@@ -9663,7 +9727,7 @@ async function submitProfile(){
   const previousReviewCount = state.profile ? (state.profile.reviewCount || 0) : 0;
   const previousEmailVerified = state.profile ? !!state.profile.emailVerified : false;
   const previousListsShareToken = state.profile ? state.profile.listsShareToken : undefined;
-  state.profile = { nickname, avatarColor: pendingAvatarColor, avatarPhoto: pendingAvatarPhoto, avatarPhotoPosX: pendingAvatarPosX, avatarPhotoPosY: pendingAvatarPosY, reviewCount: previousReviewCount, emailVerified: previousEmailVerified, listsShareToken: previousListsShareToken };
+  state.profile = { nickname, avatarColor: pendingAvatarColor, avatarPhoto: pendingAvatarPhoto, avatarPhotoPosX: pendingAvatarPosX, avatarPhotoPosY: pendingAvatarPosY, avatarPhotoZoom: pendingAvatarZoom, reviewCount: previousReviewCount, emailVerified: previousEmailVerified, listsShareToken: previousListsShareToken };
   await saveProfile();
   updateHeader();
   showToast(isFirstRegistration ? '登録しました' : 'プロフィールを保存しました');
@@ -9867,6 +9931,7 @@ function renderViewingRecord(){
 function goViewingRecordAll(){
   const entries = buildViewingRecordEntries();
   document.getElementById('viewing-record-grid').innerHTML = entries.map(renderRecordTileHTML).join('');
+  document.getElementById('viewing-record-count').textContent = entries.length ? `${entries.length}件` : '';
   switchView('view-viewing-record');
 }
 
