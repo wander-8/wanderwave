@@ -45,7 +45,46 @@ const DIRECT_BOOK_TYPE_MAP: Record<string, { ja: string; tags: string[]; baseTie
   "001003001": { ja: "児童書", tags: ["楽しい", "考えさせられる"], baseTier: 15 },
   "001003002": { ja: "児童文庫", tags: ["楽しい", "ワクワク"], baseTier: 15 },
   "001003004": { ja: "民話・むかし話", tags: ["考えさせられる", "美しい"], baseTier: 15 },
+  // 001009009(美術)は新書と同じくサブジャンルの幅が広い(日本美術/東洋美術/
+  // 西洋美術/デザイン/イラスト/美術館等、20,471件)ので、新書と同じ仕組みで
+  // サブジャンルごとに実際のジャンル名・気分タグを割り当てる(artInfo参照)。
+  // ここのtags/jaは「サブジャンルが未知だった場合」のフォールバック用。
+  "001009009": { ja: "美術", tags: ["美しい", "考えさせられる"], baseTier: 15 },
 };
+
+// 美術(001009009)のサブジャンル。ぬりえ・ちぎり絵/切り絵は「鑑賞する美術」
+// というより実用の工作寄りで、かつぬりえは既にNON_REFERENCE_BOOK_PATTERNSで
+// 弾かれる対象と重複するため、新書のパズル本と同じ考え方で除外する。
+const ART_EXCLUDED_SUBGENRES = new Set(["001009009009", "001009009010"]);
+const ART_SUBGENRE_NAMES: Record<string, string> = {
+  "001009009001": "日本美術",
+  "001009009002": "東洋美術",
+  "001009009003": "西洋美術",
+  "001009009006": "デザイン",
+  "001009009007": "イラスト",
+  "001009009008": "美術館",
+};
+const ART_SUBGENRE_TAGS: Record<string, string[]> = {
+  "001009009001": ["美しい", "考えさせられる"],
+  "001009009002": ["美しい", "考えさせられる"],
+  "001009009003": ["美しい", "考えさせられる"],
+  "001009009006": ["考えさせられる", "ワクワク"],
+  "001009009007": ["楽しい", "美しい"],
+  "001009009008": ["美しい", "リラックス"],
+};
+// 美術のサブジャンルコード(001009009001等)は4階層(12桁)で、新書の
+// サブジャンル(001020001等、3階層9桁)と違いgenreSegments()の9桁切り詰めを
+// 通すと親の"001009009"に潰れてしまい一致しない(絵本(外国)で一度やった
+// のと同じ失敗)。切り詰め無しの生セグメントをstartsWithで見る。
+function artInfo(booksGenreId: string | null | undefined): { ja: string; tags: string[]; excluded: boolean } {
+  const segs = rawGenreSegments(booksGenreId);
+  if (segs.some((s) => [...ART_EXCLUDED_SUBGENRES].some((code) => s.startsWith(code)))) return { ja: "美術", tags: ["美しい"], excluded: true };
+  for (const seg of segs) {
+    const matchedCode = Object.keys(ART_SUBGENRE_NAMES).find((code) => seg.startsWith(code));
+    if (matchedCode) return { ja: ART_SUBGENRE_NAMES[matchedCode], tags: ART_SUBGENRE_TAGS[matchedCode], excluded: false };
+  }
+  return { ja: "美術", tags: ["美しい", "考えさせられる"], excluded: false };
+}
 
 // 新書(001020)はサブジャンルの幅が広く、これまで一律「新書」として取り込んで
 // いたため、パズル本(001020003=ホビー・スポーツ・美術。実例:「難関数独」)や
@@ -256,6 +295,16 @@ function stripVolumeSuffix(rawTitle: string): string {
   if (withParenVolume) return withParenVolume[1].trim();
   const withTrailingVolume = title.match(/^(.*?)[\s　]+[0-9０-９]+\s*$/u);
   if (withTrailingVolume) return withTrailingVolume[1].trim();
+  // 「角川まんが学習シリーズ　日本の歴史　11　黒船と開国　江戸時代後期」の
+  // ように、巻数がタイトルの末尾ではなく途中(副題の前)に来る図鑑・児童書系の
+  // シリーズがあり、これまでは1冊ずつ別作品として重複登録されていた
+  // (オーナー指摘)。数字の前後が両方とも空白で区切られている(=単独の
+  // トークンになっている)場合だけ巻数とみなし、それより前をシリーズ名と
+  // する。「ゴルゴ13」「モブサイコ100」「2001年宇宙の旅」のように数字が
+  // 文字にくっついている場合は空白が無く一致しないため、誤って巻数判定
+  // されることはない。
+  const withMiddleVolume = title.match(/^(.+?)[\s　]+[0-9０-９]{1,3}[\s　]+\S.*$/u);
+  if (withMiddleVolume) return withMiddleVolume[1].trim();
   // スペース無しで巻数が直接くっつく表記は、数字自体がタイトルの一部の
   // 作品(「ゴルゴ13」「モブサイコ100」等)と区別が付かないため切り落とさない。
   return title.trim();
@@ -410,6 +459,7 @@ Deno.serve(async (req: Request) => {
     const estimates: any[] = [];
     const skipped: any[] = [];
     const isShinsho = books_genre_id === "001020";
+    const isArt = books_genre_id === "001009009";
     for (const { key, item } of fresh) {
       // 非小説タイトルのブラックリスト(地球の歩き方等)は小説パイプライン用
       // なので、絵本・新書・図鑑では適用しない。
@@ -428,6 +478,11 @@ Deno.serve(async (req: Request) => {
         skipped.push({ key, reason: "shinsho_excluded_subgenre" });
         continue;
       }
+      if (isArt && artInfo(item.booksGenreId).excluded) {
+        // ぬりえ・ちぎり絵/切り絵は鑑賞美術というより工作寄りなので取り込まない。
+        skipped.push({ key, reason: "art_excluded_subgenre" });
+        continue;
+      }
       if (isBundleTitle(item.title)) {
         // グループ内に単巻商品が1つも無く、まとめ買いセットしか無かった場合。
         skipped.push({ key, reason: "bundle_set_only" });
@@ -441,6 +496,8 @@ Deno.serve(async (req: Request) => {
       const caption = (item.itemCaption || "").trim();
       const genreInfo = isShinsho
         ? { ja: [shinshoInfo(item.booksGenreId).ja], tags: shinshoInfo(item.booksGenreId).tags, baseTier: directBookType.baseTier }
+        : isArt
+        ? { ja: [artInfo(item.booksGenreId).ja], tags: artInfo(item.booksGenreId).tags, baseTier: directBookType.baseTier }
         : directBookType
         ? { ja: [directBookType.ja], tags: directBookType.tags, baseTier: directBookType.baseTier }
         : genreInfoFor(item.booksGenreId);
