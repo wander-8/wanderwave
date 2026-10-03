@@ -4732,6 +4732,9 @@ function goPersonSearch(name){
   state.bookType = null;
   document.getElementById('search-input').value = name;
   switchView('view-home');
+  // これもホームへ戻る経路の1つなので、古いプロフィール等の保存先が
+  // 残らないようクリアする(clearSearch内の同じ対応を参照)。
+  clearViewState();
   renderTagCloud();
   renderGenreCloud();
   renderCountryCloud();
@@ -4808,6 +4811,15 @@ function clearSearch(){
   state.decadeFilter = 0;
   state.bookType = null;
   state.crossMediaSearch = false;
+  // setCatalogMode(映画⇔アニメ等の切り替え)もこの関数を経由してホームに
+  // 戻るが、以前はgoHome()を直接呼んだ時だけclearViewState()していたため、
+  // 「一度プロフィールを見た後、ロゴを押さずにモード切り替えだけで
+  // ホームに戻って使い続ける」という普通の操作ではsessionStorageの保存先が
+  // 古いまま(プロフィール)残り続け、次にリロードした時に今見ている画面
+  // ではなく過去に見たプロフィールへ復元されてしまっていた(オーナー指摘:
+  // 「リロードするとユーザープロフィールに飛ぶ」)。ホームに戻る経路を
+  // ここに集約し、ここで一括してクリアする。
+  clearViewState();
   renderTagCloud(); // activeTagsが空になったのでintensityFilterも内部でリセットされる
   renderGenreCloud();
   renderCountryCloud();
@@ -6128,14 +6140,30 @@ function renderRecommended(currentMovie){
       .replace(/[「」『』（）()\[\]:：\-−~〜!！?？.,、。\s　]/g, '')
       .toLowerCase();
   }
+  // ライトノベルのような「本好きの下剋上　第五部「女神の化身4」」
+  // 「本好きの下剋上　ハンネローレの貴族院五年生2」型のタイトルは、
+  // 部・巻の表記が記号で囲われずシリーズ名の直後に続くため、上の
+  // seriesTitleKey(記号を取り除くだけで全文は残す)では両者が全く別の
+  // 文字列になってしまい、前方一致で結び付けられなかった(オーナー指摘:
+  // 「本のシリーズものが詳細に出てこない」)。最初の区切り文字(スペース・
+  // 括弧等)の手前までを「シリーズの核」として、核同士が一致するかも
+  // 追加の判定材料にする。
+  function coreSeriesKey(title){
+    const m = (title || '').trim().match(/^([^\s　「『（(\-−~〜:：]+)/u);
+    return m ? m[1].toLowerCase() : '';
+  }
   function isSameTitleSeries(a, b, sameCategory){
     if(!sameCategory(a) || !sameCategory(b)) return false;
     const ka = seriesTitleKey(a.title);
     const kb = seriesTitleKey(b.title);
-    if(ka.length < 6 || kb.length < 6) return false;
-    const shorter = ka.length <= kb.length ? ka : kb;
-    const longer = ka.length <= kb.length ? kb : ka;
-    return longer.startsWith(shorter);
+    if(ka.length >= 6 && kb.length >= 6){
+      const shorter = ka.length <= kb.length ? ka : kb;
+      const longer = ka.length <= kb.length ? kb : ka;
+      if(longer.startsWith(shorter)) return true;
+    }
+    const ca = coreSeriesKey(a.title);
+    const cb = coreSeriesKey(b.title);
+    return ca.length >= 6 && ca === cb;
   }
 
   // シリーズの他の作品(公開年順)。実写はTMDbのcollection一致(series列)、
