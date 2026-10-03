@@ -2678,6 +2678,13 @@
       <div class="results" id="d-adaptation-row"></div>
     </div>
 
+    <!-- 個別シリーズ(例:アベンジャーズ)より広い「世界観」単位の関連作品
+         (例:マーベル作品全体)。universeSiblings参照。 -->
+    <div id="d-universe-wrap" style="display:none;">
+      <div class="section-label">同じ世界観の作品</div>
+      <div class="results" id="d-universe-row"></div>
+    </div>
+
     <!-- 「映画」欄はTVアニメのページでは出さない(ジャンルを跨がない方針)。
          アニメ映画のページの時だけ、この欄にもアニメ映画を少し混ぜる
          (映画とアニメの橋渡し役として、そのページでだけ例外的に混在させる)。 -->
@@ -6153,7 +6160,21 @@ function renderRecommended(currentMovie){
       )).sort((a, b) => a.year - b.year)
     : [];
 
-  const excludeIds = new Set([...seriesSiblings, ...remakeSiblings, ...adaptationSiblings].map(m => m.id));
+  // 「シリーズの他の作品」は同じコレクション/タイトル系列だけを拾うので、
+  // 「アベンジャーズ」の個別シリーズだけでなく、マーベル作品全体のような
+  // より大きな「世界観」単位でも関連作品を見たいとの要望(オーナー)。
+  // TMDbのkeywordsに入っている世界観タグが一致する作品同士をまとめる。
+  const UNIVERSE_KEYWORD_HINTS = [
+    "marvel cinematic universe (mcu)", "dc extended universe", "star wars",
+    "wizarding world", "conjuring universe", "monsterverse", "x-men",
+  ];
+  const universeKeyword = (currentMovie.keywords || []).find(k => UNIVERSE_KEYWORD_HINTS.includes(k));
+  const universeSiblings = universeKeyword
+    ? dedupeByNormalizedTitleYear(others.filter(m => (m.keywords || []).includes(universeKeyword)))
+        .sort((a, b) => a.year - b.year)
+    : [];
+
+  const excludeIds = new Set([...seriesSiblings, ...remakeSiblings, ...adaptationSiblings, ...universeSiblings].map(m => m.id));
 
   // 感情タグの一致数→愛度の順に並べて上位を選ぶ、共通のスコアリング。
   // 以前はここで厳密に上位limit件を切り出すだけだったため、同じ作品の
@@ -6336,6 +6357,15 @@ function renderRecommended(currentMovie){
     renderMovieCards(adaptationRoot, adaptationSiblings, '', { forceModeFn: nativeModeOf });
   } else {
     adaptationWrap.style.display = 'none';
+  }
+
+  const universeRoot = document.getElementById('d-universe-row');
+  const universeWrap = document.getElementById('d-universe-wrap');
+  if(universeSiblings.length > 0){
+    universeWrap.style.display = 'block';
+    renderMovieCards(universeRoot, universeSiblings, '', { forceModeFn: nativeModeOf });
+  } else {
+    universeWrap.style.display = 'none';
   }
 }
 
