@@ -821,6 +821,14 @@
     position: relative;
     overflow: hidden;
   }
+  /* 人物名からの横断検索(goPersonSearch)のように、1つの一覧に映画・本・
+     音楽等が混ざる時だけ、カードの左上にメディア種別を出す。 */
+  .result-type-badge{
+    position:absolute; top:6px; left:6px; z-index:2;
+    padding:2px 8px; border-radius:999px;
+    font-size:11px; font-weight:700; color:#fff;
+    text-shadow: 0 1px 2px rgba(0,0,0,0.4);
+  }
   .series-more-thumb{
     background: var(--surface);
     border: 1.5px dashed var(--line);
@@ -1247,6 +1255,13 @@
   .movie-info-value{
     font-size: 13.5px; color: var(--ink); line-height: 1.6;
   }
+  /* 監督・作者・主演の名前をタップすると、その人の他の仕事をメディアを
+     問わず横断検索できる(goPersonSearch参照)。 */
+  .person-link{
+    color: var(--gold); cursor:pointer; text-decoration: underline;
+    text-decoration-color: rgba(160,132,242,0.4); text-underline-offset: 2px;
+  }
+  .person-link:active{ opacity: 0.7; }
   .poster-mood-blur{
     position: absolute; inset: -35%;
     filter: blur(45px);
@@ -4200,7 +4215,7 @@ function shouldHidePosterForIntensity(m){
   return pct.sexual >= 40 || pct.violence >= 60;
 }
 
-let state = { query: "", activeTags: new Set(), currentMovieId: null, hasReviewed: {}, myReviewsById: {}, myReviewRows: [], myReviewRowsLoaded: false, myLove: {}, myIntensity: {}, myReason: {}, myTagVotes: {}, myWatchLater: {}, myPocket: [], myLists: [], currentListId: null, profile: null, profileLoaded: false, myLogs: [], myLogsLoaded: false, mySubmittedMovieIds: [], mySubmittedMovies: [], mySubmittedMoviesLoaded: false, lastSubmissionDate: null, todaySubmissionCount: 0, intensityFilter: 0, decadeFilter: 0, diagnosisHistory: [], activeGenres: new Set(), activeCountries: new Set(), catalogMode: 'movie', bookType: null };
+let state = { query: "", activeTags: new Set(), currentMovieId: null, hasReviewed: {}, myReviewsById: {}, myReviewRows: [], myReviewRowsLoaded: false, myLove: {}, myIntensity: {}, myReason: {}, myTagVotes: {}, myWatchLater: {}, myPocket: [], myLists: [], currentListId: null, profile: null, profileLoaded: false, myLogs: [], myLogsLoaded: false, mySubmittedMovieIds: [], mySubmittedMovies: [], mySubmittedMoviesLoaded: false, lastSubmissionDate: null, todaySubmissionCount: 0, intensityFilter: 0, decadeFilter: 0, diagnosisHistory: [], activeGenres: new Set(), activeCountries: new Set(), catalogMode: 'movie', bookType: null, crossMediaSearch: false };
 
 
 function riskLabel(v){
@@ -4675,7 +4690,34 @@ function renderDecadeCloud(){
 
 function onSearchInput(){
   state.query = document.getElementById('search-input').value.trim();
+  // 人物名の横断検索(goPersonSearch)から戻って普通に文字を打ち直したら、
+  // カタログモードの縛りは元に戻す。
+  state.crossMediaSearch = false;
   renderResults(); // ×の表示・非表示もここで一括して面倒を見る
+}
+
+// 作品詳細の監督・作者・主演の名前をタップした時の入口(personLinksHTML
+// 参照)。その人の名前で検索した状態にしつつ、メディア種別(映画・本・
+// 音楽等)を問わず横断して見られるようにする(オーナー指摘: 「映画や
+// 書籍など横断して色々出るから一緒に出したい」)。
+function goPersonSearch(name){
+  if(!name) return;
+  state.query = name;
+  state.crossMediaSearch = true;
+  state.activeTags.clear();
+  state.activeGenres.clear();
+  state.activeCountries.clear();
+  state.decadeFilter = 0;
+  state.bookType = null;
+  document.getElementById('search-input').value = name;
+  switchView('view-home');
+  renderTagCloud();
+  renderGenreCloud();
+  renderCountryCloud();
+  renderDecadeCloud();
+  renderBookTypeSwitch();
+  renderResults();
+  window.scrollTo({ top: 0, behavior: 'instant' });
 }
 
 // AI検索: 入力欄の自由文を、今のカタログモードで実際に選べる感情タグ・
@@ -4709,6 +4751,7 @@ async function submitAiSearch(){
     state.activeCountries = new Set(data.countries || []);
     state.decadeFilter = (data.decade != null && decades.includes(data.decade)) ? data.decade : 0;
     state.query = "";
+    state.crossMediaSearch = false;
     input.value = "";
 
     renderTagCloud();
@@ -4743,6 +4786,7 @@ function clearSearch(){
   state.activeCountries.clear();
   state.decadeFilter = 0;
   state.bookType = null;
+  state.crossMediaSearch = false;
   renderTagCloud(); // activeTagsが空になったのでintensityFilterも内部でリセットされる
   renderGenreCloud();
   renderCountryCloud();
@@ -4790,9 +4834,13 @@ function buildCardHTML(m, opts){
     : (opts && opts.forceMode)
     ? `goDetailWithMode(${m.id}, '${opts.forceMode}')`
     : `goDetail(${m.id})`;
+  // 横断検索(人物名での検索)のようにメディア種別が混ざる一覧でだけ、
+  // カードに種別バッジを出す(通常の一覧はモード単一なので不要)。
+  const typeInfo = (opts && opts.showTypeBadge) ? mediaTypeInfo(m) : null;
+  const typeBadge = typeInfo ? `<div class="result-type-badge" style="background:${typeInfo.color};">${typeInfo.label}</div>` : '';
   return `
     <div class="result-card" onclick="${clickHandler}">
-      <div class="poster-thumb" style="background:${m.posterColor}">${posterImg}${initialOrTitle}</div>
+      <div class="poster-thumb" style="background:${m.posterColor}">${posterImg}${initialOrTitle}${typeBadge}</div>
       ${overlayTitle ? '' : `<div class="result-title">${m.title}</div>`}
       <div class="result-year">${m.year}</div>
       ${m.loveCount > 0 ? `
@@ -5918,11 +5966,14 @@ function renderResults(){
     // アニメ・ドラマは専用モードからのみ見せる方針だが、隠しプレビュー
     // フラグが立っている端末(オーナーの確認用)だけは検索からも見つけられる
     // ようにしておく。検索も映画⇔アニメ⇔ドラマの切り替え状態に従う
-    // (isInCatalogMode参照)。
-    const matchCatalogMode = isInCatalogMode(m, currentCatalogMode());
+    // (isInCatalogMode参照)。ただし、監督・作者等の人物名から開いた
+    // 横断検索(goPersonSearch)の時だけは、この人のメディアを問わず全部の
+    // 仕事を一緒に見たいとの要望なので、カタログモード・本の種類の縛りを
+    // 外す(crossMediaSearch参照)。
+    const matchCatalogMode = state.crossMediaSearch || isInCatalogMode(m, currentCatalogMode());
     // 小説モードの時だけ、本の種類の切り替え(小説/絵本/図鑑/新書)で
     // 絞り込む。他のモードでは本の種類の概念自体が無いので素通りさせる。
-    const matchBookType = currentCatalogMode() !== 'novel' || itemBookType(m) === state.bookType;
+    const matchBookType = state.crossMediaSearch || currentCatalogMode() !== 'novel' || itemBookType(m) === state.bookType;
     return matchQuery && matchTags && matchIntensity && matchDecade && matchGenre && matchCountry && !matchesExcludedWord(m) && matchCatalogMode && matchBookType;
   });
 
@@ -5952,8 +6003,14 @@ function renderResults(){
 function renderVisibleResults(){
   const root = document.getElementById('results');
   const visible = resultsFiltered.slice(0, resultsShownCount);
-  const modeLabel = (CATALOG_MODES.find(([m]) => m === currentCatalogMode()) || [])[1] || '映画';
-  renderMovieCards(root, visible, `条件に合う${modeLabel}が見つかりませんでした。タグを減らすか、表現度の絞り込みを外してみましょう。`);
+  const modeLabel = state.crossMediaSearch ? '作品' : ((CATALOG_MODES.find(([m]) => m === currentCatalogMode()) || [])[1] || '映画');
+  // 横断検索の結果はメディア種別が混ざるので、カードごとに種別バッジを出す
+  // (showTypeBadge)。クリック時もその作品自身の種別で詳細ページを開く
+  // 必要があるので、forceModeFnで各カードのmediaTypeInfoを使う。
+  const cardOpts = state.crossMediaSearch
+    ? { showTypeBadge: true, forceModeFn: (m) => mediaTypeInfo(m).mode }
+    : undefined;
+  renderMovieCards(root, visible, `条件に合う${modeLabel}が見つかりませんでした。タグを減らすか、表現度の絞り込みを外してみましょう。`, cardOpts);
 
   const remaining = resultsFiltered.length - visible.length;
   if(remaining <= 0) return;
@@ -7512,16 +7569,26 @@ function updateCatalogModeToggleUI(){
   }, { passive: true });
 })();
 
+// 監督・作者・主演の名前を、タップするとその人の他の仕事(メディアを
+// 問わず)を横断検索できるリンクにする(goPersonSearch参照、オーナー指摘:
+// 「作者とかそっちも」=役割を問わず人物名は全部対象にしてほしい)。
+function personLinksHTML(names){
+  return names.map(name => `<span class="person-link" onclick="event.stopPropagation(); goPersonSearch('${escapeHtml(name).replace(/'/g, "\\'")}')">${escapeHtml(name)}</span>`).join('、');
+}
 function renderMovieInfoPanel(m){
   // 漫画・小説は「監督」ではなく「作者」の方が自然なので、作品種別に応じてラベルを切り替える。
   document.getElementById('d-director-label').textContent = m.isMusic ? 'アーティスト' : (m.isManga || m.isNovel) ? '作者' : '監督';
-  document.getElementById('d-director').textContent = m.director || '情報がまだありません';
+  // directorは書籍の場合「原作者/訳者」のように"/"区切りで複数名が
+  // 入っていることがある(isForeignAuthorName参照)ため、分割してそれぞれ
+  // 個別にリンクにする。
+  const directorNames = (m.director || '').split('/').map(s => s.trim()).filter(Boolean);
+  document.getElementById('d-director').innerHTML = directorNames.length ? personLinksHTML(directorNames) : '情報がまだありません';
   // 「主演」は実写・アニメ向けの項目で、小説・漫画・音楽には俳優がいないため
   // 常に「情報がまだありません」としか出ない空欄になっていた。該当しない
   // メディア種別では行ごと隠す。
   const hasCastField = !m.isNovel && !m.isManga && !m.isMusic;
   document.getElementById('d-cast-row').style.display = hasCastField ? '' : 'none';
-  if(hasCastField) document.getElementById('d-cast').textContent = (m.cast && m.cast.length > 0) ? m.cast.join('、') : '情報がまだありません';
+  if(hasCastField) document.getElementById('d-cast').innerHTML = (m.cast && m.cast.length > 0) ? personLinksHTML(m.cast) : '情報がまだありません';
   document.getElementById('d-country').textContent = m.country || '情報がまだありません';
   // 音楽アルバムに「あらすじ」は無いので、この行ごと隠す(代わりに
   // tracks-wrapの「収録曲を見る」で曲目を出す)。
