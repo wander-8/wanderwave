@@ -3940,6 +3940,27 @@ function unescapeHtml(str){
 
 let MOVIES = [];
 let RECENT_REVIEWS = [];
+// マイケル・ジャクソンのように、映画/ドラマ/アニメ側はカタカナ表記
+// (TMDbのja-JP名)、音楽側はiTunesの英語表記のままと、同一人物でも
+// メディア種別をまたぐと表記が揺れることがある(オーナー指摘)。
+// person_aliasesテーブル(person-alias-backfillが確認済みのペアだけを
+// 保存)を双方向のMapとして読み込み、人物名クリックでのクロスメディア
+// 検索(goPersonSearch)で表記ゆれを吸収するのに使う。
+let PERSON_ALIASES = new Map();
+async function loadPersonAliases(){
+  try{
+    const { data, error } = await supabase.from('person_aliases').select('name_a, name_b');
+    if(error) throw error;
+    const map = new Map();
+    (data || []).forEach(({ name_a, name_b }) => {
+      if(!map.has(name_a)) map.set(name_a, new Set());
+      map.get(name_a).add(name_b);
+    });
+    PERSON_ALIASES = map;
+  }catch(err){
+    console.error('人物名の別表記の読み込みに失敗しました', err);
+  }
+}
 
 // ホーム画面下部の「みんなの声」欄用に、直近の(本文付き)レビューを
 // 映画を問わず横断で取得する。取得に失敗しても、個別ページのレビューとは
@@ -4744,6 +4765,10 @@ function goPersonSearch(name){
   if(!name) return;
   state.query = name;
   state.crossMediaSearch = true;
+  // マイケル・ジャクソンのように、映画側(カタカナ)と音楽側(英語)で
+  // 表記が違う同一人物も一緒に見つけられるよう、確認済みの別表記があれば
+  // 検索対象に加える(PERSON_ALIASES参照)。
+  state.personSearchNames = [name, ...(PERSON_ALIASES.get(name) || [])];
   state.activeTags.clear();
   state.activeGenres.clear();
   state.activeCountries.clear();
@@ -4830,6 +4855,7 @@ function clearSearch(){
   state.decadeFilter = 0;
   state.bookType = null;
   state.crossMediaSearch = false;
+  state.personSearchNames = null;
   // setCatalogMode(映画⇔アニメ等の切り替え)もこの関数を経由してホームに
   // 戻るが、以前はgoHome()を直接呼んだ時だけclearViewState()していたため、
   // 「一度プロフィールを見た後、ロゴを押さずにモード切り替えだけで
@@ -6001,6 +6027,12 @@ function renderResults(){
   // 絵本のみで検索できない」という報告の原因)。クエリが既知のジャンル名と
   // 完全一致する時だけ、そのジャンルを持つ作品だけに絞る特別扱いにする。
   const exactGenreQuery = FILTER_GENRES.find(g => normalizeForSearch(g) === q) || null;
+  // 人物名クリックでのクロスメディア検索の時だけ、確認済みの別表記
+  // (PERSON_ALIASES、例:「Michael Jackson」⇔「マイケル・ジャクソン」)も
+  // 人物欄(cast/director)の照合対象に加える。通常の文字検索には影響させない。
+  const personAliasNorms = (state.crossMediaSearch && state.personSearchNames)
+    ? state.personSearchNames.map(normalizeForSearch).filter(n => n !== q)
+    : [];
   resultsFiltered = MOVIES.filter(m => {
     // ここは検索1文字打つたびに全作品(数万件)に対して走る一番ホットな
     // 経路なので、m.titleNorm等の「読み込み時に一度だけ正規化しておいた
@@ -6023,7 +6055,10 @@ function renderResults(){
           || (m.keywordsNorm && m.keywordsNorm.some(k => k.includes(q)))
           || matchesCountryAlias(m, q)
           || matchesVibeAlias(m, relevantVibeKws)
-          || matchesMarvelAlias(m, q));
+          || matchesMarvelAlias(m, q)
+          || personAliasNorms.some(alias =>
+            (m.castNorm && m.castNorm.some(a => a.includes(alias)))
+            || (m.directorNorm && m.directorNorm.includes(alias))));
     const matchTags = state.activeTags.size === 0 || [...state.activeTags].every(t => m.tags.includes(t));
     // 表現度フィルターは、タグを選んでいるかどうかに関係なく、選択中の
     // バンドだけで判定する(以前はactiveTags.size===0の時に無条件で
@@ -11493,7 +11528,7 @@ async function init(){
   // 同時に投げると数秒かかっていた)。スプラッシュを閉じる条件はloadMovies
   // の完了だけなので、個人データはloadMoviesの後に回して競合を避ける。
   await loadMovies();
-  const personalDataPromise = Promise.all([loadMyReviews(), loadMyTagVotes(), loadMyWatchLater(), loadMyPocket(), loadMyLists(), loadProfile(), loadMyLogs(), loadMySubmittedMovies(), loadLastSubmissionDate(), loadDiagnosisHistory(), loadRecentReviews(), checkAnimePreviewOwner()]);
+  const personalDataPromise = Promise.all([loadMyReviews(), loadMyTagVotes(), loadMyWatchLater(), loadMyPocket(), loadMyLists(), loadProfile(), loadMyLogs(), loadMySubmittedMovies(), loadLastSubmissionDate(), loadDiagnosisHistory(), loadRecentReviews(), loadPersonAliases(), checkAnimePreviewOwner()]);
 
   // リロードすると開いていた画面(詳細・プロフィール・ポケット・マイリスト等)に
   // 関わらず必ずホームへ戻ってしまう、という指摘への対応。共有リンク
