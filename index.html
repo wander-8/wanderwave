@@ -2090,6 +2090,12 @@
        確実に3列になる95〜105pxまで下げる。 */
     grid-template-columns: repeat(auto-fill, minmax(95px, 105px));
     gap: 24px 18px;
+    /* auto-fillは収まる列数を決めた後、余った横幅をそのまま右側の
+       空白として残す(デフォルトの詰め方が左寄せのため)。画面幅が
+       3列ぶんの最大幅(105px×3+gap)をちょうど使い切らない機種では、
+       タイル一式が左に偏って見えていた(オーナー指摘)。中央寄せにして
+       余白を左右均等に逃がす。 */
+    justify-content: center;
   }
   .pocket-grid .result-card{
     flex: none; width: 100%;
