@@ -1165,22 +1165,19 @@
   .poster-info-btn:active{ background: rgba(5,8,15,0.75); }
   .poster-info-btn svg{ width:18px; height:18px; }
 
+  /* 以前は常時表示の丸いボタン(▶/⏸アイコン付き)をポスター中央に置いて
+     いたが、開いた瞬間に自動再生される今は「オンオフの切り替えボタン」が
+     常に出ていること自体が野暮ったいとの指摘を受けた。見た目のボタンは
+     やめて、ポスター全体を透明なタップ領域にする(触れば一時停止・再開
+     できる機能はそのまま、見た目の“スイッチ”だけを無くす)。情報ボタン・
+     予告編ボタンより手前に来ないよう、z-indexはそれらより低くしておく。 */
   .poster-play-btn{
-    position: absolute; top: 50%; left: 50%;
-    z-index: 6;
-    width: 60px; height: 60px; border-radius: 50%;
-    background: rgba(5,8,15,0.55);
-    border: 1px solid rgba(255,255,255,0.4);
-    color: #fff;
-    display:flex; align-items:center; justify-content:center;
+    position: absolute; inset: 0;
+    z-index: 3;
+    background: transparent;
+    border: none;
     cursor:pointer;
-    backdrop-filter: blur(4px);
-    transform: translate(-50%, -50%) scale(1);
-    transition: transform .15s cubic-bezier(.22,.8,.32,1), background .15s ease;
   }
-  .poster-play-btn:active{ background: rgba(5,8,15,0.75); transform: translate(-50%, -50%) scale(0.92); }
-  .poster-play-btn svg{ width:26px; height:26px; margin-left: 2px; }
-  .poster-play-btn.playing svg{ margin-left: 0; }
 
   .trailer-btn{
     position: absolute; left: 12px; bottom: 12px;
@@ -2565,13 +2562,13 @@
       <button class="poster-info-btn" onclick="toggleMovieInfoPanel()" title="作品情報">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M12 11v5.5" stroke-linecap="round"/><circle cx="12" cy="7.8" r="0.75" fill="currentColor" stroke="none"/></svg>
       </button>
-      <!-- 音楽作品限定: ポスター(アルバムアート代わり)自体をタップして試聴を
+      <!-- 音楽作品限定: ポスター(アルバムアート代わり)全体をタップして試聴を
            再生・一時停止できるようにする(収録曲欄まで降りて探さなくても
-           済むように、とのオーナーの要望)。表示の有無はresetTracksUI()で
-           m.isMusicに応じて切り替える。 -->
-      <button class="poster-play-btn" id="poster-play-btn" style="display:none;" onclick="togglePosterMusicPlayback()" title="試聴の再生・停止">
-        <svg id="poster-play-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
-      </button>
+           済むように、とのオーナーの要望)。開いた瞬間に自動再生される
+           ので、常時見えるオン/オフアイコン付きボタンは出さず(野暮ったい
+           との指摘)、見た目は何も無い透明なタップ領域にする。表示の有無は
+           resetTracksUI()でm.isMusicに応じて切り替える。 -->
+      <button class="poster-play-btn" id="poster-play-btn" style="display:none;" onclick="togglePosterMusicPlayback()"></button>
       <!-- 予告編: 押すまではポスターの見た目を一切変えない、静かな追加要素。
            押すとこの箱の中身だけがiframeに差し替わる(周りのレイアウトは動かない)。
            自動再生はせず、閉じたらiframe自体を消して再生を止める。 -->
@@ -7026,18 +7023,16 @@ let playingTrackIndex = null;
 // ボタンが「再生中」表示のまま固まらないようにする(ended と同じ扱いで復帰)
 previewAudio.addEventListener('error', () => stopTrackPreview());
 
-// ポスター上の再生ボタン(アルバムアート代わり)のアイコンを、今の再生状態に
-// 合わせて描き直す。収録曲欄のミニボタンとは別に、ここだけ単独で
-// 押されることもある(収録曲欄を一度も開かないまま)ため、両方からの
-// 変化を一箇所で反映できるようstopTrackPreview/toggleTrackPreviewの中で呼ぶ。
+// ポスター上の試聴タップ領域に、今の再生状態を'playing'クラスとして
+// 反映しておく(見た目のアイコンはもう無いが、再生中かどうかをCSS側で
+// 参照したくなった時のための状態フラグとして残す)。収録曲欄のミニ
+// ボタンとは別に、ここだけ単独で押されることもある(収録曲欄を一度も
+// 開かないまま)ため、両方からの変化を一箇所で反映できるよう
+// stopTrackPreview/toggleTrackPreviewの中で呼ぶ。
 function updatePosterPlayButton(){
   const btn = document.getElementById('poster-play-btn');
   if(!btn) return;
-  const playing = playingTrackIndex != null;
-  btn.classList.toggle('playing', playing);
-  document.getElementById('poster-play-icon').outerHTML = playing
-    ? '<svg id="poster-play-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M7 5h4v14H7zM13 5h4v14h-4z"/></svg>'
-    : '<svg id="poster-play-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>';
+  btn.classList.toggle('playing', playingTrackIndex != null);
 }
 
 function stopTrackPreview(){
