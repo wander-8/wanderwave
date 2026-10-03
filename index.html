@@ -3809,7 +3809,7 @@ const TAG_COLORS = {
 // ほぼ意味が無いもの(1〜十数件)は除き、ある程度まとまった件数があるものを
 // 追加する(availableGenres()が実在するものだけ自動で絞ってチップ化する
 // ので、ここに増やした分だけ選択肢が広がる)。
-const FILTER_GENRES = ["ドラマ","コメディ","アクション","スリラー","アドベンチャー","クライム","恋愛","ホラー","SF","ファンタジー","ミステリー","アニメーション","ファミリー","歴史","戦争","音楽","ドキュメンタリー","西部劇","特撮","TVムービー","J-Pop","K-Pop","Rock","Classical","Anime","Hip Hop/Rap","Pop","R&B/Soul","Jazz","Soundtrack","World","Alternative","Christian & Gospel","Electronic","New Age","Dance","Vocal","Country","Opera","Singer/Songwriter","Heavy Metal","Pop in Spanish","Latin","Arena Rock","Classical Crossover","Hard Rock","Salsa y Tropical","House","Musicals","Folk","Alternative & Rock in Spanish","Cantopop","Mandopop","French Pop","Children's Music","Blues","Reggae","Indie Rock","Regional Mexicano","Ambient","Electronica","Funk","Bollywood","Gospel","Spoken Word","Video Game","Soul","小説・エッセイ","暮らし・健康・料理","語学・学習参考書","旅行・留学・アウトドア","人文・思想・社会","ビジネス・経済・就職","パソコン・システム開発","科学・医学・技術","エンタメ","日本美術","東洋美術","西洋美術","デザイン","イラスト","美術館","写真"];
+const FILTER_GENRES = ["ドラマ","コメディ","アクション","スリラー","アドベンチャー","クライム","恋愛","ホラー","SF","ファンタジー","ミステリー","アニメーション","ファミリー","歴史","戦争","音楽","ドキュメンタリー","西部劇","特撮","TVムービー","J-Pop","K-Pop","Rock","Classical","Anime","Hip Hop/Rap","Pop","R&B/Soul","Jazz","Soundtrack","World","Alternative","Christian & Gospel","Electronic","New Age","Dance","Vocal","Country","Opera","Singer/Songwriter","Heavy Metal","Pop in Spanish","Latin","Arena Rock","Classical Crossover","Hard Rock","Salsa y Tropical","House","Musicals","Folk","Alternative & Rock in Spanish","Cantopop","Mandopop","French Pop","Children's Music","Blues","Reggae","Indie Rock","Regional Mexicano","Ambient","Electronica","Funk","Bollywood","Gospel","Spoken Word","Video Game","Soul","小説・エッセイ","暮らし・健康・料理","語学・学習参考書","旅行・留学・アウトドア","人文・思想・社会","ビジネス・経済・就職","パソコン・システム開発","科学・医学・技術","エンタメ","日本美術","東洋美術","西洋美術","デザイン","イラスト","美術館","写真","建築"];
 const FILTER_COUNTRIES = ["アメリカ","イギリス","フランス","ドイツ","日本","海外","カナダ","イタリア","スペイン","中国","香港","韓国","インド","オーストラリア","ベルギー","メキシコ","スウェーデン","デンマーク","ブラジル","ロシア","アイルランド","オランダ","ポーランド","スイス","アルゼンチン","トルコ","ノルウェー","フィンランド","オーストリア","ルクセンブルク","ルーマニア","チェコ","台湾","ハンガリー","南アフリカ","タイ","ニュージーランド","ポルトガル"];
 // 新書のサブジャンル名(rakuten-discover-novelのSHINSHO_SUBGENRE_NAMESと同じ値)。
 // 「ある作品が新書かどうか」はis_novelだけでは分からず、genre配列にこの中の
@@ -3818,7 +3818,7 @@ const FILTER_COUNTRIES = ["アメリカ","イギリス","フランス","ドイ�
 const SHINSHO_GENRE_NAMES = ["新書","小説・エッセイ","暮らし・健康・料理","語学・学習参考書","旅行・留学・アウトドア","人文・思想・社会","ビジネス・経済・就職","パソコン・システム開発","科学・医学・技術","エンタメ"];
 // 美術のサブジャンル名(rakuten-discover-novelのART_SUBGENRE_NAMESと同じ値)。
 // 新書と同じ理由で、genreにこの中の値が入っているかで「美術」かどうかを判定する。
-const ART_GENRE_NAMES = ["美術","日本美術","東洋美術","西洋美術","デザイン","イラスト","美術館","写真"];
+const ART_GENRE_NAMES = ["美術","日本美術","東洋美術","西洋美術","デザイン","イラスト","美術館","写真","建築"];
 
 function tagColor(tag){
   return TAG_COLORS[tag] || "#9a958f";

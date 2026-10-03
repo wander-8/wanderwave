@@ -56,6 +56,12 @@ const DIRECT_BOOK_TYPE_MAP: Record<string, { ja: string; tags: string[]; baseTie
   // 美術的な鑑賞目的と言えないので対象外にした(オーナーが写真の追加を
   // 要望したが、アイドル写真集まで混ぜると図鑑のドリル混入と同じ問題になる)。
   "001013003": { ja: "写真", tags: ["美しい", "リラックス"], baseTier: 15 },
+  // 建築(001012011=建築学、科学・技術の子)。サンプル調査では上位の大半が
+  // 施工管理技士・消防設備士等の資格試験対策本や構造力学の専門教材で、
+  // 「図説　建築の歴史」「ガウディの伝言」のような鑑賞寄りの建築書は
+  // 少数派だった(オーナーが建築の追加を要望したため調査)。資格・工学系の
+  // 語彙をNON_REFERENCE_BOOK_PATTERNSに追加して弾く前提で取り込む。
+  "001012011": { ja: "建築", tags: ["美しい", "考えさせられる"], baseTier: 15 },
 };
 
 // 美術(001009009)のサブジャンル。ぬりえ・ちぎり絵/切り絵は「鑑賞する美術」
@@ -243,6 +249,24 @@ const NON_REFERENCE_BOOK_PATTERNS = [
   "練習", "ペン字", "書道", "硬筆", "毛筆", "美文字", "お手本",
   "試験", "資格",
 ];
+// 建築(001012011)専用の除外語。「工学」「構造」のような語は新書の
+// 科学・技術サブジャンル等では正当な一般書にも出てくるため、全直取り込み
+// 共通のNON_REFERENCE_BOOK_PATTERNSには入れず、建築だけに絞って適用する。
+// サンプル調査(オーナー指摘で実施)では上位の大半が施工管理技士・消防設備士
+// 等の資格試験対策本と構造力学・法規等の専門教材だった。
+const ARCHITECTURE_EXCLUDED_PATTERNS = [
+  "施工", "技士", "過去問", "問題集", "合格", "マニュアル", "法規", "基準法",
+  "管工事", "消防設備士", "造園", "給水装置", "コーディネーター", "教材",
+  "指針", "仕様書", "力学", "工学", "規準", "確認申請", "技術士", "測量",
+  "テキスト", "技術検定", "構造",
+  // 1回目のdry_runで上記だけでは残った実務書・業界誌寄りのタイトル
+  // (「ビル設備管理実務シリーズ」「SketchUpパーフェクト」「建築設計資料」等)。
+  "実務", "早見", "製図", "工務店", "経営戦略", "水文学", "SketchUp", "資料",
+  "消防",
+];
+function isNonArtArchitectureTitle(title: string): boolean {
+  return ARCHITECTURE_EXCLUDED_PATTERNS.some((w) => title.includes(w));
+}
 function isNonReferenceBookTitle(title: string): boolean {
   return NON_REFERENCE_BOOK_PATTERNS.some((w) => title.includes(w));
 }
@@ -316,7 +340,7 @@ function inferMoodTags(title: string, caption: string | null | undefined, fallba
 // このロジックを適用する本の種類(感情ごとのテーマ分岐がジャンル側に
 // 無いもの)。新書・美術はサブジャンルで既に実ジャンル名ベースのタグが
 // 付くので対象外。写真は分岐が無いので対象にする。
-const MOOD_INFER_BOOK_TYPES = new Set(["001003003", "001003006", "001003001", "001003002", "001003004", "001013003"]);
+const MOOD_INFER_BOOK_TYPES = new Set(["001003003", "001003006", "001003001", "001003002", "001003004", "001013003", "001012011"]);
 
 function estimateExpression(genreId: string | null | undefined, caption: string): { level: number; reasonTags: string[]; basis: string } {
   const info = genreInfoFor(genreId);
@@ -565,6 +589,10 @@ Deno.serve(async (req: Request) => {
       // カード教材等の実用品ブラックリスト。
       if (directBookType && isNonReferenceBookTitle(item.title)) {
         skipped.push({ key, reason: "non_reference_book_title" });
+        continue;
+      }
+      if (books_genre_id === "001012011" && isNonArtArchitectureTitle(item.title)) {
+        skipped.push({ key, reason: "architecture_exam_or_textbook" });
         continue;
       }
       if (isShinsho && shinshoInfo(item.booksGenreId).excluded) {
