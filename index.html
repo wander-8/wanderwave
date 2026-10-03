@@ -497,6 +497,19 @@
      同じ動きに揃える。 */
   .filter-tab:active{ transform: scale(0.92); }
   .filter-tab.active{ border-color: var(--ink-soft); color: var(--ink); background: var(--surface); }
+  /* ジャンル・国・年代が同じ見た目で区別が付かないとの指摘。チップの
+     感情タグ(●楽しい 等)と同じ「色付きドット+ラベル」の見た目に揃え、
+     選んでいる状態の縁取り・文字色もタブごとに変える。 */
+  .filter-tab::before{
+    content:''; display:inline-block; width:8px; height:8px; border-radius:50%;
+    margin-right:6px; vertical-align:middle;
+  }
+  .filter-tab[data-key="genre"]::before{ background: var(--gold); }
+  .filter-tab[data-key="country"]::before{ background: var(--safe); }
+  .filter-tab[data-key="decade"]::before{ background: var(--mild); }
+  .filter-tab[data-key="genre"].active{ border-color: var(--gold); color: var(--gold); }
+  .filter-tab[data-key="country"].active{ border-color: var(--safe); color: var(--safe); }
+  .filter-tab[data-key="decade"].active{ border-color: var(--mild); color: var(--mild); }
   .filter-pages-viewport{ overflow:hidden; }
   .filter-pages-track{ display:flex; }
   .filter-page{ flex:0 0 100%; min-width:0; }
@@ -2032,7 +2045,10 @@
      することで、画面が広くても1枚1枚のサイズは変わらないようにする。 */
   #viewing-record-grid.pocket-grid{
     grid-template-columns: repeat(auto-fill, minmax(115px, 130px));
-    gap: 14px 12px;
+    /* タイル同士が詰まって見えるとの指摘(スクリーンショット添付)。
+       カードの大きさ自体は過去に何度も調整して今の115〜130pxに
+       落ち着いた経緯があるので触らず、タイル間の余白だけ広げる。 */
+    gap: 24px 18px;
   }
   .pocket-grid .result-card{
     flex: none; width: 100%;
@@ -3868,6 +3884,11 @@ function unescapeHtml(str){
 let MOVIES = [];
 let RECENT_REVIEWS = [];
 
+// 「みんなの声」に出したくない特定アカウントのニックネーム(オーナー指摘)。
+// PostgRESTの埋め込みリソース(profiles)はeq()で直接絞り込めないため、
+// 取得後にクライアント側で除外する。
+const RECENT_REVIEWS_EXCLUDED_NAMES = ['そうやわ'];
+
 // ホーム画面下部の「みんなの声」欄用に、直近の(本文付き)レビューを
 // 映画を問わず横断で取得する。取得に失敗しても、個別ページのレビューとは
 // 違って必須の内容ではないので、既存の表示を消さずそのまま残す。
@@ -3878,9 +3899,9 @@ async function loadRecentReviews(){
       .select('movie_id, review_text, created_at, profiles(user_name)')
       .not('review_text', 'is', null)
       .order('created_at', { ascending: false })
-      .limit(20);
+      .limit(30); // 除外フィルタ後も20件前後残るよう、少し多めに取る
     if(error) throw error;
-    RECENT_REVIEWS = data || [];
+    RECENT_REVIEWS = (data || []).filter(r => !RECENT_REVIEWS_EXCLUDED_NAMES.includes(r.profiles && r.profiles.user_name));
   }catch(err){
     console.error('最近の感想の読み込みに失敗しました', err);
   }
@@ -4405,7 +4426,7 @@ function renderFilterTabs(){
   document.getElementById('filter-tabs').innerHTML = visibleKeys.map(key => {
     const idx = FILTER_PAGE_KEYS.indexOf(key);
     const active = idx === filterPageIndex;
-    return `<button class="filter-tab${active ? ' active' : ''}" onclick="goToFilterPage('${key}')">${FILTER_PAGE_LABELS[key]}</button>`;
+    return `<button class="filter-tab${active ? ' active' : ''}" data-key="${key}" onclick="goToFilterPage('${key}')">${FILTER_PAGE_LABELS[key]}</button>`;
   }).join('');
   positionFilterTrack(false);
 }
@@ -5015,12 +5036,25 @@ function renderFeaturedBanner(){
   // (見せる→さらに票が集まる、の繰り返しで)、いつまでも同じ顔ぶれで
   // 固定化してしまう。実際に愛された実績がある作品(loveCount>0)の中から
   // 上位30本のプールを作り、そこから日替わりで5本をピックアップする。
+  // ただし、カタログモードによっては(新しく追加したドラマ等)loveCount>0の
+  // 作品がまだ数本しか無いことがあり、その場合プールがその数本だけに
+  // なって毎回ほぼ同じ顔ぶれが出てしまう(オーナー指摘)。プールが薄い時は
+  // love実績の無い作品でも補って最低限の母数を確保する。
+  const FEATURED_POOL_MIN = 20;
   const catalogMode = currentCatalogMode();
   const eligibleMovies = MOVIES.filter(m => !matchesExcludedWord(m) && isInCatalogMode(m, catalogMode));
   const lovedPool = eligibleMovies.filter(m => m.loveCount > 0)
     .sort((a, b) => loveAverage(b) - loveAverage(a))
     .slice(0, 30);
-  const pool = lovedPool.length > 0 ? lovedPool : [...eligibleMovies].sort((a, b) => loveAverage(b) - loveAverage(a));
+  let pool = lovedPool;
+  if(lovedPool.length < FEATURED_POOL_MIN){
+    const lovedIds = new Set(lovedPool.map(m => m.id));
+    const filler = eligibleMovies.filter(m => !lovedIds.has(m.id))
+      .sort((a, b) => (b.loveCount||0) - (a.loveCount||0))
+      .slice(0, FEATURED_POOL_MIN - lovedPool.length);
+    pool = [...lovedPool, ...filler];
+  }
+  if(pool.length === 0) pool = [...eligibleMovies].sort((a, b) => loveAverage(b) - loveAverage(a));
   featuredList = seededShuffle(pool, 'featured-banner').slice(0, 5);
   featuredIndex = 0;
 
