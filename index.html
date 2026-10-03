@@ -3884,11 +3884,6 @@ function unescapeHtml(str){
 let MOVIES = [];
 let RECENT_REVIEWS = [];
 
-// 「みんなの声」に出したくない特定アカウントのニックネーム(オーナー指摘)。
-// PostgRESTの埋め込みリソース(profiles)はeq()で直接絞り込めないため、
-// 取得後にクライアント側で除外する。
-const RECENT_REVIEWS_EXCLUDED_NAMES = ['そうやわ'];
-
 // ホーム画面下部の「みんなの声」欄用に、直近の(本文付き)レビューを
 // 映画を問わず横断で取得する。取得に失敗しても、個別ページのレビューとは
 // 違って必須の内容ではないので、既存の表示を消さずそのまま残す。
@@ -3899,9 +3894,9 @@ async function loadRecentReviews(){
       .select('movie_id, review_text, created_at, profiles(user_name)')
       .not('review_text', 'is', null)
       .order('created_at', { ascending: false })
-      .limit(30); // 除外フィルタ後も20件前後残るよう、少し多めに取る
+      .limit(20);
     if(error) throw error;
-    RECENT_REVIEWS = (data || []).filter(r => !RECENT_REVIEWS_EXCLUDED_NAMES.includes(r.profiles && r.profiles.user_name));
+    RECENT_REVIEWS = data || [];
   }catch(err){
     console.error('最近の感想の読み込みに失敗しました', err);
   }
@@ -4064,6 +4059,57 @@ function burstGiftSparks(container, count){
 
 function loveAverage(m){
   return m.loveCount === 0 ? 0 : m.loveSum / m.loveCount;
+}
+
+// ホームの棚(気分の棚・プラットフォーム棚・今愛されている作品)が「有名な
+// 作品」を選ぶ基準は今までloveCount(サイト内で実際に愛された実績)だけ
+// だった。音楽等、新しく追加してまだ票が集まっていないカタログモードだと
+// この基準が機能せず、誰も聞いたことのない作品ばかりが並んでしまう
+// (オーナー指摘)。そこで、昔から日本で知名度の高い作品・アーティストを
+// 一般的なランキング類を参考に列挙し、loveAverageより先に優先するヒントと
+// して使う。網羅はできないので「あれば優先的に混ぜる」程度の効果に留まる。
+// タイトル自体を一致対象にするのは映画・アニメ・ドラマ・漫画・小説向け。
+const FAMOUS_WORK_HINTS = [
+  // 映画(洋画の定番・興行収入上位・アカデミー受賞クラス)
+  'タイタニック', 'スター・ウォーズ', 'ジュラシック・パーク', 'ハリー・ポッター',
+  'アベンジャーズ', 'アナと雪の女王', 'バック・トゥ・ザ・フューチャー', 'ゴッドファーザー',
+  'ショーシャンクの空に', 'ロード・オブ・ザ・リング', 'インセプション', 'ラ・ラ・ランド',
+  'ジョーズ', 'E.T.', 'ホーム・アローン', 'ロッキー', 'マトリックス', 'パイレーツ・オブ・カリビアン',
+  // 邦画・スタジオジブリ
+  '千と千尋の神隠し', 'となりのトトロ', 'もののけ姫', '君の名は', '天気の子', 'すずめの戸締まり',
+  '鬼滅の刃', '劇場版「鬼滅の刃」', 'ハウルの動く城', '崖の上のポニョ',
+  // アニメ・漫画(国民的作品)
+  'ワンピース', 'ドラゴンボール', 'ナルト', 'NARUTO', '進撃の巨人', 'スラムダンク',
+  '名探偵コナン', 'クレヨンしんちゃん', 'ドラえもん', 'サザエさん', '呪術廻戦', 'ちいかわ',
+  // 文学の定番(国語教科書・新潮文庫の定番)
+  '吾輩は猫である', '走れメロス', '人間失格', '羅生門', '坊っちゃん', 'こころ', '銀河鉄道の夜',
+  '城の崎にて', '蜘蛛の糸', '伊豆の踊子',
+  // ドラマ
+  '半沢直樹', '愛の不時着', '相棒', '逃げるは恥だが役に立つ', 'silent', '花より男子',
+];
+const FAMOUS_ARTIST_HINTS = [
+  // 洋楽(Billboard等で継続的に知名度が高いアーティスト)
+  'マイケル・ジャクソン', 'Michael Jackson', 'ビートルズ', 'The Beatles', 'クイーン', 'Queen',
+  'テイラー・スウィフト', 'Taylor Swift', 'エド・シーラン', 'Ed Sheeran', 'アデル', 'Adele',
+  'ビヨンセ', 'Beyoncé', 'ジャスティン・ビーバー', 'Justin Bieber', 'ブルーノ・マーズ', 'Bruno Mars',
+  'BTS', 'BLACKPINK', 'コールドプレイ', 'Coldplay', 'エルトン・ジョン', 'Elton John',
+  'マドンナ', 'Madonna', 'エミネム', 'Eminem', 'リアーナ', 'Rihanna', 'ABBA',
+  // J-Pop(長年知名度が高いアーティスト)
+  '宇多田ヒカル', '米津玄師', 'あいみょん', 'YOASOBI', 'Official髭男dism', 'King Gnu',
+  '椎名林檎', 'AKB48', '嵐', 'Perfume', 'サザンオールスターズ', 'B\'z', 'ミスターチルドレン',
+  'Mr.Children', 'スピッツ', 'いきものがかり', 'back number', 'LiSA', 'YOASOBI',
+];
+function isFamousHint(m){
+  if(m.isMusic) return FAMOUS_ARTIST_HINTS.some(h => (m.director || '').includes(h));
+  return FAMOUS_WORK_HINTS.some(h => (m.title || '').includes(h));
+}
+// 「有名優先」と「loveAverage優先」を両方満たすソート関数。famousヒントに
+// 当たる作品を常に上位へ、その中では今まで通りloveAverageで並べる。
+function famousFirstCompare(a, b){
+  const fa = isFamousHint(a) ? 1 : 0;
+  const fb = isFamousHint(b) ? 1 : 0;
+  if(fa !== fb) return fb - fa;
+  return loveAverage(b) - loveAverage(a);
 }
 
 // ハートのタップは1〜3段階のままだが、見せる評価は0〜5のスケールに変換する
@@ -4868,11 +4914,12 @@ function renderHomeRows(){
 
   topTags.forEach(tag => {
     const tagMovies = discoveryMovies.filter(m => m.tags.includes(tag));
-    // 有名な(=愛が集まっている)作品を軸にしつつ、上位勢だけで固めると
-    // いつも同じ顔ぶれで「見たことない作品」に出会えないという声を受け、
-    // まだ愛が集まっていない(=珍しい)けど作品情報が揃っている作品も
-    // 少し混ぜる。日替わりで入れ替わるよう、どちらもseededShuffleを通す。
-    const famous = [...tagMovies].sort((a, b) => loveAverage(b) - loveAverage(a)).slice(0, 30);
+    // 有名な(=愛が集まっている、またはFAMOUS_*_HINTSに当たる)作品を
+    // 軸にしつつ、上位勢だけで固めるといつも同じ顔ぶれで「見たことない
+    // 作品」に出会えないという声を受け、まだ愛が集まっていない(=珍しい)
+    // けど作品情報が揃っている作品も少し混ぜる。日替わりで入れ替わるよう、
+    // どちらもseededShuffleを通す。
+    const famous = [...tagMovies].sort(famousFirstCompare).slice(0, 30);
     const famousIds = new Set(famous.map(m => m.id));
     const rarePool = tagMovies.filter(m => !famousIds.has(m.id) && (m.synopsis || m.genre));
     const rarePicks = seededShuffle(rarePool, `tag-rare:${tag}`).slice(0, 12);
@@ -4908,7 +4955,7 @@ function renderHomeRows(){
 
   platformSet.forEach(platform => {
     const list = visibleMovies.filter(m => (m.platforms || []).includes(platform))
-      .sort((a, b) => loveAverage(b) - loveAverage(a))
+      .sort(famousFirstCompare)
       .slice(0, 6);
     if(list.length === 0) return;
     html += `
@@ -4923,6 +4970,9 @@ function renderHomeRows(){
   // 「映画を問わず」の通り、今見ているカタログモードに関係なく全種別から
   // 拾う(以前はvisibleMoviesで絞ってしまっており、現在のモード以外の
   // 感想が実質常に空になっていた)。
+  // 「みんなの声」欄では、この名前のアカウントだけ投稿内容はそのまま出しつつ
+  // 名前の表示だけ伏せる(オーナー指摘: 投稿ごと除外ではなく名前だけ)。
+  const REVIEW_NAME_HIDDEN = new Set(['そうやわ']);
   const reviewCards = RECENT_REVIEWS
     .map(r => {
       const m = MOVIES.find(x => x.id === r.movie_id);
@@ -4930,12 +4980,14 @@ function renderHomeRows(){
       const snippet = r.review_text.length > 60 ? r.review_text.slice(0, 60) + '…' : r.review_text;
       const posterImg = (m.posterUrl && !shouldHidePosterForIntensity(m)) ? `<img src="${m.posterUrl}" alt="" loading="lazy" decoding="async">` : '';
       const typeInfo = mediaTypeInfo(m);
+      const rawName = (r.profiles && r.profiles.user_name) || 'ゲスト';
+      const displayName = REVIEW_NAME_HIDDEN.has(rawName) ? 'ゲスト' : rawName;
       return `
         <div class="review-feed-card" onclick="goDetail(${m.id})" style="border-left-color:${typeInfo.color};">
           <div class="review-feed-poster" style="background:${m.posterColor}">${posterImg}</div>
           <div class="review-feed-type" style="color:${typeInfo.color};">${typeInfo.label}</div>
           <div class="review-feed-title">${m.title}</div>
-          <div class="review-feed-name">${escapeHtml((r.profiles && r.profiles.user_name) || 'ゲスト')}</div>
+          <div class="review-feed-name">${escapeHtml(displayName)}</div>
           <div class="review-feed-body">${escapeHtml(snippet)}</div>
         </div>
       `;
@@ -5050,11 +5102,11 @@ function renderFeaturedBanner(){
   if(lovedPool.length < FEATURED_POOL_MIN){
     const lovedIds = new Set(lovedPool.map(m => m.id));
     const filler = eligibleMovies.filter(m => !lovedIds.has(m.id))
-      .sort((a, b) => (b.loveCount||0) - (a.loveCount||0))
+      .sort(famousFirstCompare)
       .slice(0, FEATURED_POOL_MIN - lovedPool.length);
     pool = [...lovedPool, ...filler];
   }
-  if(pool.length === 0) pool = [...eligibleMovies].sort((a, b) => loveAverage(b) - loveAverage(a));
+  if(pool.length === 0) pool = [...eligibleMovies].sort(famousFirstCompare);
   featuredList = seededShuffle(pool, 'featured-banner').slice(0, 5);
   featuredIndex = 0;
 
