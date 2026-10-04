@@ -156,6 +156,12 @@ Deno.serve(async (req: Request) => {
       first_air_date_gte = null,
       first_air_date_lte = null,
       with_origin_country = null,
+      // 朝ドラ(あまちゃん、ちむどんどん等)のような、国内では有名でも
+      // TMDbの投票数が少なく通常のdiscover(人気順/評価順)では出てこない
+      // 作品向けに、名指しでタイトル検索して取り込めるようにする
+      // (オーナー指摘: 「朝ドラも入れたい」)。指定時はdiscoverの代わりに
+      // タイトルごとの/search/tvを使うため、min_vote_count等は適用されない。
+      titles = null,
     } = await req.json().catch(() => ({}));
 
     const supabase = createClient(SUPABASE_URL, SERVICE_ROLE);
@@ -166,23 +172,33 @@ Deno.serve(async (req: Request) => {
     );
     const existingTmdbIds = new Set(existingRows.map((r: any) => r.tmdb_id).filter((v: any) => v != null));
 
-    // 1) TMDbのdiscover/tvでドラマ候補一覧を取得。
     const candidates: any[] = [];
-    for (const page of pages) {
-      const params: Record<string, string> = {
-        language: "ja-JP",
-        sort_by,
-        without_genres: EXCLUDED_TV_GENRES,
-        "vote_count.gte": String(min_vote_count),
-        "vote_average.gte": String(min_vote_average),
-        page: String(page),
-      };
-      if (with_origin_country) params["with_origin_country"] = with_origin_country;
-      if (first_air_date_gte) params["first_air_date.gte"] = first_air_date_gte;
-      if (first_air_date_lte) params["first_air_date.lte"] = first_air_date_lte;
-      const data = await tmdbFetch("/discover/tv", params);
-      if (data?.results?.length) candidates.push(...data.results);
-      await sleep(150);
+    if (Array.isArray(titles) && titles.length) {
+      // 名指し取り込みモード: タイトルごとに/search/tvを叩き、最有力候補
+      // (先頭の1件)だけを採用する。
+      for (const title of titles) {
+        const data = await tmdbFetch("/search/tv", { query: String(title), language: "ja-JP" });
+        if (data?.results?.length) candidates.push(data.results[0]);
+        await sleep(150);
+      }
+    } else {
+      // 1) TMDbのdiscover/tvでドラマ候補一覧を取得。
+      for (const page of pages) {
+        const params: Record<string, string> = {
+          language: "ja-JP",
+          sort_by,
+          without_genres: EXCLUDED_TV_GENRES,
+          "vote_count.gte": String(min_vote_count),
+          "vote_average.gte": String(min_vote_average),
+          page: String(page),
+        };
+        if (with_origin_country) params["with_origin_country"] = with_origin_country;
+        if (first_air_date_gte) params["first_air_date.gte"] = first_air_date_gte;
+        if (first_air_date_lte) params["first_air_date.lte"] = first_air_date_lte;
+        const data = await tmdbFetch("/discover/tv", params);
+        if (data?.results?.length) candidates.push(...data.results);
+        await sleep(150);
+      }
     }
 
     // 2) 既存作品との重複を除外(タイトル+公開年で判定)
