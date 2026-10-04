@@ -290,7 +290,7 @@
   }
 
   .ai-search-btn{
-    background: linear-gradient(135deg, var(--plum), var(--love));
+    background: var(--plum-btn);
     color:#fff; border:none; border-radius:10px;
     padding: 0 16px; font-weight:600; font-size:14px;
     white-space: nowrap;
@@ -419,13 +419,17 @@
   .catalog-mode-drawer{ display:none; }
   @media (min-width: 1360px){
     /* 広い画面ではアプリ版(ハンバーガー)を隠し、PC版だけを出す。
-       画面の本当の左端に寄せて余白を活かす(28px)。要素の幅は「映画」
-       「アニメ」で多少変わるが、左端基準なら右にしか伸びないので.appの
-       左端(1180px以降は常に50% - 550px、この閾値1360pxでの最小値は130px)
-       まで最低でも十分な余裕があり重ならない。 */
+       以前はleft:28pxで画面の生の左端に固定していたが、.appは
+       max-width:1100pxで中央寄せ(左端は常に50vw - 550px)なので、
+       ブラウザ幅が広いほど.appの左端だけがどんどん右へ動き、固定された
+       このメニューとの間に大きな空白ができてしまっていた(オーナー指摘:
+       「メニューとサイトに間が空いてる」、実機のスクリーンショットで確認)。
+       .appの左端と同じ式(50vw - 550px)を基準に、メニュー自身の幅ぶん
+       (約108px)+小さい余白(8px)を引いた位置に置くことで、ブラウザ幅が
+       どれだけ広くても.appのすぐ左に吸い付いたままにする。 */
     .catalog-mode-toggle.enabled{ display:none; }
     .catalog-mode-toggle-side.enabled{
-      display:block; position:fixed; top:170px; left:28px; z-index:40;
+      display:block; position:fixed; top:170px; left:calc(50vw - 550px - 116px); z-index:40;
     }
   }
   .catalog-mode-menu{
@@ -2438,7 +2442,7 @@
       <div class="search-box">
         <input type="text" id="search-input" placeholder="作品名・ジャンル・雰囲気で探す" oninput="onSearchInput()" onkeydown="if(event.key==='Enter'){ event.preventDefault(); this.blur(); submitSearch(); }">
         <button class="search-clear-btn" id="search-clear-btn" onclick="clearSearch()" style="display:none;">×</button>
-        <button class="ai-search-btn" id="ai-search-btn" onclick="submitSearch()">✨ 検索</button>
+        <button class="ai-search-btn" id="ai-search-btn" onclick="submitSearch()">検索</button>
       </div>
       <div class="tag-cloud" id="tag-cloud"></div>
 
