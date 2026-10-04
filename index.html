@@ -4520,22 +4520,35 @@ function renderZigzagChips(container, items, buildChip){
 function renderGenreCloud(){
   const el = document.getElementById('genre-cloud');
   const genres = availableGenres();
+  // 絵本・図鑑・新書等の「本の種類」は検索欄の上の切り替え(book-type-switch)
+  // だけで選べる形だったが、「詳しく絞り込む」の中を見ても見つからず
+  // 分かりにくいとの指摘を受けた(オーナー指摘: 「調べにくい」)。本の種類は
+  // 単一選択(小説/絵本/図鑑…のどれか1つ)なので、複数選択のジャンル
+  // チップ(state.activeGenres)とは仕組みが別のまま、見た目だけ同じ
+  // チップ列の先頭に混ぜて出す(クリック時の挙動はselectBookTypeに振り分ける)。
+  const bookTypeChips = currentCatalogMode() === 'novel' ? BOOK_TYPES : [];
   // 絵本・図鑑のように、そもそも楽天側にサブジャンルの区分が存在しない
   // 本の種類を選んでいる時はジャンルチップが1つも無くなる(新書の
   // サブジャンルやgenre側の値と重複しないよう、"絵本""図鑑"自体は
-  // FILTER_GENRESに含めていないため)。空の棚を出しっぱなしにせず、
-  // 国の欄(country-filter-group)と同じく欄ごと隠す。
-  document.getElementById('genre-filter-group').style.display = genres.length > 0 ? '' : 'none';
+  // FILTER_GENRESに含めていないため)。本の種類チップ自体は常に出せるので、
+  // 「欄ごと隠す」判定はジャンルチップの有無だけでなく本の種類チップの
+  // 有無も見る。
+  document.getElementById('genre-filter-group').style.display = (genres.length > 0 || bookTypeChips.length > 0) ? '' : 'none';
   // 選択中のジャンルが、モード切り替え等で選択肢から消えてしまった場合は
   // 選択を解除する(消えたチップの分だけ絞り込みが宙に浮いて0件のまま
   // 気づけない、という事故を防ぐ)。
   [...state.activeGenres].forEach(g => { if(!genres.includes(g)) state.activeGenres.delete(g); });
-  renderZigzagChips(el, genres, (genre) => {
+  renderZigzagChips(el, [...bookTypeChips, ...genres], (genre) => {
+    const isBookType = bookTypeChips.includes(genre);
     const chip = document.createElement('div');
-    const isActive = state.activeGenres.has(genre);
+    const isActive = isBookType ? (state.bookType === genre) : state.activeGenres.has(genre);
     chip.className = 'genre-chip' + (isActive ? ' active' : '');
     chip.textContent = genre;
     chip.onclick = () => {
+      if(isBookType){
+        selectBookType(isActive ? null : genre);
+        return;
+      }
       if(state.activeGenres.has(genre)) state.activeGenres.delete(genre);
       else state.activeGenres.add(genre);
       renderGenreCloud();
