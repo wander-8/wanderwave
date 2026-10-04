@@ -6,7 +6,7 @@
 <meta name="google-site-verification" content="WBGLlgHQZ3BErZu6rBw-IZLlIY0CSek6CSNZVIE6MCY" />
 <meta name="google-adsense-account" content="ca-pub-4493802852826281">
 <title>Wander ― 気になるものを拾いに行こう</title>
-<meta name="description" content="気分やムードから作品を探せる、あなたのための作品発見サイト。感情タグや雰囲気で検索して、今の気分にぴったりの一本を見つけよう。">
+<meta name="description" content="気分やムードから作品を探せる、あなたのための作品発見サイト。感情タグや雰囲気で検索して、今の気分にぴったりの1つを見つけよう。">
 <link rel="canonical" href="https://wander-8.site/">
 <link rel="icon" type="image/png" href="https://wander-8.site/og-image.png">
 <meta property="og:title" content="Wander ― 気になるものを拾いに行こう">
@@ -3032,7 +3032,7 @@
           <div class="omikuji-poster" id="omikuji-poster"></div>
           <div class="omikuji-text">
             <div class="omikuji-title" id="omikuji-title"></div>
-            <div class="omikuji-line">今日はこの1本を、そっと差し出してみます。</div>
+            <div class="omikuji-line">今日はこの1つを、そっと差し出してみます。</div>
           </div>
         </div>
       </div>
@@ -7136,12 +7136,12 @@ async function toggleWatchLater(){
       const { error } = await supabase.from('watch_later').delete().eq('user_id', userId).eq('movie_id', m.id);
       if(error) throw error;
       delete state.myWatchLater[m.id];
-      showToast('観たいリストから外しました');
+      showToast('気になるリストから外しました');
     } else {
       const { error } = await supabase.from('watch_later').insert({ user_id: userId, movie_id: m.id });
       if(error) throw error;
       state.myWatchLater[m.id] = true;
-      showToast('あとで観るに追加しました');
+      showToast('気になるに追加しました');
     }
   }catch(err){
     console.error(err);
@@ -8919,9 +8919,9 @@ async function loadMovies(){
   try{
     await fetchFreshCatalogAndContinue(FIRST_PAGE_SIZE, plainMovieFilter);
   }catch(err){
-    console.error('映画一覧の読み込みに失敗しました', err);
+    console.error('作品一覧の読み込みに失敗しました', err);
     MOVIES = [];
-    showToast('映画一覧の読み込みに失敗しました。通信環境を確認してください。');
+    showToast('作品一覧の読み込みに失敗しました。通信環境を確認してください。');
   }
 }
 
@@ -9523,20 +9523,24 @@ function currentNickname(){
   return (state.profile && state.profile.nickname) ? state.profile.nickname : "ゲスト";
 }
 
+// 称号はレビュー投稿数(review_count)ベースで、映画に限らずどのメディア
+// 種別にレビューを書いても積み上がる。それなのに「映画通」「映画好き」と
+// いう映画限定の名前が付いていたのは、サイトが映画専用だった頃の名残
+// (オーナー指摘: 「映画だけ作った頃の名称などあれば変えて」)。
 const TRUST_TIERS = [
   { min: 60, title: "Wanderマスター", color: "#a084f2", weight: 3 },
   { min: 30, title: "愛の伝道師", color: "#e2647f", weight: 2.5 },
-  { min: 15, title: "映画通", color: "#e3b6cc", weight: 2 },
+  { min: 15, title: "作品通", color: "#e3b6cc", weight: 2 },
   { min: 5,  title: "常連さん", color: "#a084f2", weight: 1.5 },
-  { min: 1,  title: "映画好き", color: "#c98a7a", weight: 1.2 },
+  { min: 1,  title: "作品好き", color: "#c98a7a", weight: 1.2 },
   { min: 0,  title: null, color: null, weight: 1 }
 ];
 
 const TIER_ICON_PATHS = {
   "称号なし": `<circle cx="16" cy="16" r="9" fill="none" stroke="currentColor" stroke-width="1.6" stroke-dasharray="3 3"/>`,
-  "映画好き": `<circle cx="16" cy="16" r="3.2" fill="currentColor"/><circle cx="16" cy="16" r="8" fill="none" stroke="currentColor" stroke-width="1.3" opacity="0.55"/>`,
+  "作品好き": `<circle cx="16" cy="16" r="3.2" fill="currentColor"/><circle cx="16" cy="16" r="8" fill="none" stroke="currentColor" stroke-width="1.3" opacity="0.55"/>`,
   "常連さん": `<circle cx="16" cy="16" r="3.2" fill="currentColor"/><circle cx="16" cy="16" r="7.5" fill="none" stroke="currentColor" stroke-width="1.4" opacity="0.7"/><circle cx="16" cy="16" r="12" fill="none" stroke="currentColor" stroke-width="1.2" opacity="0.4"/>`,
-  "映画通": `<path d="M6 13 Q11 8 16 13 T26 13 M6 19 Q11 14 16 19 T26 19" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>`,
+  "作品通": `<path d="M6 13 Q11 8 16 13 T26 13 M6 19 Q11 14 16 19 T26 19" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>`,
   "愛の伝道師": `<path d="M4 21 Q10 7 16 15 Q22 7 28 21" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>`,
   "Wanderマスター": `<path d="M16 3 L18 13 L28 16 L18 19 L16 29 L14 19 L4 16 L14 13 Z" fill="currentColor"/>`
 };
@@ -10397,8 +10401,8 @@ function generateDiagnosis(pocketMovies){
 
   const cardSection = [
     '✦ カードが告げる今のあなた',
-    `${titlesText}——この5本を選んだあなたの心には、${FEELING_WORD[topTag] || "そのときどきの気分"}がそっと流れていたのかもしれません。`,
-    'その日、その瞬間の感覚を信じて選んだ5本は、まぎれもなくあなただけの物語です。'
+    `${titlesText}——この5つを選んだあなたの心には、${FEELING_WORD[topTag] || "そのときどきの気分"}がそっと流れていたのかもしれません。`,
+    'その日、その瞬間の感覚を信じて選んだ5つは、まぎれもなくあなただけの物語です。'
   ].join('\n');
 
   const senseSection = [
@@ -10408,8 +10412,8 @@ function generateDiagnosis(pocketMovies){
 
   const oracleFeeling = (secondTag && FEELING_WORD[secondTag]) || "これまでとは少し違う気分";
   const oracleSection = [
-    '✦ 映画オラクル(未来への一歩)',
-    `次にポケットに加える1本は、${oracleFeeling}をそっと連れてきてくれるかもしれません。`,
+    '✦ 作品オラクル(未来への一歩)',
+    `次にポケットに加える1つは、${oracleFeeling}をそっと連れてきてくれるかもしれません。`,
     'どんな新しい扉が開くのか、今から少し楽しみにしていてください。'
   ].join('\n');
 
@@ -10511,7 +10515,7 @@ function goLists(){
 function getWatchLaterAsList(){
   return {
     id: 'watch_later',
-    name: 'あとで観る',
+    name: '気になる',
     movieIds: Object.keys(state.myWatchLater).map(id => parseInt(id, 10)),
     isBuiltIn: true
   };
@@ -10709,8 +10713,8 @@ async function loadSharedListView(shareToken){
 
     const movies = (data.movie_ids || []).map(id => MOVIES.find(m => m.id === id)).filter(Boolean);
     document.getElementById('shared-list-name').textContent = data.name;
-    document.getElementById('shared-list-count').textContent = `${movies.length}本の映画`;
-    renderMovieCards(document.getElementById('shared-list-items'), movies, 'このリストにはまだ映画がありません。', { overlayTitle: true });
+    document.getElementById('shared-list-count').textContent = `${movies.length}件`;
+    renderMovieCards(document.getElementById('shared-list-items'), movies, 'このリストにはまだ作品がありません。', { overlayTitle: true });
     switchView('view-shared-list');
     return true;
   }catch(err){
@@ -10732,10 +10736,10 @@ function renderListDetail(){
   nameEl.textContent = list.name;
   nameEl.style.display = 'block';
   document.getElementById('list-name-inline-input').style.display = 'none';
-  document.getElementById('list-detail-count').textContent = `${list.movieIds.length}本の映画`;
+  document.getElementById('list-detail-count').textContent = `${list.movieIds.length}件`;
   const movies = list.movieIds.map(id => MOVIES.find(m => m.id === id)).filter(Boolean);
   const root = document.getElementById('list-detail-items');
-  renderMovieCards(root, movies, 'このリストにはまだ映画がありません。映画の詳細ページから追加できます。');
+  renderMovieCards(root, movies, 'このリストにはまだ作品がありません。作品の詳細ページから追加できます。');
 
   // 「あとで観る」は名前変更・削除できない特別なリストなので、鉛筆のヒント・削除アイコンごと出さない
   document.getElementById('list-name-pencil-hint').style.display = list.isBuiltIn ? 'none' : 'block';
@@ -10894,7 +10898,7 @@ async function generateListImage(list, movies){
   ctx.font = "400 20px 'M PLUS Rounded 1c', sans-serif";
   ctx.fillStyle = '#b3aee0';
   const countY = nameBaseY + (nameLines - 1) * nameLineHeight + 44;
-  ctx.fillText(`${movies.length}本の映画`, 50, countY);
+  ctx.fillText(`${movies.length}件`, 50, countY);
 
   // 右側: ポスター最大2枚
   const shown = movies.slice(0, 2);
@@ -11045,7 +11049,7 @@ function renderAddToListOptions(){
   const pocketActive = isInPocket(m.id);
   const watchLaterActive = !!state.myWatchLater[m.id];
   let html = `<button class="ghost-btn${pocketActive ? ' active' : ''}" style="width:100%; margin-bottom:8px; text-align:left;" onclick="addMovieToList('pocket')">${pocketActive ? '✓ ' : ''}ポケットに入れる(診断に使われます)</button>`;
-  html += `<button class="ghost-btn${watchLaterActive ? ' active' : ''}" style="width:100%; margin-bottom:8px; text-align:left;" onclick="addMovieToList('watch_later')">${watchLaterActive ? '✓ ' : ''}あとで観る</button>`;
+  html += `<button class="ghost-btn${watchLaterActive ? ' active' : ''}" style="width:100%; margin-bottom:8px; text-align:left;" onclick="addMovieToList('watch_later')">${watchLaterActive ? '✓ ' : ''}気になる</button>`;
   html += state.myLists.map(list => {
     const inList = list.movieIds.includes(m.id);
     return `<button class="ghost-btn${inList ? ' active' : ''}" style="width:100%; margin-bottom:8px; text-align:left;" onclick="addMovieToList('${list.id}')">${inList ? '✓ ' : ''}${list.name}(${list.movieIds.length}本)</button>`;
