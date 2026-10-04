@@ -2447,6 +2447,16 @@
           <div class="filter-tabs" id="filter-tabs"></div>
           <div class="filter-pages-viewport" id="filter-pages-viewport">
             <div class="filter-pages-track" id="filter-pages-track">
+              <!-- 小説モード限定: 本の種類(小説/新書/児童書/美術/写真/建築)。
+                   以前はジャンルチップの列の先頭に混ぜて出していたが、
+                   「本の種類」と「ジャンル(気分・内容)」は性質が違う軸なのに
+                   見た目が同じチップで混在しているのが分かりにくいとの指摘を
+                   受けた(オーナー指摘: 「ジャンルと本自体の種類が一緒なのが
+                   嫌」)。ジャンル・国・年代と同じタブの仕組みで独立させ、
+                   見た目も選ぶ対象もはっきり分ける。 -->
+              <div class="filter-page" id="book-type-filter-group">
+                <div class="genre-cloud" id="book-type-cloud"></div>
+              </div>
               <div class="filter-page" id="genre-filter-group">
                 <div class="genre-cloud" id="genre-cloud"></div>
               </div>
@@ -4493,40 +4503,20 @@ function renderZigzagChips(container, items, buildChip){
 }
 
 function renderGenreCloud(){
+  renderBookTypeCloud();
   const el = document.getElementById('genre-cloud');
   const genres = availableGenres();
-  // 新書/児童書/美術の「本の種類」は、以前は検索欄の上の専用バーだけで
-  // 選べる形だったが「詳しく絞り込む」の中を見ても見つからず分かりにくい
-  // との指摘を受けた(オーナー指摘: 「調べにくい」)。その後専用バーと
-  // ここのチップが両方残って同じ名前が二重に出る状態になったため
-  // (オーナー指摘: 「ジャンルにもなんか同じ名前で入ってたけど」)、
-  // 専用バーは廃止しここに一本化した。本の種類は単一選択(小説/新書/
-  // 児童書/美術のどれか1つ)なので、複数選択のジャンルチップ
-  // (state.activeGenres)とは仕組みが別のまま、見た目だけ同じチップ列の
-  // 先頭に混ぜて出す(クリック時の挙動はselectBookTypeに振り分ける)。
-  const bookTypeChips = currentCatalogMode() === 'novel' ? BOOK_TYPES : [];
-  // 児童書のように、そもそも楽天側にサブジャンルの区分が存在しない
-  // 本の種類を選んでいる時はジャンルチップが1つも無くなる(新書・美術の
-  // サブジャンルやgenre側の値と重複しないよう、"児童書"自体は
-  // FILTER_GENRESに含めていないため)。本の種類チップ自体は常に出せるので、
-  // 「欄ごと隠す」判定はジャンルチップの有無だけでなく本の種類チップの
-  // 有無も見る。
-  document.getElementById('genre-filter-group').style.display = (genres.length > 0 || bookTypeChips.length > 0) ? '' : 'none';
+  document.getElementById('genre-filter-group').style.display = genres.length > 0 ? '' : 'none';
   // 選択中のジャンルが、モード切り替え等で選択肢から消えてしまった場合は
   // 選択を解除する(消えたチップの分だけ絞り込みが宙に浮いて0件のまま
   // 気づけない、という事故を防ぐ)。
   [...state.activeGenres].forEach(g => { if(!genres.includes(g)) state.activeGenres.delete(g); });
-  renderZigzagChips(el, [...bookTypeChips, ...genres], (genre) => {
-    const isBookType = bookTypeChips.includes(genre);
+  renderZigzagChips(el, genres, (genre) => {
     const chip = document.createElement('div');
-    const isActive = isBookType ? (state.bookType === genre) : state.activeGenres.has(genre);
+    const isActive = state.activeGenres.has(genre);
     chip.className = 'genre-chip' + (isActive ? ' active' : '');
     chip.textContent = genre;
     chip.onclick = () => {
-      if(isBookType){
-        selectBookType(isActive ? null : genre);
-        return;
-      }
       if(state.activeGenres.has(genre)) state.activeGenres.delete(genre);
       else state.activeGenres.add(genre);
       renderGenreCloud();
@@ -4535,6 +4525,27 @@ function renderGenreCloud(){
     return chip;
   });
   renderFilterTabs();
+}
+// 小説モード限定の「本の種類」タブ(小説/新書/児童書/美術/写真/建築)。
+// ジャンル(気分・内容)チップとは軸が違う単一選択なので、見た目は同じ
+// チップでも、独立したタブ・独立した関数として分ける(オーナー指摘:
+// 「ジャンルと本自体の種類が一緒なのが嫌」)。renderGenreCloud()から
+// 毎回呼ぶことで、呼び出し側(モード切替・検索条件クリア等)を増やさずに
+// 常に同期させる。
+function renderBookTypeCloud(){
+  const el = document.getElementById('book-type-cloud');
+  const isNovel = currentCatalogMode() === 'novel';
+  document.getElementById('book-type-filter-group').style.display = isNovel ? '' : 'none';
+  if(!isNovel) return;
+  const items = [{ label: '小説', value: null }, ...BOOK_TYPES.map(t => ({ label: t, value: t }))];
+  renderZigzagChips(el, items, ({ label, value }) => {
+    const chip = document.createElement('div');
+    const isActive = state.bookType === value;
+    chip.className = 'genre-chip' + (isActive ? ' active' : '');
+    chip.textContent = label;
+    chip.onclick = () => selectBookType(isActive ? null : value);
+    return chip;
+  });
 }
 
 function renderCountryCloud(){
@@ -4566,10 +4577,11 @@ function renderCountryCloud(){
 // の時はそのタブ自体を出さない(選んでも何も無いページに迷い込まない
 // ように)。各page*Clouds関数は既に「中身が空ならdisplay:noneにする」
 // 判定を済ませているので、ここではその結果(display)を読むだけでよい。
-const FILTER_PAGE_KEYS = ['genre', 'country', 'decade'];
-const FILTER_PAGE_LABELS = { genre: 'ジャンル', country: '国', decade: '年代' };
+const FILTER_PAGE_KEYS = ['bookType', 'genre', 'country', 'decade'];
+const FILTER_PAGE_LABELS = { bookType: '本の種類', genre: 'ジャンル', country: '国', decade: '年代' };
 let filterPageIndex = 0;
 function filterPageIsVisible(key){
+  if(key === 'bookType') return document.getElementById('book-type-filter-group').style.display !== 'none';
   if(key === 'genre') return document.getElementById('genre-filter-group').style.display !== 'none';
   if(key === 'country') return document.getElementById('country-filter-group').style.display !== 'none';
   return true; // 年代は常に出す(0件になることが無い作り)
