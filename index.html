@@ -504,9 +504,11 @@
     content:''; display:inline-block; width:8px; height:8px; border-radius:50%;
     margin-right:6px; vertical-align:middle;
   }
+  .filter-tab[data-key="bookType"]::before{ background: var(--plum-btn); }
   .filter-tab[data-key="genre"]::before{ background: var(--gold); }
   .filter-tab[data-key="country"]::before{ background: var(--safe); }
   .filter-tab[data-key="decade"]::before{ background: var(--mild); }
+  .filter-tab[data-key="bookType"].active{ border-color: var(--plum-btn); color: var(--plum-btn); }
   .filter-tab[data-key="genre"].active{ border-color: var(--gold); color: var(--gold); }
   .filter-tab[data-key="country"].active{ border-color: var(--safe); color: var(--safe); }
   .filter-tab[data-key="decade"].active{ border-color: var(--mild); color: var(--mild); }
@@ -3885,19 +3887,18 @@ const TAG_COLORS = {
 
 // 「詳しく絞り込む」に出すジャンル・国の候補。moviesテーブル全体を集計した際に
 // 件数の多い主要なものだけに絞ってあり、表記ゆれ的な少数派(「犯罪」「伝記」等)は含めない。
-// 新書・児童書・美術・写真・建築そのものは「詳しく絞り込む」のジャンルチップ
-// (このFILTER_GENRESから選ばれる方)には出さない。これらは本の種類
-// (renderGenreCloud内でBOOK_TYPESを先頭に混ぜるチップ)として別の単一選択の
-// 仕組みで選べるため、同じ値を通常のジャンルチップにも重複して含めると紛らわしい。
-// 写真・建築は元は美術のサブジャンル扱いだったが、どちらも単独で300件前後ある
-// まとまったカテゴリで、美術(鑑賞目的の絵画・デザイン等)とは中身の性質が違う
-// のに美術の中に埋もれていて見つけにくかった(オーナー指摘: 「美術本から、
-// 写真でもさらに…細分化されるからやりにくい」)ため、新書・児童書・美術と
-// 同列の独立した本の種類に格上げした。ただし新書・美術は中身(人文・ビジネス・
-// 暮らし/日本美術・デザイン等)のサブジャンルが実在するので、それぞれを選んだ時に
-// 意味のある絞り込みができるよう、そのサブジャンル名は通常のジャンルと同列に
-// ここへ含める(rakuten-discover-novelのshinshoInfo/artInfo参照)。写真・建築は
-// サブジャンルを持たない単一カテゴリなので、ここには含めない。
+// 新書・児童書・美術そのものは「詳しく絞り込む」のジャンルチップ(このFILTER_GENRES
+// から選ばれる方)には出さない。これらは本の種類(renderGenreCloud内でBOOK_TYPESを
+// 先頭に混ぜるチップ)として別の単一選択の仕組みで選べるため、同じ値を通常のジャンル
+// チップにも重複して含めると紛らわしい。ただし新書・美術は中身(人文・ビジネス・暮らし/
+// 日本美術・写真・建築・陶芸・書道等)のサブジャンルが実在するので、それぞれを選んだ時に
+// 意味のある絞り込みができるよう、そのサブジャンル名は通常のジャンルと同列にここへ含める
+// (rakuten-discover-novelのshinshoInfo/artInfo参照)。写真・建築は一時「本の種類」として
+// 独立させたが、編集フォーマットの違いではなく美術の中の主題に過ぎないとの指摘を受け
+// 美術のサブジャンルに戻した(オーナー指摘: 「写真と建築ってどうなの？違うでしょ」)。
+// それに合わせて美術のサブジャンル自体ももっと増やしたいとの要望(オーナー指摘:
+// 「美術に関してはジャンル増やしたいかな」)を受け、陶芸・書道・骨董・染織・漆
+// (001009010=工芸・工作の子)・風景写真集(001009006=カメラ・写真の子)を追加した。
 // 音楽のジャンルは以前J-Pop/K-Pop/Rock/Classical/Anime/Hip Hop/Rapの6つしか
 // 出しておらず、実際のカタログにはiTunesの実データとして200種類近い
 // ジャンル文字列が付いている(集計して確認済み)のに、ほとんどが「詳しく
@@ -3905,7 +3906,7 @@ const TAG_COLORS = {
 // ほぼ意味が無いもの(1〜十数件)は除き、ある程度まとまった件数があるものを
 // 追加する(availableGenres()が実在するものだけ自動で絞ってチップ化する
 // ので、ここに増やした分だけ選択肢が広がる)。
-const FILTER_GENRES = ["ドラマ","コメディ","アクション","スリラー","アドベンチャー","クライム","恋愛","ホラー","SF","ファンタジー","ミステリー","アニメーション","ファミリー","歴史","戦争","音楽","ドキュメンタリー","西部劇","特撮","TVムービー","J-Pop","K-Pop","Rock","Classical","Anime","Hip Hop/Rap","Pop","R&B/Soul","Jazz","Soundtrack","World","Alternative","Christian & Gospel","Electronic","New Age","Dance","Vocal","Country","Opera","Singer/Songwriter","Heavy Metal","Pop in Spanish","Latin","Arena Rock","Classical Crossover","Hard Rock","Salsa y Tropical","House","Musicals","Folk","Alternative & Rock in Spanish","Cantopop","Mandopop","French Pop","Children's Music","Blues","Reggae","Indie Rock","Regional Mexicano","Ambient","Electronica","Funk","Bollywood","Gospel","Spoken Word","Video Game","Soul","小説・エッセイ","暮らし・健康・料理","語学・学習参考書","旅行・留学・アウトドア","人文・思想・社会","ビジネス・経済・就職","パソコン・システム開発","科学・医学・技術","エンタメ","日本美術","東洋美術","西洋美術","デザイン","イラスト","美術館","技法書"];
+const FILTER_GENRES = ["ドラマ","コメディ","アクション","スリラー","アドベンチャー","クライム","恋愛","ホラー","SF","ファンタジー","ミステリー","アニメーション","ファミリー","歴史","戦争","音楽","ドキュメンタリー","西部劇","特撮","TVムービー","J-Pop","K-Pop","Rock","Classical","Anime","Hip Hop/Rap","Pop","R&B/Soul","Jazz","Soundtrack","World","Alternative","Christian & Gospel","Electronic","New Age","Dance","Vocal","Country","Opera","Singer/Songwriter","Heavy Metal","Pop in Spanish","Latin","Arena Rock","Classical Crossover","Hard Rock","Salsa y Tropical","House","Musicals","Folk","Alternative & Rock in Spanish","Cantopop","Mandopop","French Pop","Children's Music","Blues","Reggae","Indie Rock","Regional Mexicano","Ambient","Electronica","Funk","Bollywood","Gospel","Spoken Word","Video Game","Soul","小説・エッセイ","暮らし・健康・料理","語学・学習参考書","旅行・留学・アウトドア","人文・思想・社会","ビジネス・経済・就職","パソコン・システム開発","科学・医学・技術","エンタメ","日本美術","東洋美術","西洋美術","デザイン","イラスト","美術館","技法書","写真","建築","陶芸","書道","骨董","染織・漆","風景写真集"];
 const FILTER_COUNTRIES = ["アメリカ","イギリス","フランス","ドイツ","日本","海外","カナダ","イタリア","スペイン","中国","香港","韓国","インド","オーストラリア","ベルギー","メキシコ","スウェーデン","デンマーク","ブラジル","ロシア","アイルランド","オランダ","ポーランド","スイス","アルゼンチン","トルコ","ノルウェー","フィンランド","オーストリア","ルクセンブルク","ルーマニア","チェコ","台湾","ハンガリー","南アフリカ","タイ","ニュージーランド","ポルトガル"];
 // 新書のサブジャンル名(rakuten-discover-novelのSHINSHO_SUBGENRE_NAMESと同じ値)。
 // 「ある作品が新書かどうか」はis_novelだけでは分からず、genre配列にこの中の
@@ -3914,7 +3915,7 @@ const FILTER_COUNTRIES = ["アメリカ","イギリス","フランス","ドイ�
 const SHINSHO_GENRE_NAMES = ["新書","小説・エッセイ","暮らし・健康・料理","語学・学習参考書","旅行・留学・アウトドア","人文・思想・社会","ビジネス・経済・就職","パソコン・システム開発","科学・医学・技術","エンタメ"];
 // 美術のサブジャンル名(rakuten-discover-novelのART_SUBGENRE_NAMESと同じ値)。
 // 新書と同じ理由で、genreにこの中の値が入っているかで「美術」かどうかを判定する。
-const ART_GENRE_NAMES = ["美術","日本美術","東洋美術","西洋美術","デザイン","イラスト","美術館","技法書"];
+const ART_GENRE_NAMES = ["美術","日本美術","東洋美術","西洋美術","デザイン","イラスト","美術館","技法書","写真","建築","陶芸","書道","骨董","染織・漆","風景写真集"];
 
 function tagColor(tag){
   return TAG_COLORS[tag] || "#9a958f";
@@ -4406,19 +4407,18 @@ function isShinshoItem(m){
 function isArtItem(m){
   return (m.genre || []).some(g => ART_GENRE_NAMES.includes(g));
 }
-// 1冊がどの本の種類か(novelモード限定の分類)。児童書・写真・建築は実データ上
-// genreに"児童書"/"写真"/"建築"がそのまま単独の値として入るので直接判定できる
-// (絵本・図鑑・児童文庫・民話・むかし話はいずれも単独では薄いジャンルだった
-// ため全て児童書に統合済み/オーナー指摘。写真・建築は元は美術のサブジャンル
-// 扱いだったが、美術の中に埋もれて見つけにくいとの指摘を受け独立させた)。
-// 新書・美術は逆にサブジャンルが判明している商品ほどgenreに「新書」「美術」
-// という文字列が入らない(shinshoInfo/artInfo参照)ため、isShinshoItem()/
-// isArtItem()で別途判定する。写真・建築は美術のサブジャンル名一覧
-// (ART_GENRE_NAMES)から外してあるので、isArtItem()には含まれない。
+// 1冊がどの本の種類か(novelモード限定の分類)。児童書は実データ上
+// genreに"児童書"がそのまま単独の値として入るので直接判定できる(絵本・
+// 図鑑・児童文庫・民話・むかし話はいずれも単独では薄いジャンルだったため
+// 全て児童書に統合済み/オーナー指摘)。新書・美術は逆にサブジャンルが
+// 判明している商品ほどgenreに「新書」「美術」という文字列が入らない
+// (shinshoInfo/artInfo参照)ため、isShinshoItem()/isArtItem()で別途判定する。
+// 写真・建築は一時的に独立した本の種類にしたことがあったが、新書・児童書・
+// 美術のような「編集フォーマットの違い」ではなく美術の中の主題(日本美術・
+// イラストと同列)に過ぎないとの指摘を受け、美術のサブジャンルに戻した
+// (オーナー指摘: 「写真と建築ってどうなの？違うでしょ」)。
 function itemBookType(m){
   if((m.genre || []).includes('児童書')) return '児童書';
-  if((m.genre || []).includes('写真')) return '写真';
-  if((m.genre || []).includes('建築')) return '建築';
   if(isShinshoItem(m)) return '新書';
   if(isArtItem(m)) return '美術';
   return null; // 小説(どの本の種類でもない)
@@ -4457,12 +4457,12 @@ function availableCountries(){
   return FILTER_COUNTRIES.filter(c => set.has(c));
 }
 
-// 小説モード限定の本の種類(小説/新書/児童書/美術/写真/建築)。この中から常に
-// 1つだけを選ぶ単一選択として扱う(「詳しく絞り込む」の中のジャンルチップの
-// 複数選択とは別物)。「小説」はこのどれも選ばれていない状態を指すだけで、
-// 実データ上の固有ジャンル値を持たない。絵本・図鑑・児童文庫・民話・むかし話は
-// 元は別々の種類だったが、どれも単独では選択肢として薄く調べにくかったため
-// 児童書に統合した(オーナー指摘: 「児童書に児童文庫と昔話いれられないかな」
+// 小説モード限定の本の種類(小説/新書/児童書/美術)。この中から常に1つだけを
+// 選ぶ単一選択として扱う(「詳しく絞り込む」の中のジャンルチップの複数選択
+// とは別物)。「小説」はこのどれも選ばれていない状態を指すだけで、実データ上の
+// 固有ジャンル値を持たない。絵本・図鑑・児童文庫・民話・むかし話は元は別々の
+// 種類だったが、どれも単独では選択肢として薄く調べにくかったため児童書に
+// 統合した(オーナー指摘: 「児童書に児童文庫と昔話いれられないかな」
 // 「絵本も一緒にしようかな。あと図鑑。」)。
 // 以前は検索欄の上に専用の切り替えバー(book-type-switch)も常時表示していたが、
 // 本の種類チップを「詳しく絞り込む」のジャンルチップ列にも出すようにした結果、
@@ -4470,11 +4470,11 @@ function availableCountries(){
 // 「ジャンルにもなんか同じ名前で入ってたけど」)。本の種類はジャンル・国・
 // 年代と同じ「詳しく絞り込む」の中に一元化する方が一貫しているため、
 // 上の専用バーは廃止しrenderGenreCloud内のチップだけに統一した。
-// 写真・建築は元は美術のサブジャンル扱いだったが、それぞれ300件前後ある
-// まとまったカテゴリにも関わらず美術の中に埋もれて見つけにくかった
-// (オーナー指摘: 「美術本から、写真でもさらに…細分化されるからやりにくい」)
-// ため、新書・児童書・美術と同列の独立した本の種類に格上げした。
-const BOOK_TYPES = ['新書', '児童書', '美術', '写真', '建築'];
+// 写真・建築は一時「本の種類」として独立させたことがあったが、新書・児童書・
+// 美術のような編集フォーマットの違いではなく美術の中の主題に過ぎないとの
+// 指摘を受け、美術のサブジャンル(ART_GENRE_NAMES)に戻した(オーナー指摘:
+// 「写真と建築ってどうなの？違うでしょ」)。
+const BOOK_TYPES = ['新書', '児童書', '美術'];
 function selectBookType(value){
   state.bookType = value;
   renderTagCloud();
@@ -4629,19 +4629,25 @@ function positionFilterTrack(animated){
 // (チップの横スクロールと競合しないよう、ドラッグの起点をタブ行だけに
 // 絞ってあるので、ジャンル・国のチップ一覧を横スクロールする操作とは
 // ぶつからない)。initCatalogSwipeGestureと同じしきい値・追従の考え方。
+// 以前はtouch系イベントだけだったため、PCのマウスドラッグでは左右スライド
+// 自体が一切反応しなかった(オーナー指摘: 「左右スライドで切り替わる
+// ようにしてほしい」)。タッチ・マウス・ペンを同じコードで扱えるPointer
+// Eventsに統一する。
 (function initFilterTabSwipe(){
   const tabs = document.getElementById('filter-tabs');
   const track = document.getElementById('filter-pages-track');
-  let startX = 0, dragging = false;
-  tabs.addEventListener('touchstart', (e) => {
-    if(e.touches.length > 1) return;
-    startX = e.touches[0].clientX;
+  let startX = 0, dragging = false, pointerId = null;
+  tabs.addEventListener('pointerdown', (e) => {
+    if(e.pointerType === 'mouse' && e.button !== 0) return;
+    startX = e.clientX;
     dragging = false;
+    pointerId = e.pointerId;
     track.style.transition = 'none';
-  }, { passive: true });
-  tabs.addEventListener('touchmove', (e) => {
-    if(e.touches.length > 1) return;
-    const dx = e.touches[0].clientX - startX;
+    tabs.setPointerCapture(pointerId);
+  });
+  tabs.addEventListener('pointermove', (e) => {
+    if(e.pointerId !== pointerId) return;
+    const dx = e.clientX - startX;
     if(!dragging){
       if(Math.abs(dx) < 10) return;
       dragging = true;
@@ -4649,11 +4655,13 @@ function positionFilterTrack(animated){
     const viewport = document.getElementById('filter-pages-viewport');
     const base = -visibleFilterIndex() * viewport.offsetWidth;
     track.style.transform = `translateX(${base + dx}px)`;
-  }, { passive: true });
-  tabs.addEventListener('touchend', (e) => {
+  });
+  const finishDrag = (e) => {
+    if(e.pointerId !== pointerId) return;
+    pointerId = null;
     if(!dragging){ positionFilterTrack(false); return; }
     dragging = false;
-    const dx = e.changedTouches[0].clientX - startX;
+    const dx = e.clientX - startX;
     const visibleKeys = FILTER_PAGE_KEYS.filter(filterPageIsVisible);
     const curPos = visibleKeys.indexOf(FILTER_PAGE_KEYS[filterPageIndex]);
     const SWIPE_MIN_DISTANCE = 40;
@@ -4665,7 +4673,9 @@ function positionFilterTrack(animated){
       }
     }
     renderFilterTabs();
-  }, { passive: true });
+  };
+  tabs.addEventListener('pointerup', finishDrag);
+  tabs.addEventListener('pointercancel', finishDrag);
 })();
 
 function toggleFilterDisclosure(){
