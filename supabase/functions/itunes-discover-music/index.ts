@@ -78,11 +78,9 @@ const GENRE_TAG_MAP: Record<string, string[]> = {
   "Industrial": ["怖い"],
 };
 const DEFAULT_TAGS = ["楽しい"];
-// 音楽アルバムは基本的に低刺激。曲名・アルバム名に明示的な注意書きが
-// あった場合だけ底上げする(映画等ほど過激な内容が付くジャンルではないため
-// シンプルなキーワード方式のみ)。
+// 音楽アルバムは基本的に低刺激。Lookup APIのcollectionExplicitnessが
+// "explicit"の時だけ底上げする(fetchExplicitness参照)。
 const BASE_TIER = 15;
-const HEAVY_WORDS = ["Explicit"];
 
 // 以前はjp/us/gb/kr/fr/deの6ヶ国しかここに無く、他の国を指定して取り込むと
 // (例: country="br")日本語化されず生のISOコード("br"等)がcountry列に
@@ -131,6 +129,44 @@ async function fetchChart(country: string, limit: number, genreId?: string) {
     }
   }
   return null;
+}
+
+// topalbumsのRSSフィード自体には露骨な表現の有無を示すフィールドが
+// そもそも存在しない(確認済み: 実際のレスポンスにrating/explicit系の
+// キーが一切無い)。以前の「タイトル文字列に"Explicit"が含まれるか」判定は
+// この前提が誤りで、実データ12,000件超のどれにも一度も一致していなかった
+// (オーナー指摘: 「音楽の表現度をどう捉えるか」で発覚)。Lookup API
+// (/lookup?id=...)はcollectionExplicitness("explicit"/"cleaned"/
+// "notExplicit")を返すため、RSSエントリに元々付いているim:id(Apple側の
+// アルバムID、既存データとの突き合わせ不要で確実)でまとめて問い合わせる。
+async function fetchExplicitness(appleIds: string[]): Promise<Map<string, boolean>> {
+  const result = new Map<string, boolean>();
+  const CHUNK = 150; // Lookup APIの実用上限に合わせて分割
+  for (let i = 0; i < appleIds.length; i += CHUNK) {
+    const chunk = appleIds.slice(i, i + CHUNK);
+    if (chunk.length === 0) continue;
+    const url = `https://itunes.apple.com/lookup?id=${chunk.join(",")}&entity=album`;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        const res = await fetch(url);
+        if (res.ok) {
+          const data = await res.json();
+          for (const r of data?.results || []) {
+            if (r?.collectionId != null) {
+              result.set(String(r.collectionId), r.collectionExplicitness === "explicit");
+            }
+          }
+          break;
+        }
+        if (res.status === 429 || res.status >= 500) { await sleep(800 * (attempt + 1)); continue; }
+        break;
+      } catch {
+        await sleep(500 * (attempt + 1));
+      }
+    }
+    await sleep(200);
+  }
+  return result;
 }
 
 // artworkUrlは末尾が"NNxNNbb.png"の形(例: 170x170bb.png)で、このNNxNNを
@@ -184,6 +220,13 @@ Deno.serve(async (req: Request) => {
     }
     const list = Array.isArray(entries) ? entries : [entries];
 
+    // RSSエントリ自身が持つim:id(Apple側のアルバムID)でLookup APIに
+    // まとめて問い合わせ、実際のcollectionExplicitnessを取得する
+    // (fetchExplicitness参照。タイトル文字列の"Explicit"判定は実データに
+    // 一度も一致しない誤った前提だったため廃止)。
+    const appleIds = list.map((e: any) => e?.id?.attributes?.["im:id"]).filter(Boolean);
+    const explicitByAppleId = await fetchExplicitness(appleIds);
+
     const rows: any[] = [];
     const estimates: any[] = [];
     const skipped: any[] = [];
@@ -202,8 +245,10 @@ Deno.serve(async (req: Request) => {
       const artworkUrl = upsizeArtwork(lastImage?.label);
       const trackCount = e?.["im:itemCount"]?.label;
 
+      const appleId = e?.id?.attributes?.["im:id"];
       const tags = (genreName && GENRE_TAG_MAP[genreName]) || DEFAULT_TAGS;
-      const level = HEAVY_WORDS.some((w) => title.includes(w)) ? 40 : BASE_TIER;
+      const isExplicit = appleId ? !!explicitByAppleId.get(appleId) : false;
+      const level = isExplicit ? 40 : BASE_TIER;
 
       rows.push({
         title,
@@ -231,13 +276,14 @@ Deno.serve(async (req: Request) => {
         is_novel: false,
         is_music: true,
         _level: level,
+        _explicit: isExplicit,
       });
     }
 
     let inserted = 0;
     let estimatesInserted = 0;
     if (!dry_run && rows.length > 0) {
-      const insertPayload = rows.map(({ _level, ...rest }) => rest);
+      const insertPayload = rows.map(({ _level, _explicit, ...rest }) => rest);
       const { data: insertedRows, error: insertErr } = await supabase
         .from("movies")
         .insert(insertPayload)
@@ -247,14 +293,19 @@ Deno.serve(async (req: Request) => {
 
       if (insertedRows?.length) {
         const levelByTitle = new Map(rows.map((r) => [normalizeTitle(r.title), r._level]));
+        // 映画等の暴力・性的・恐怖の3カテゴリは音楽には馴染まないため、
+        // 音楽だけの理由タグとして"explicit"(露骨な表現)を別途用意する
+        // (オーナー指摘: 「音楽の表現度をどう捉えるか、説明書きを変えないと」)。
+        const explicitByTitle = new Map(rows.map((r) => [normalizeTitle(r.title), r._explicit]));
         const estimateRows = insertedRows
           .map((r: any) => {
             const level = levelByTitle.get(normalizeTitle(r.title));
             if (level == null) return null;
+            const isExplicit = explicitByTitle.get(normalizeTitle(r.title));
             return {
               movie_id: r.id,
               expression_level: level,
-              reason_tags: [],
+              reason_tags: isExplicit ? ["explicit"] : [],
               source: `itunes_music_batch(${new Date().toISOString().slice(0, 10)})`,
               method: "rating_mapping",
             };

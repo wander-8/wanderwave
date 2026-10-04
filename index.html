@@ -2577,7 +2577,7 @@
 
     <div class="section-label-row">
       <div class="section-label">表現度</div>
-      <button class="info-icon" onclick="showInfo('表現度とは', '暴力・恐怖・性的表現などを含む、作品全体の刺激の強さの目安です。下の内訳で、その刺激が何による部分が大きいか(暴力・性的・恐怖、複数該当あり)がわかります。\n\nこれはみんなの投票の平均であり、絶対的な保証ではありません。特に性的表現は感じ方に個人差が大きいため、不安な場合はレビューも合わせて確認してください。\n\nなお、使い込んできたアカウントほど投票の重みが大きくなる仕組みを取り入れています。作りたてのアカウントによる荒らし行為の影響を抑えるためです。')">ⓘ</button>
+      <button class="info-icon" onclick="showExpressionInfo()">ⓘ</button>
     </div>
     <div id="expr-gauges"></div>
 
@@ -4261,21 +4261,35 @@ function loveScoreText(m){
 const REASON_INFO = {
   violence: { label: "暴力", criteria: "殴る・刺す・出血など、身体的な暴力やグロテスクな描写のこと。" },
   sexual:   { label: "性的", criteria: "キスシーン・ラブシーン・性的なほのめかしなど、性的表現のこと。感じ方には個人差が大きいため、不安な場合はレビューも合わせて確認してください。" },
-  fear:     { label: "恐怖", criteria: "驚かせる演出、じわじわ来る不安感、ホラー的な恐怖描写のこと。" }
+  fear:     { label: "恐怖", criteria: "驚かせる演出、じわじわ来る不安感、ホラー的な恐怖描写のこと。" },
+  // 音楽アルバムには「暴力・性的・恐怖」という映像作品向けの3分類が
+  // そぐわないため(オーナー指摘: 「音楽の表現度をどう捉えるか」)、
+  // 音楽専用の理由タグとして別枠で用意する(Appleの「Explicit」表示に対応)。
+  explicit: { label: "露骨な表現", criteria: "下品な言葉遣いや性的に露骨な歌詞など、Appleの「Explicit」表示が付いていること。" }
 };
+// 映像作品向け3分類(暴力・性的・恐怖)と、音楽向け(露骨な表現)は意味が
+// 重ならないため、「当てはまるもの」チップの選択肢をメディア種別で出し分ける。
+const REASON_KEYS_BY_MEDIA = {
+  music: ['explicit'],
+  default: ['violence', 'sexual', 'fear']
+};
+function reasonKeysFor(m){
+  return (m && m.isMusic) ? REASON_KEYS_BY_MEDIA.music : REASON_KEYS_BY_MEDIA.default;
+}
 
 function intensityAverage(m){
   return !m.intensityWeight ? 0 : m.intensitySum / m.intensityWeight;
 }
 
 function reasonPercentages(m){
-  const votes = m.reasonVotes || { violence: 0, sexual: 0, fear: 0 };
-  const total = votes.violence + votes.sexual + votes.fear;
-  if(total === 0) return { violence: 0, sexual: 0, fear: 0, total: 0 };
+  const votes = m.reasonVotes || { violence: 0, sexual: 0, fear: 0, explicit: 0 };
+  const total = votes.violence + votes.sexual + votes.fear + (votes.explicit || 0);
+  if(total === 0) return { violence: 0, sexual: 0, fear: 0, explicit: 0, total: 0 };
   return {
     violence: Math.round((votes.violence / total) * 100),
     sexual: Math.round((votes.sexual / total) * 100),
     fear: Math.round((votes.fear / total) * 100),
+    explicit: Math.round(((votes.explicit || 0) / total) * 100),
     total
   };
 }
@@ -5509,7 +5523,12 @@ function shiftFeatured(dir, isManual){
 }
 
 function normalizeForSearch(s){
-  return s.replace(/[・\/／\s　:：!！?？\-]/g, '').toLowerCase();
+  // 著者名の区切りが「J．K．ローリング」(全角ピリオド)「J.K. ローリング」
+  // (半角ピリオド+スペース)「J・K・ローリング」(中点)と表記ゆれしており、
+  // 中点は元々除去していたがピリオドは残っていたため、「JKローリング」で
+  // 検索しても表記が揃わず大半の作品が見つからなかった(オーナー指摘)。
+  // ピリオドも区切り記号として除去する。
+  return s.replace(/[・\/／\s　:：!！?？\-.．]/g, '').toLowerCase();
 }
 
 // 「日本映画」「邦画」のように、製作国名そのものではなく"映画のジャンルとしての
@@ -6793,14 +6812,19 @@ function renderIntensityGauge(m){
     <div class="risk-legend"><span>控えめ</span><span>軽度</span><span>やや強い</span><span>強い</span></div>
     <div class="expr-axis-count">${m.intensityCount > 0 ? `${m.intensityCount}人が評価しています` : (m.expressionEstimated ? '推定値を表示しています(投票はまだありません)' : 'まだ誰も評価していません')}</div>
 
-    ${showBreakdown ? `
+    ${showBreakdown ? (m.isMusic ? `
+      <div class="reason-breakdown">
+        <div class="reason-breakdown-title">当てはまる表現の内訳</div>
+        <div class="reason-bar-row"><span class="reason-bar-label">露骨な表現</span><div class="reason-bar-track"><div class="reason-bar-fill" style="width:${pct.explicit}%; background:#b98aa6;"></div></div><span class="reason-bar-pct">${pct.explicit}%</span></div>
+      </div>
+    ` : `
       <div class="reason-breakdown">
         <div class="reason-breakdown-title">当てはまる表現の内訳</div>
         <div class="reason-bar-row"><span class="reason-bar-label">暴力</span><div class="reason-bar-track"><div class="reason-bar-fill" style="width:${pct.violence}%; background:#d9836a;"></div></div><span class="reason-bar-pct">${pct.violence}%</span></div>
         <div class="reason-bar-row"><span class="reason-bar-label">性的</span><div class="reason-bar-track"><div class="reason-bar-fill" style="width:${pct.sexual}%; background:#b98aa6;"></div></div><span class="reason-bar-pct">${pct.sexual}%</span></div>
         <div class="reason-bar-row"><span class="reason-bar-label">恐怖</span><div class="reason-bar-track"><div class="reason-bar-fill" style="width:${pct.fear}%; background:#6b8cae;"></div></div><span class="reason-bar-pct">${pct.fear}%</span></div>
       </div>
-    ` : ''}
+    `) : ''}
   `;
 }
 
@@ -6996,7 +7020,7 @@ function renderCommunityTags(m){
 
 function renderReasonChips(m){
   const root = document.getElementById('reason-chip-select');
-  root.innerHTML = Object.keys(REASON_INFO).map(key => {
+  root.innerHTML = reasonKeysFor(m).map(key => {
     const info = REASON_INFO[key];
     const isSelected = pendingReasonTags.has(key);
     return `<div class="tagchip${isSelected ? ' active' : ''}" onclick="toggleReasonTag('${key}')">${info.label}</div>`;
@@ -8418,6 +8442,18 @@ function showInfo(title, body){
   document.getElementById('info-modal-body').textContent = body;
   document.getElementById('info-modal').style.display = 'flex';
 }
+// 「暴力・恐怖・性的表現」という内訳は映像作品向けの分類で、音楽アルバムには
+// そぐわない(歌詞の過激さはAppleの「Explicit」表示1つで扱っている)。
+// 今見ている作品が音楽かどうかで説明文を出し分ける(オーナー指摘:
+// 「音楽の表現度をどう捉えるかと、説明書きを変えないといけない」)。
+function showExpressionInfo(){
+  const m = MOVIES.find(x => x.id === state.currentMovieId);
+  const isMusic = !!(m && m.isMusic);
+  const body = isMusic
+    ? '下品な言葉遣いや性的に露骨な歌詞など、歌詞の過激さの目安です(Appleの「Explicit」表示に基づきます)。\n\nこれはみんなの投票の平均であり、絶対的な保証ではありません。\n\nなお、使い込んできたアカウントほど投票の重みが大きくなる仕組みを取り入れています。作りたてのアカウントによる荒らし行為の影響を抑えるためです。'
+    : '暴力・恐怖・性的表現などを含む、作品全体の刺激の強さの目安です。下の内訳で、その刺激が何による部分が大きいか(暴力・性的・恐怖、複数該当あり)がわかります。\n\nこれはみんなの投票の平均であり、絶対的な保証ではありません。特に性的表現は感じ方に個人差が大きいため、不安な場合はレビューも合わせて確認してください。\n\nなお、使い込んできたアカウントほど投票の重みが大きくなる仕組みを取り入れています。作りたてのアカウントによる荒らし行為の影響を抑えるためです。';
+  showInfo('表現度とは', body);
+}
 function closeInfo(){
   document.getElementById('info-modal').style.display = 'none';
 }
@@ -8774,12 +8810,14 @@ function buildMovieRecord(row, statsByMovie, estimatesByMovie){
       ? {
           violence: (estimate.reason_tags || []).includes('violence') ? 1 : 0,
           sexual: (estimate.reason_tags || []).includes('sexual') ? 1 : 0,
-          fear: (estimate.reason_tags || []).includes('fear') ? 1 : 0
+          fear: (estimate.reason_tags || []).includes('fear') ? 1 : 0,
+          explicit: (estimate.reason_tags || []).includes('explicit') ? 1 : 0
         }
       : {
           violence: s ? Number(s.reason_violence) : 0,
           sexual: s ? Number(s.reason_sexual) : 0,
-          fear: s ? Number(s.reason_fear) : 0
+          fear: s ? Number(s.reason_fear) : 0,
+          explicit: s ? Number(s.reason_explicit) : 0
         }
   };
 }
@@ -10129,7 +10167,8 @@ function toggleMlTag(tag){
 
 function renderMlReasonSelect(){
   const el = document.getElementById('ml-reason-select');
-  el.innerHTML = Object.keys(REASON_INFO).map(key => {
+  const linked = mlSelectedMovieId ? MOVIES.find(x => x.id === mlSelectedMovieId) : null;
+  el.innerHTML = reasonKeysFor(linked).map(key => {
     const info = REASON_INFO[key];
     const isSelected = mlSelectedReasons.has(key);
     return `<div class="tagchip${isSelected ? ' active' : ''}" onclick="toggleMlReason('${key}')">${info.label}</div>`;
