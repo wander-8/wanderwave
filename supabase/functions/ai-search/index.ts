@@ -86,8 +86,16 @@ Deno.serve(async (req: Request) => {
             description: "「海外の」「日本の」のように国籍への言及が明確な場合だけ。",
           },
           decade: decadeProperty,
+          searchKeyword: {
+            type: "string",
+            description: "感情タグ・ジャンル・国・年代のどれにも当てはまらない、具体的な見た目・" +
+              "設定・物の名前・ストーリーの詳細(「赤いドレス」「双子」「猫」「転生」等)があれば、" +
+              "そのまま検索欄に入力されるような短い単語・フレーズを1つだけ入れる(タイトル・あらすじ・" +
+              "キーワード欄に対する部分一致検索に使う)。該当する具体的な要素が無ければ空文字列。" +
+              "文章全体や長い説明文はそのまま入れない(部分一致なので短いほど当たりやすい)。",
+          },
         },
-        required: ["emotionTags", "genres", "countries"],
+        required: ["emotionTags", "genres", "countries", "searchKeyword"],
       },
     };
 
@@ -102,15 +110,20 @@ Deno.serve(async (req: Request) => {
       "  例えば「何か面白いの無い?」のような曖昧な文章では、ほとんど何も選ばなくてよい。",
       "- 感情タグは最大2〜3個まで。選びすぎて絞り込みすぎないようにする。",
       "- 年代は「80年代の」「最近の」のように時代への言及が明確な時だけ選ぶ。",
-      "- 特に重要: このツールが扱えるのは感情タグ・ジャンル・国・年代の4種類だけで、",
-      "  「赤いドレスが出てくる」「主人公が双子」のような具体的な見た目・設定・",
-      "  ストーリーの詳細はそもそも変換先が存在しない。そのような部分は無視して",
-      "  構わない(近そうな感情タグに無理やり寄せない)。例えば「赤いドレスの",
-      "  怖い映画」なら、怖いジャンルの作品は選んでよいが、赤いドレスという",
-      "  視覚的な特徴だけを理由に「美しい」のような感情タグを足すと、本来",
+      "- 特に重要: emotionTags・genres・countries・decadeの4つは感情タグ・ジャンル・国・",
+      "  年代専用で、「赤いドレスが出てくる」「主人公が双子」のような具体的な見た目・",
+      "  設定・ストーリーの詳細はそもそも変換先が無い。そのような部分を理由に",
+      "  近そうな感情タグ(例:赤いドレス→「美しい」)を無理やり足すと、本来",
       "  ヒットすべき作品まで絞り込みから漏れてしまうので絶対にしないこと。",
       "  感情タグは、文章が本当に「怖い」「感動する」「ワクワクする」等の",
       "  気分・感情そのものを言っている時だけ選ぶ。",
+      "- その代わり、具体的な見た目・設定・物の名前・ストーリーの詳細は",
+      "  searchKeywordに短い単語・フレーズとして入れる。これはタイトル・あらすじ・",
+      "  キーワード欄への部分一致検索に使われるので、文章全体ではなく検索に",
+      "  使えそうな核心的な語を1つだけ選ぶこと(例:「赤いドレスの怖い映画」→",
+      "  searchKeyword:\"赤いドレス\"。「主人公が双子の漫画」→searchKeyword:\"双子\"。",
+      "  「猫が出てくる映画」→searchKeyword:\"猫\")。該当する具体的な要素が文章に",
+      "  無ければ空文字列のままにする。",
       "",
       `選べる感情タグ: ${emotionTags.join("、") || "(なし)"}`,
       `選べるジャンル: ${genres.join("、") || "(なし)"}`,
@@ -157,6 +170,7 @@ Deno.serve(async (req: Request) => {
     const resultGenres = sanitizeList(input.genres, genres);
     const resultCountries = sanitizeList(input.countries, countries);
     const resultDecade = typeof input.decade === "number" && decades.includes(input.decade) ? input.decade : null;
+    const resultSearchKeyword = typeof input.searchKeyword === "string" ? input.searchKeyword.trim().slice(0, 40) : "";
 
     return new Response(
       JSON.stringify({
@@ -164,6 +178,7 @@ Deno.serve(async (req: Request) => {
         genres: resultGenres,
         countries: resultCountries,
         decade: resultDecade,
+        searchKeyword: resultSearchKeyword,
       }),
       { headers: jsonHeaders },
     );

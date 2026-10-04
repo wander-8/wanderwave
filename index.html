@@ -4838,13 +4838,22 @@ async function submitAiSearch(){
     if(error) throw error;
     if(data?.error) throw new Error(data.error);
 
-    state.activeTags = new Set(data.emotionTags || []);
-    state.activeGenres = new Set(data.genres || []);
-    state.activeCountries = new Set(data.countries || []);
-    state.decadeFilter = (data.decade != null && decades.includes(data.decade)) ? data.decade : 0;
-    state.query = "";
+    const keyword = (data.searchKeyword || "").trim();
+    // 「赤いドレス」「双子」のような具体的なキーワードが拾えた時は、それを
+    // 検索欄にそのまま反映して通常の部分一致検索に任せる。感情タグ・ジャンル・
+    // 国・年代は主観的/大雑把な絞り込みで、AND条件にすると具体的な要素を
+    // 持つ当の作品まで弾いてしまうことがある(実例:「赤いドレスの怖い映画」で
+    // 実際にヒットする唯一の作品がジャンル「ホラー」を持っておらず、ジャンル
+    // 絞り込みと併用すると0件になっていた)。キーワードが取れた時は、感情タグに
+    // 限らずジャンル・国・年代も一切足さず、キーワード単体の検索に任せる
+    // (オーナー指摘: 「感情タグで探させないで拾ったキーワードから作品出して」)。
+    state.activeTags = new Set(keyword ? [] : (data.emotionTags || []));
+    state.activeGenres = new Set(keyword ? [] : (data.genres || []));
+    state.activeCountries = new Set(keyword ? [] : (data.countries || []));
+    state.decadeFilter = (!keyword && data.decade != null && decades.includes(data.decade)) ? data.decade : 0;
+    state.query = keyword;
     state.crossMediaSearch = false;
-    input.value = "";
+    input.value = keyword;
 
     renderTagCloud();
     renderGenreCloud();
@@ -4853,10 +4862,11 @@ async function submitAiSearch(){
     renderResults();
 
     const appliedParts = [
+      ...(keyword ? [`「${keyword}」`] : []),
       ...state.activeTags, ...state.activeGenres, ...state.activeCountries,
       ...(state.decadeFilter ? [decadeLabel(state.decadeFilter)] : []),
     ];
-    showToast(appliedParts.length ? `「${appliedParts.join('・')}」で絞り込みました` : '特に絞り込める条件が見つかりませんでした');
+    showToast(appliedParts.length ? `${appliedParts.join('・')}で絞り込みました` : '特に絞り込める条件が見つかりませんでした');
   }catch(err){
     console.error('AI検索に失敗しました', err);
     showToast('AI検索に失敗しました。時間をおいて再度お試しください');
