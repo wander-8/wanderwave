@@ -2957,7 +2957,7 @@
       <div class="pocket-divider"></div>
 
       <div class="section-label-row">
-        <div class="section-label">視聴記録</div>
+        <div class="section-label">記録</div>
         <button class="link-btn" onclick="goMyLogForm()">+ 記録を書く</button>
       </div>
       <div id="viewing-record-list"></div>
@@ -3095,15 +3095,15 @@
   <div class="view" id="view-mylog-form">
     <button class="back-btn" onclick="goProfile()">← プロフィールに戻る</button>
     <div class="detail-head">
-      <h2 id="mylog-heading">視聴ログを書く</h2>
-      <div class="sub">観た映画の記録。あなただけが見られます</div>
+      <h2 id="mylog-heading">記録を書く</h2>
+      <div class="sub">見た・読んだ・聴いた作品の記録。あなただけが見られます</div>
     </div>
 
     <div class="form-grid">
       <div class="field">
-        <label>映画のタイトル</label>
+        <label>作品のタイトル</label>
         <div class="autocomplete-wrap">
-          <input class="field-input" id="ml-title" placeholder="映画のタイトル" autocomplete="off"
+          <input class="field-input" id="ml-title" placeholder="作品のタイトル" autocomplete="off"
             oninput="onMlTitleInput()" onblur="hideMlTitleSuggestionsSoon()">
           <div id="ml-title-suggestions" class="autocomplete-list" style="display:none;"></div>
         </div>
@@ -3322,7 +3322,7 @@
     <button class="back-btn" onclick="goProfile()">← プロフィールに戻る</button>
     <div class="detail-head">
       <div style="display:flex; align-items:baseline; justify-content:space-between; gap:10px;">
-        <h2>視聴記録</h2>
+        <h2>記録</h2>
         <span id="viewing-record-count" class="sub" style="margin-bottom:0; flex-shrink:0;"></span>
       </div>
       <div class="sub">これまでの記録を、新しい順に並べています</div>
@@ -10043,7 +10043,7 @@ function renderViewingRecord(){
 
   const entries = buildViewingRecordEntries();
   if(!entries.length){
-    root.innerHTML = '<div class="empty" style="padding:16px 0;">まだ記録がありません。映画を追加したり、レビューや視聴ログを書くとここに積み重なっていきます。</div>';
+    root.innerHTML = '<div class="empty" style="padding:16px 0;">まだ記録がありません。作品を追加したり、レビューや記録を書くとここに積み重なっていきます。</div>';
     moreBtn.style.display = 'none';
     return;
   }
@@ -10075,7 +10075,7 @@ function goMyLogForm(logId){
   mlSelectedReasons = new Set(log && log.reason_tags ? log.reason_tags : []);
   mlSelectedMovieId = log ? (log.movie_id || null) : null;
 
-  document.getElementById('mylog-heading').textContent = log ? '視聴ログを編集' : '視聴ログを書く';
+  document.getElementById('mylog-heading').textContent = log ? '記録を編集' : '記録を書く';
   document.getElementById('ml-title').value = log ? log.movie_title : '';
   document.getElementById('ml-title-suggestions').style.display = 'none';
   document.getElementById('ml-title-linked-note').style.display = mlSelectedMovieId ? 'block' : 'none';
@@ -10179,11 +10179,11 @@ async function saveMyLog(){
     if(mlEditingId != null){
       const { error } = await supabase.from('movie_logs').update(payload).eq('id', mlEditingId).eq('user_id', userId);
       if(error) throw error;
-      showToast('視聴ログを更新しました');
+      showToast('記録を更新しました');
     } else {
       const { error } = await supabase.from('movie_logs').insert(payload);
       if(error) throw error;
-      showToast(`視聴ログを記録しました。${randomThanks()}`);
+      showToast(`記録をつけました。${randomThanks()}`);
       feedbackSuccess();
     }
     await loadMyLogs();
@@ -10201,7 +10201,7 @@ async function deleteMyLogConfirm(){
   try{
     const { error } = await supabase.from('movie_logs').delete().eq('id', mlEditingId).eq('user_id', userId);
     if(error) throw error;
-    showToast('視聴ログを削除しました');
+    showToast('記録を削除しました');
     await loadMyLogs();
     goProfile();
   }catch(err){
