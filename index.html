@@ -290,10 +290,10 @@
   }
 
   .ai-search-btn{
-    display:block; width:100%; margin-top:8px;
     background: linear-gradient(135deg, var(--plum), var(--love));
-    color:#fff; border:none; border-radius:12px;
-    padding: 10px 16px; font-weight:600; font-size:14px;
+    color:#fff; border:none; border-radius:10px;
+    padding: 0 16px; font-weight:600; font-size:14px;
+    white-space: nowrap;
     cursor:pointer;
     transition: opacity .18s ease, transform .12s ease;
   }
@@ -2428,16 +2428,18 @@
            図鑑/新書はこの4つから1つだけ選ぶ単一選択として扱う)。 -->
       <div class="book-type-switch" id="book-type-switch" style="display:none;"></div>
 
+      <!-- 以前は「検索」ボタンとは別に「✨AIで絞り込む」ボタンを並べていたが、
+           2つもボタンがあると分かりにくいとの指摘を受け、検索の実行そのものに
+           AI変換を組み込んだ(オーナー指摘: 「AI絞り込みを普通に検索の中に
+           取り込んで今ついてるボタン外していい」)。入力中のライブ絞り込み
+           (oninput)は今まで通り無料・即時のローカル部分一致のままにして、
+           実際に検索を確定させた時(検索ボタン・Enter)だけAIを呼ぶ
+           (毎回のキー入力では呼ばない、コスト・速度の両面で論外なのは変わらない)。 -->
       <div class="search-box">
-        <input type="text" id="search-input" placeholder="作品名・ジャンル・雰囲気で探す" oninput="onSearchInput()">
+        <input type="text" id="search-input" placeholder="作品名・ジャンル・雰囲気で探す" oninput="onSearchInput()" onkeydown="if(event.key==='Enter'){ event.preventDefault(); this.blur(); submitSearch(); }">
         <button class="search-clear-btn" id="search-clear-btn" onclick="clearSearch()" style="display:none;">×</button>
-        <button onclick="onSearchInput()">検索</button>
+        <button class="ai-search-btn" id="ai-search-btn" onclick="submitSearch()">✨ 検索</button>
       </div>
-      <!-- AI検索: 入力欄の文章をそのまま一致検索するのではなく、Claudeに
-           感情タグ・ジャンル・国・年代の絞り込みへ変換してもらうボタン。
-           毎回のキー入力(oninput)では呼ばない(コスト・速度の両面で論外)
-           ので、既存の検索ボタンとは別に置く。 -->
-      <button class="ai-search-btn" id="ai-search-btn" onclick="submitAiSearch()">✨ AIで絞り込む</button>
       <div class="tag-cloud" id="tag-cloud"></div>
 
       <div class="intensity-filter" id="intensity-filter" style="display:none;">
@@ -4812,14 +4814,17 @@ function goPersonSearch(name){
   window.scrollTo({ top: 0, behavior: 'instant' });
 }
 
-// AI検索: 入力欄の自由文を、今のカタログモードで実際に選べる感情タグ・
-// ジャンル・国・年代だけに絞ってAIに渡し、既存の「詳しく絞り込む」の
-// チップ選択へ変換してもらう(ai-search関数参照。新しい検索の仕組みを
-// 増やすのではなく、既存の絞り込み操作をAIが代わりにやるだけ)。
-async function submitAiSearch(){
+// 検索の確定操作(検索ボタン・Enter)。入力欄の自由文を、今のカタログ
+// モードで実際に選べる感情タグ・ジャンル・国・年代だけに絞ってAIに渡し、
+// 既存の「詳しく絞り込む」のチップ選択へ変換してもらう(ai-search関数
+// 参照。新しい検索の仕組みを増やすのではなく、既存の絞り込み操作をAIが
+// 代わりにやるだけ)。以前は専用の「✨AIで絞り込む」ボタンを別出ししていたが、
+// 二度手間で分かりにくいとの指摘を受け、検索の確定操作そのものに統合した
+// (オーナー指摘: 「AI絞り込みを普通に検索の中に取り込んでボタン外していい」)。
+async function submitSearch(){
   const input = document.getElementById('search-input');
   const query = input.value.trim();
-  if(!query){ showToast('どんな作品を探しているか、文章で入力してね'); return; }
+  if(!query){ onSearchInput(); return; }
 
   const btn = document.getElementById('ai-search-btn');
   const originalLabel = btn.textContent;
@@ -4868,8 +4873,11 @@ async function submitAiSearch(){
     ];
     showToast(appliedParts.length ? `${appliedParts.join('・')}で絞り込みました` : '特に絞り込める条件が見つかりませんでした');
   }catch(err){
+    // AI側が落ちていても検索そのものを止めない(今はこれが唯一の検索確定
+    // 操作なので、失敗時は普通の部分一致検索にフォールバックする)。
     console.error('AI検索に失敗しました', err);
-    showToast('AI検索に失敗しました。時間をおいて再度お試しください');
+    onSearchInput();
+    showToast('AIでの絞り込みに失敗したため、通常の検索で表示しています');
   }finally{
     btn.disabled = false;
     btn.textContent = originalLabel;
