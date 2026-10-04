@@ -243,22 +243,6 @@
     line-height: 1.5;
   }
 
-  /* 検索欄より控えめな、小説モード限定の本の種類切り替え(小説/絵本/図鑑/新書)。
-     検索欄と見た目の差がはっきり付くよう、文字を小さく・背景を透明気味にしてある。 */
-  .book-type-switch{
-    display:flex; gap:6px; flex-wrap:wrap;
-    margin-bottom:8px;
-  }
-  .book-type-switch-item{
-    font-size:12px; padding:5px 11px;
-    border-radius:999px; border:1px solid var(--line);
-    background:transparent; color:var(--ink-soft);
-    cursor:pointer; font-family:inherit;
-  }
-  .book-type-switch-item.active{
-    background: var(--plum-btn); border-color: var(--plum-btn); color:#fff;
-  }
-
   .search-box{
     display:flex; gap:8px;
     background: var(--surface);
@@ -2425,13 +2409,6 @@
            物が多すぎる」)との指摘を受けて削除した。何のサイトかは検索欄の
            placeholderと直後の感情タグで十分伝わる。 -->
 
-      <!-- 小説モード限定: 絵本・図鑑・新書は「詳しく絞り込む」の中のジャンル
-           チップの1つに過ぎず、開かないと存在に気づけなかった。検索欄より
-           目立たない小さい切り替えとして、検索欄のすぐ上に常時出しておく
-           (「詳しく絞り込む」のジャンルチップとは見た目を変え、小説/絵本/
-           図鑑/新書はこの4つから1つだけ選ぶ単一選択として扱う)。 -->
-      <div class="book-type-switch" id="book-type-switch" style="display:none;"></div>
-
       <!-- 以前は「検索」ボタンとは別に「✨AIで絞り込む」ボタンを並べていたが、
            2つもボタンがあると分かりにくいとの指摘を受け、検索の実行そのものに
            AI変換を組み込んだ(オーナー指摘: 「AI絞り込みを普通に検索の中に
@@ -3898,13 +3875,13 @@ const TAG_COLORS = {
 
 // 「詳しく絞り込む」に出すジャンル・国の候補。moviesテーブル全体を集計した際に
 // 件数の多い主要なものだけに絞ってあり、表記ゆれ的な少数派(「犯罪」「伝記」等)は含めない。
-// 絵本・図鑑・新書そのものは「詳しく絞り込む」のジャンルチップには出さない
-// (book-type-switch(小説/絵本/図鑑/新書の単一選択)で既に選べるため、
-// 同じ値がジャンルチップにも重複して出ると紛らわしいという指摘を受けて除外)。
-// ただし新書だけは中身(人文・ビジネス・暮らし等)のサブジャンルが実在する
-// ので、新書を選んだ時に意味のある絞り込みができるよう、そのサブジャンル名は
-// 通常のジャンルと同列にここへ含める(rakuten-discover-novelのshinshoInfo
-// 参照)。
+// 新書・児童書・美術そのものは「詳しく絞り込む」のジャンルチップ(このFILTER_GENRES
+// から選ばれる方)には出さない。これらは本の種類(renderGenreCloud内でBOOK_TYPESを
+// 先頭に混ぜるチップ)として別の単一選択の仕組みで選べるため、同じ値を通常のジャンル
+// チップにも重複して含めると紛らわしい。ただし新書・美術は中身(人文・ビジネス・暮らし/
+// 日本美術・写真・建築等)のサブジャンルが実在するので、それぞれを選んだ時に意味のある
+// 絞り込みができるよう、そのサブジャンル名は通常のジャンルと同列にここへ含める
+// (rakuten-discover-novelのshinshoInfo/artInfo参照)。
 // 音楽のジャンルは以前J-Pop/K-Pop/Rock/Classical/Anime/Hip Hop/Rapの6つしか
 // 出しておらず、実際のカタログにはiTunesの実データとして200種類近い
 // ジャンル文字列が付いている(集計して確認済み)のに、ほとんどが「詳しく
@@ -4413,17 +4390,14 @@ function isShinshoItem(m){
 function isArtItem(m){
   return (m.genre || []).some(g => ART_GENRE_NAMES.includes(g));
 }
-// 1冊がどの本の種類か(novelモード限定の分類)。絵本・図鑑は実データ上
-// genreに"絵本"/"図鑑"がそのまま入るので直接判定できるが、新書・美術は
-// サブジャンルが判明している商品ほどgenreに「新書」「美術」という文字列が
-// 入らない(shinshoInfo/artInfo参照)ため、isShinshoItem()/isArtItem()で
-// 別途判定する。
+// 1冊がどの本の種類か(novelモード限定の分類)。児童書は実データ上
+// genreに"児童書"がそのまま入るので直接判定できる(絵本・図鑑・児童文庫・
+// 民話・むかし話はいずれも単独では薄いジャンルだったため全て児童書に
+// 統合済み/オーナー指摘)。新書・美術は逆にサブジャンルが判明している
+// 商品ほどgenreに「新書」「美術」という文字列が入らない(shinshoInfo/
+// artInfo参照)ため、isShinshoItem()/isArtItem()で別途判定する。
 function itemBookType(m){
-  if((m.genre || []).includes('絵本')) return '絵本';
-  if((m.genre || []).includes('図鑑')) return '図鑑';
   if((m.genre || []).includes('児童書')) return '児童書';
-  if((m.genre || []).includes('児童文庫')) return '児童文庫';
-  if((m.genre || []).includes('民話・むかし話')) return '民話・むかし話';
   if(isShinshoItem(m)) return '新書';
   if(isArtItem(m)) return '美術';
   return null; // 小説(どの本の種類でもない)
@@ -4462,36 +4436,22 @@ function availableCountries(){
   return FILTER_COUNTRIES.filter(c => set.has(c));
 }
 
-// 小説モード限定の本の種類切り替え(小説/絵本/図鑑/新書/児童書/児童文庫/
-// 民話・むかし話)。この中から常に1つだけを選ぶ単一選択として扱う
-// (「詳しく絞り込む」の中のジャンルチップの複数選択とは別物)。「小説」は
-// このどれも選ばれていない状態を指すだけで、実データ上の固有ジャンル値を
-// 持たない。児童書・児童文庫・民話は絵本・図鑑と同じ親ジャンル(楽天の
-// 001003=絵本・児童書・図鑑)の兄弟で、実件数(児童書16,649件・児童文庫
-// 7,537件・民話747件)を確認した上で追加した。
-const BOOK_TYPES = ['絵本', '図鑑', '新書', '児童書', '児童文庫', '民話・むかし話', '美術'];
-function renderBookTypeSwitch(){
-  const wrap = document.getElementById('book-type-switch');
-  // 以前は絵本・図鑑・新書を選んでいる間「詳しく絞り込む」ごと隠していたが、
-  // 絵本には国(日本/海外)の区分が実在する(isForeignBook参照)し、年代は
-  // どの本の種類でも常に何かしら出る。ジャンル・国それぞれの空き具合は
-  // renderFilterTabs側でタブ単位にすでに判定済みなので、ここで丸ごと隠すのは
-  // やめ、タブの出し分けに任せる(オーナー指摘: 絵本で国別を見たかった)。
-  if(currentCatalogMode() !== 'novel'){
-    wrap.style.display = 'none';
-    return;
-  }
-  wrap.style.display = 'flex';
-  const current = state.bookType;
-  const items = [{ label: '小説', value: null }, ...BOOK_TYPES.map(t => ({ label: t, value: t }))];
-  wrap.innerHTML = items.map(({ label, value }) => {
-    const active = value === current;
-    return `<button class="book-type-switch-item${active ? ' active' : ''}" onclick="selectBookType(${value ? `'${value}'` : 'null'})">${label}</button>`;
-  }).join('');
-}
+// 小説モード限定の本の種類(小説/新書/児童書/美術)。この中から常に1つだけを
+// 選ぶ単一選択として扱う(「詳しく絞り込む」の中のジャンルチップの複数選択
+// とは別物)。「小説」はこのどれも選ばれていない状態を指すだけで、実データ上の
+// 固有ジャンル値を持たない。絵本・図鑑・児童文庫・民話・むかし話は元は別々の
+// 種類だったが、どれも単独では選択肢として薄く調べにくかったため児童書に
+// 統合した(オーナー指摘: 「児童書に児童文庫と昔話いれられないかな」
+// 「絵本も一緒にしようかな。あと図鑑。」)。
+// 以前は検索欄の上に専用の切り替えバー(book-type-switch)も常時表示していたが、
+// 本の種類チップを「詳しく絞り込む」のジャンルチップ列にも出すようにした結果、
+// 同じ名前のボタンが画面に二重に出て紛らわしくなった(オーナー指摘:
+// 「ジャンルにもなんか同じ名前で入ってたけど」)。本の種類はジャンル・国・
+// 年代と同じ「詳しく絞り込む」の中に一元化する方が一貫しているため、
+// 上の専用バーは廃止しrenderGenreCloud内のチップだけに統一した。
+const BOOK_TYPES = ['新書', '児童書', '美術'];
 function selectBookType(value){
   state.bookType = value;
-  renderBookTypeSwitch();
   renderTagCloud();
   renderGenreCloud();
   renderCountryCloud();
@@ -4520,16 +4480,19 @@ function renderZigzagChips(container, items, buildChip){
 function renderGenreCloud(){
   const el = document.getElementById('genre-cloud');
   const genres = availableGenres();
-  // 絵本・図鑑・新書等の「本の種類」は検索欄の上の切り替え(book-type-switch)
-  // だけで選べる形だったが、「詳しく絞り込む」の中を見ても見つからず
-  // 分かりにくいとの指摘を受けた(オーナー指摘: 「調べにくい」)。本の種類は
-  // 単一選択(小説/絵本/図鑑…のどれか1つ)なので、複数選択のジャンル
-  // チップ(state.activeGenres)とは仕組みが別のまま、見た目だけ同じ
-  // チップ列の先頭に混ぜて出す(クリック時の挙動はselectBookTypeに振り分ける)。
+  // 新書/児童書/美術の「本の種類」は、以前は検索欄の上の専用バーだけで
+  // 選べる形だったが「詳しく絞り込む」の中を見ても見つからず分かりにくい
+  // との指摘を受けた(オーナー指摘: 「調べにくい」)。その後専用バーと
+  // ここのチップが両方残って同じ名前が二重に出る状態になったため
+  // (オーナー指摘: 「ジャンルにもなんか同じ名前で入ってたけど」)、
+  // 専用バーは廃止しここに一本化した。本の種類は単一選択(小説/新書/
+  // 児童書/美術のどれか1つ)なので、複数選択のジャンルチップ
+  // (state.activeGenres)とは仕組みが別のまま、見た目だけ同じチップ列の
+  // 先頭に混ぜて出す(クリック時の挙動はselectBookTypeに振り分ける)。
   const bookTypeChips = currentCatalogMode() === 'novel' ? BOOK_TYPES : [];
-  // 絵本・図鑑のように、そもそも楽天側にサブジャンルの区分が存在しない
-  // 本の種類を選んでいる時はジャンルチップが1つも無くなる(新書の
-  // サブジャンルやgenre側の値と重複しないよう、"絵本""図鑑"自体は
+  // 児童書のように、そもそも楽天側にサブジャンルの区分が存在しない
+  // 本の種類を選んでいる時はジャンルチップが1つも無くなる(新書・美術の
+  // サブジャンルやgenre側の値と重複しないよう、"児童書"自体は
   // FILTER_GENRESに含めていないため)。本の種類チップ自体は常に出せるので、
   // 「欄ごと隠す」判定はジャンルチップの有無だけでなく本の種類チップの
   // 有無も見る。
@@ -4840,7 +4803,6 @@ function goPersonSearch(name){
   renderGenreCloud();
   renderCountryCloud();
   renderDecadeCloud();
-  renderBookTypeSwitch();
   renderResults();
   window.scrollTo({ top: 0, behavior: 'instant' });
 }
@@ -4942,7 +4904,6 @@ function clearSearch(){
   renderGenreCloud();
   renderCountryCloud();
   renderDecadeCloud();
-  renderBookTypeSwitch();
   renderResults();
 }
 
@@ -11707,7 +11668,6 @@ async function init(){
   renderGenreCloud();
   renderDecadeCloud();
   renderCountryCloud();
-  renderBookTypeSwitch();
   renderResults();
   renderFormTags();
   renderFormPlatforms();
