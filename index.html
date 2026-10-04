@@ -789,9 +789,14 @@
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
     margin-bottom: 4px;
   }
+  .review-feed-name-row{
+    display: flex; align-items: center; gap: 6px;
+    margin-bottom: 4px;
+  }
+  .review-feed-name-row .avatar{ width: 18px; height: 18px; font-size: 9px; flex-shrink: 0; }
   .review-feed-name{
     font-size: 11px; color: var(--love); font-weight: 600;
-    margin-bottom: 4px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   }
   .review-feed-body{
     font-size: 12.5px; color: var(--ink-soft);
@@ -1546,7 +1551,9 @@
     background: var(--surface); border:1px solid var(--line);
     border-radius: 12px; padding: 14px 16px; margin-bottom: 10px;
   }
-  .review-card .r-name{ font-size:13.5px; font-weight:600; color:var(--plum-deep); margin-bottom:6px; }
+  .r-header{ display:flex; align-items:center; gap:8px; margin-bottom:6px; }
+  .r-header .avatar{ width:26px; height:26px; font-size:11px; flex-shrink:0; }
+  .review-card .r-name{ font-size:13.5px; font-weight:600; color:var(--plum-deep); margin-bottom:0; }
   .review-card .r-body{ font-size:15px; line-height:1.7; color: var(--ink); }
   .r-actions{ display:flex; gap:12px; margin-top:8px; }
   .r-action-btn{
@@ -1682,6 +1689,10 @@
   .form-actions{ display:flex; gap:10px; margin-top: 8px; }
 
   /* ---- profile / registration ---- */
+  #profile-edit-form{
+    overflow: hidden;
+    transition: max-height .3s cubic-bezier(.22,.8,.32,1), opacity .25s ease;
+  }
   .avatar-color-select{ display:flex; gap:10px; }
   .avatar-photo-row{ display:flex; gap:8px; margin-top:10px; }
   .photo-crop-area{
@@ -2887,7 +2898,7 @@
             <input type="file" id="p-photo-input" accept="image/*" style="display:none;" onchange="onProfilePhotoSelected(event)">
           </div>
           <div id="p-photo-editor" style="display:none; margin-top:12px;">
-            <div class="note" style="margin-bottom:8px;">ドラッグして位置を調整できます。最初は写真全体が見える大きさです。</div>
+            <div class="note" style="margin-bottom:8px;">ドラッグして自由に位置を調整できます(そのまま反映されます)。最初は写真全体が見える大きさです。</div>
             <div id="p-photo-crop-area" class="photo-crop-area">
               <div id="p-photo-crop-img" class="photo-crop-img"></div>
             </div>
@@ -2896,7 +2907,6 @@
               <input type="range" id="p-photo-zoom" class="photo-zoom-slider" min="100" max="250" value="100" oninput="onAvatarZoomInput(this.value)">
               <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3M11 8v6M8 11h6"/></svg>
             </div>
-            <button class="ghost-btn small-btn" type="button" onclick="confirmAvatarPosition()" style="width:100%; margin-top:10px;">この位置に決定</button>
           </div>
         </div>
 
@@ -3983,7 +3993,7 @@ async function loadRecentReviews(){
   try{
     const { data, error } = await supabase
       .from('movie_reviews')
-      .select('movie_id, review_text, created_at, profiles(user_name)')
+      .select('movie_id, review_text, created_at, profiles(user_name, avatar_color, avatar_photo_url)')
       .not('review_text', 'is', null)
       .order('created_at', { ascending: false })
       .limit(20);
@@ -5213,12 +5223,17 @@ function renderHomeRows(){
       const typeInfo = mediaTypeInfo(m);
       const rawName = (r.profiles && r.profiles.user_name) || 'ゲスト';
       const displayName = REVIEW_NAME_HIDDEN.has(rawName) ? 'ゲスト' : rawName;
+      const hasPhoto = !REVIEW_NAME_HIDDEN.has(rawName) && !!(r.profiles && r.profiles.avatar_photo_url);
+      const avatarColor = (r.profiles && r.profiles.avatar_color) || '#3a3a40';
       return `
         <div class="review-feed-card" onclick="goDetail(${m.id})" style="border-left-color:${typeInfo.color};">
           <div class="review-feed-poster" style="background:${m.posterColor}">${posterImg}</div>
           <div class="review-feed-type" style="color:${typeInfo.color};">${typeInfo.label}</div>
           <div class="review-feed-title">${m.title}</div>
-          <div class="review-feed-name">${escapeHtml(displayName)}</div>
+          <div class="review-feed-name-row">
+            <div class="avatar rf-avatar" ${hasPhoto ? `data-photo="${escapeHtml(r.profiles.avatar_photo_url)}"` : ''} style="background:${hasPhoto ? 'transparent' : avatarColor};">${hasPhoto ? '' : escapeHtml(displayName.charAt(0))}</div>
+            <div class="review-feed-name">${escapeHtml(displayName)}</div>
+          </div>
           <div class="review-feed-body">${escapeHtml(snippet)}</div>
         </div>
       `;
@@ -5245,6 +5260,12 @@ function renderHomeRows(){
   }
 
   root.innerHTML = html;
+  // カード列は継ぎ目のない無限スクロール用に2回複製して挿入しているため、
+  // id指定だと後半分がgetElementByIdで拾えない。class+data属性で全件に
+  // 適用する(オーナー指摘: 「アイコンをみんなの声にもつけてほしい」)。
+  document.querySelectorAll('.rf-avatar[data-photo]').forEach(el => {
+    applyAvatarPhoto(el, el.dataset.photo, 50, 50, 100);
+  });
   initAutoScrollMarquee('review-feed-marquee', 'review-feed-track');
 }
 
@@ -8091,14 +8112,30 @@ function renderVisibleReviews(){
     const text = r.review_text;
     const isLong = text.length > REVIEW_PREVIEW_LEN;
     const bodyId = `r-body-${start + i}`;
+    const name = (r.profiles && r.profiles.user_name) || 'ゲスト';
+    const hasPhoto = !!(r.profiles && r.profiles.avatar_photo_url);
+    const avatarColor = (r.profiles && r.profiles.avatar_color) || '#3a3a40';
     return `
     <div class="review-card">
-      <div class="r-name">${escapeHtml((r.profiles && r.profiles.user_name) || 'ゲスト')}</div>
+      <div class="r-header">
+        <div class="avatar" id="r-avatar-${start + i}" style="background:${hasPhoto ? 'transparent' : avatarColor};">${hasPhoto ? '' : escapeHtml(name.charAt(0))}</div>
+        <div class="r-name">${escapeHtml(name)}</div>
+      </div>
       <div class="r-body" id="${bodyId}" data-full="${escapeHtml(text)}" data-preview="${escapeHtml(text.slice(0, REVIEW_PREVIEW_LEN))}" data-expanded="0">${escapeHtml(isLong ? text.slice(0, REVIEW_PREVIEW_LEN) + '…' : text)}</div>
       ${isLong ? `<button class="link-btn" onclick="toggleReviewBodyExpand('${bodyId}')" id="${bodyId}-btn">続きを読む</button>` : ''}
     </div>
   `;
   }).join('');
+
+  // アイコン画像は写真の切り抜き倍率計算(applyAvatarPhoto)が必要なため、
+  // HTML文字列の組み立てでは済ませず、挿入後にDOM要素へ適用する
+  // (一覧には位置/ズームまでは保存していないので中央寄せのcoverで表示)。
+  visible.forEach((r, i) => {
+    const photo = r.profiles && r.profiles.avatar_photo_url;
+    if(!photo) return;
+    const el = document.getElementById(`r-avatar-${start + i}`);
+    if(el) applyAvatarPhoto(el, photo, 50, 50, 100);
+  });
 
   document.getElementById('d-reviews-count').textContent = reviewsList.length > 0 ? `${reviewsList.length}件` : '';
 
@@ -9617,6 +9654,11 @@ function setupPhotoCropEditor(){
     pendingAvatarPosX = Math.max(0, Math.min(100, cropDragState.posX - dx));
     pendingAvatarPosY = Math.max(0, Math.min(100, cropDragState.posY - dy));
     updateCropImgStyle();
+    // 「この位置に決定」ボタンを廃止し、ドラッグした分だけそのまま
+    // プレビューにも反映する(オーナー指摘: 「もっと自由に配置できる
+    // ようにしたい」)。保存自体は引き続きプロフィール全体の「保存する」
+    // ボタンで行う。
+    updateProfilePreview();
   };
   const endDrag = () => { cropDragState = null; };
 
@@ -9638,11 +9680,6 @@ function onAvatarZoomInput(val){
   pendingAvatarZoom = Number(val);
   updateCropImgStyle();
   updateProfilePreview();
-}
-
-function confirmAvatarPosition(){
-  updateProfilePreview();
-  showToast('位置を決定しました');
 }
 
 function clearProfilePhoto(){
@@ -9759,9 +9796,33 @@ function goProfile(){
   saveViewState('view-profile', {});
 }
 
+// 開閉がdisplay:none/blockの瞬間切り替えで素っ気なかったため、高さと
+// 不透明度を滑らかにアニメーションさせる(オーナー指摘: 「モーション付きで
+// 閉じてほしい」)。
 function toggleProfileEditForm(){
+  const el = document.getElementById('profile-edit-form');
   profileEditOpen = !profileEditOpen;
-  document.getElementById('profile-edit-form').style.display = profileEditOpen ? 'block' : 'none';
+  if(profileEditOpen){
+    el.style.display = 'block';
+    const targetHeight = el.scrollHeight;
+    el.style.maxHeight = '0px';
+    el.style.opacity = '0';
+    // 直前にmax-height:0を当てた直後だと、ブラウザがそれと新しい値への
+    // 変化を1回にまとめてしまいアニメーションが飛んでしまうため、
+    // 一度リフローを挟んでから目標値に変える。
+    el.offsetHeight;
+    el.style.maxHeight = targetHeight + 'px';
+    el.style.opacity = '1';
+  } else {
+    el.style.maxHeight = el.scrollHeight + 'px';
+    el.style.opacity = '1';
+    el.offsetHeight;
+    el.style.maxHeight = '0px';
+    el.style.opacity = '0';
+    setTimeout(() => {
+      if(!profileEditOpen) el.style.display = 'none';
+    }, 300);
+  }
 }
 
 async function submitProfile(){
