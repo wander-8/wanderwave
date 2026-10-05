@@ -86,16 +86,21 @@ Deno.serve(async (req: Request) => {
             description: "「海外の」「日本の」のように国籍への言及が明確な場合だけ。",
           },
           decade: decadeProperty,
-          searchKeyword: {
-            type: "string",
+          searchKeywords: {
+            type: "array",
+            items: { type: "string" },
             description: "感情タグ・ジャンル・国・年代のどれにも当てはまらない、具体的な見た目・" +
               "設定・物の名前・ストーリーの詳細(「赤いドレス」「双子」「猫」「転生」等)があれば、" +
-              "そのまま検索欄に入力されるような短い単語・フレーズを1つだけ入れる(タイトル・あらすじ・" +
-              "キーワード欄に対する部分一致検索に使う)。該当する具体的な要素が無ければ空文字列。" +
-              "文章全体や長い説明文はそのまま入れない(部分一致なので短いほど当たりやすい)。",
+              "そのまま検索欄に入力されるような短い単語・フレーズを1つずつ入れる(タイトル・あらすじ・" +
+              "キーワード欄への部分一致検索に使う。それぞれ独立に判定されるAND条件なので、" +
+              "別々の場所に出てくる要素でも構わない)。文章に具体的な要素が複数あれば、省略せず" +
+              "全部(最大3個まで)入れること。例えば「猫を飼っている双子が出てくる映画」なら" +
+              "[\"双子\", \"猫\"]のように両方入れる(片方だけ拾って残りを捨てるのは禁止)。" +
+              "該当する具体的な要素が無ければ空配列。各要素は単語単位(文章全体や長い説明文は" +
+              "そのまま入れない。部分一致なので短いほど当たりやすい)。",
           },
         },
-        required: ["emotionTags", "genres", "countries", "searchKeyword"],
+        required: ["emotionTags", "genres", "countries", "searchKeywords"],
       },
     };
 
@@ -124,12 +129,13 @@ Deno.serve(async (req: Request) => {
       "  しないこと。文章に「泣ける」「ほっこりする」等、感情・気分の言葉が",
       "  別途はっきり添えられている場合だけ、それを感情タグに反映する。",
       "- その代わり、具体的な見た目・設定・物の名前・ストーリーの詳細は",
-      "  searchKeywordに短い単語・フレーズとして入れる。これはタイトル・あらすじ・",
-      "  キーワード欄への部分一致検索に使われるので、文章全体ではなく検索に",
-      "  使えそうな核心的な語を1つだけ選ぶこと(例:「赤いドレスの怖い映画」→",
-      "  searchKeyword:\"赤いドレス\"。「主人公が双子の漫画」→searchKeyword:\"双子\"。",
-      "  「猫が出てくる映画」→searchKeyword:\"猫\")。該当する具体的な要素が文章に",
-      "  無ければ空文字列のままにする。",
+      "  searchKeywordsに短い単語・フレーズの配列として入れる。これはタイトル・",
+      "  あらすじ・キーワード欄への部分一致検索に使われる(各要素は独立にAND",
+      "  判定されるので、別々の場所に出てくる要素でも構わない)。文章に具体的な",
+      "  要素が複数あれば、省略せず全部(最大3個まで)入れること",
+      "  (例:「猫を飼っている双子が出てくる怖い映画」→",
+      "  searchKeywords:[\"双子\",\"猫\"]。片方だけ拾って残りを捨てるのは禁止)。",
+      "  該当する具体的な要素が文章に無ければ空配列のままにする。",
       "",
       `選べる感情タグ: ${emotionTags.join("、") || "(なし)"}`,
       `選べるジャンル: ${genres.join("、") || "(なし)"}`,
@@ -176,7 +182,12 @@ Deno.serve(async (req: Request) => {
     const resultGenres = sanitizeList(input.genres, genres);
     const resultCountries = sanitizeList(input.countries, countries);
     const resultDecade = typeof input.decade === "number" && decades.includes(input.decade) ? input.decade : null;
-    const resultSearchKeyword = typeof input.searchKeyword === "string" ? input.searchKeyword.trim().slice(0, 40) : "";
+    const resultSearchKeywords = (Array.isArray(input.searchKeywords) ? input.searchKeywords : [])
+      .filter((k: unknown): k is string => typeof k === "string")
+      .map((k: string) => k.trim())
+      .filter((k: string) => k.length > 0)
+      .slice(0, 3)
+      .map((k: string) => k.slice(0, 40));
 
     return new Response(
       JSON.stringify({
@@ -184,7 +195,7 @@ Deno.serve(async (req: Request) => {
         genres: resultGenres,
         countries: resultCountries,
         decade: resultDecade,
-        searchKeyword: resultSearchKeyword,
+        searchKeywords: resultSearchKeywords,
       }),
       { headers: jsonHeaders },
     );

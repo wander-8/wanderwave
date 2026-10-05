@@ -243,12 +243,31 @@ Deno.serve(async (req: Request) => {
             skipped.push({ tmdb_id: c.id, title: c.name, reason: "animation_genre" });
             return null;
           }
+          // TMDbのTV用ジャンル一覧には「恋愛(Romance)」が存在しない
+          // (genre id 10749はmovie専用で、/discover/tvや/tv/{id}には
+          // 絶対に返ってこない)。このためGENRE_MAPに10749を書いていても
+          // 恋愛系ドラマが一件も「恋愛」ジャンルにならない実害があった
+          // (オーナー指摘:「恋愛もので調べても全然ヒットしない」。実例:
+          // 2026-10時点でドラマ7402件中「恋愛」はわずか2件)。代わりに
+          // TMDbのキーワード(keywordNames、英語)に恋愛を示す語があれば
+          // 「恋愛」ジャンル・タグを補う(完璧な網羅は狙わないが、何も
+          // 無いよりは大きく改善する)。
+          const hasRomanceKeyword = keywordNames.some((k) =>
+            k.includes("romance") || k.includes("romantic") || k.includes("love triangle")
+            || k.includes("arranged marriage") || k.includes("unrequited love") || k === "love");
+
           const emotionTags = pickEmotionTags(genreIds);
+          if (hasRomanceKeyword) {
+            (GENRE_MAP[10749]?.tags || []).forEach((t) => {
+              if (!emotionTags.includes(t) && emotionTags.length < 3) emotionTags.push(t);
+            });
+          }
           if (emotionTags.length === 0) {
             skipped.push({ tmdb_id: c.id, title: c.name, reason: "no_genre_mapping" });
             return null;
           }
           const genreNames = genreIds.map((id) => GENRE_MAP[id]?.ja).filter(Boolean);
+          if (hasRomanceKeyword && !genreNames.includes("恋愛")) genreNames.push("恋愛");
 
           const directors = (details.created_by || []).map((p: any) => p.name);
           const cast = (credits?.cast || []).slice(0, 5).map((p: any) => p.name);

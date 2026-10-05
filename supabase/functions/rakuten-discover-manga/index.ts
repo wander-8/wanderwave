@@ -69,6 +69,22 @@ function refineGenreWithCaption(baseInfo: { ja: string | null; tags: string[]; b
   return { ja: hit.ja, tags: hit.tags, baseTier: baseInfo.baseTier };
 }
 
+// 「BL」はオーナー指摘「BL、GLで調べても出てこない」を受けて追加した
+// 漫画専用ジャンル。単純な"BL"部分一致は"BLAME!"「Black Bird」のような
+// 英題にも誤爆するため、前後が英字でない("BL"が単語として孤立している)
+// 場合か、「ボーイズラブ」の明示表記がある場合だけを拾う。GL(百合)は
+// 同じ手法で試したが、「百合子」「百合香」のような人名や「黒百合/白百合」
+// のような花・家名の比喩がタイトル・あらすじに頻出し、部分一致だけでは
+// 誤判定が多すぎたため見送った(手動検証: 約4割が人名・比喩由来の誤判定)。
+// 既存のCONTENT_GENRE_KEYWORDSとは独立に判定し、他の内容ジャンル推定を
+// 上書きせず追加タグとして重ねる(恋愛要素を伴うBLがほとんどのため)。
+const BL_TAGS = ["感動", "美しい"];
+function hasBLSignal(title: string, caption: string): boolean {
+  const text = `${title} ${caption}`;
+  if (/[^a-zA-Z]BL[^a-zA-Z]/.test(text) || /^BL[^a-zA-Z]/.test(title)) return true;
+  return /ボーイズラブ/.test(text);
+}
+
 const TIER = { LOW: 15, MILD: 40, STRONG: 65, INTENSE: 85 };
 const HEAVY_WORDS = ["惨殺", "拷問", "陵辱", "強姦", "グロテスク", "残虐", "自殺", "虐待"];
 const SEXUAL_WORDS = ["性的", "ヌード", "官能", "濡れ場", "エッチ"];
@@ -327,6 +343,10 @@ Deno.serve(async (req: Request) => {
       }
       const caption = (item.itemCaption || "").trim();
       const genreInfo = refineGenreWithCaption(genreInfoFor(item.booksGenreId), caption);
+      const hasBL = hasBLSignal(item.title, caption);
+      const genreNames = genreInfo.ja ? [genreInfo.ja] : [];
+      if (hasBL && !genreNames.includes("BL")) genreNames.push("BL");
+      const emotionTags = hasBL ? Array.from(new Set([...genreInfo.tags, ...BL_TAGS])).slice(0, 3) : genreInfo.tags;
       const year = saleDate ? saleDate.getUTCFullYear() : null;
       // 表紙画像が無い商品は楽天の「NO IMAGE」プレースホルダーが入るため、
       // そのまま使わずnullにしてサイト側のデフォルト表示に任せる。特典グッズの
@@ -344,8 +364,8 @@ Deno.serve(async (req: Request) => {
       rows.push({
         title: key,
         release_year: year,
-        emotion_tags: genreInfo.tags,
-        genre: genreInfo.ja ? [genreInfo.ja] : null,
+        emotion_tags: emotionTags,
+        genre: genreNames.length ? genreNames : null,
         director: item.author || null,
         cast_members: null,
         country: "日本",

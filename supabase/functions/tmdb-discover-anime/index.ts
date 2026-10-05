@@ -263,12 +263,30 @@ Deno.serve(async (req: Request) => {
           }
 
           const genreIds: number[] = (details.genres || []).map((g: any) => g.id);
+
+          // TMDbのTV用ジャンル一覧には「恋愛(Romance)」が存在しない
+          // (genre id 10749はmovie専用で、/discover/tvや/tv/{id}には
+          // 絶対に返ってこない。アニメ映画側はgenre_idsに10749が普通に
+          // 入るので問題無いが、アニメのTVシリーズ側は一件も「恋愛」に
+          // ならない実害があった。オーナー指摘:「恋愛もので調べても
+          // 全然ヒットしない」)。代わりにTMDbのキーワード(英語)に恋愛を
+          // 示す語があれば「恋愛」ジャンル・タグを補う。
+          const hasRomanceKeyword = media !== "movie" && rawKeywordNames.some((k) =>
+            k.includes("romance") || k.includes("romantic") || k.includes("love triangle")
+            || k.includes("arranged marriage") || k.includes("unrequited love") || k === "love");
+
           const emotionTags = pickEmotionTags(genreIds);
+          if (hasRomanceKeyword) {
+            (GENRE_MAP[10749]?.tags || []).forEach((t) => {
+              if (!emotionTags.includes(t) && emotionTags.length < 3) emotionTags.push(t);
+            });
+          }
           if (emotionTags.length === 0) {
             skipped.push({ tmdb_id: c.id, title: media === "movie" ? c.title : c.name, reason: "no_genre_mapping" });
             return null;
           }
           const genreNames = genreIds.map((id) => GENRE_MAP[id]?.ja).filter(Boolean);
+          if (hasRomanceKeyword && !genreNames.includes("恋愛")) genreNames.push("恋愛");
 
           const directors = media === "movie"
             ? (credits?.crew || []).filter((p: any) => p.job === "Director").map((p: any) => p.name)
