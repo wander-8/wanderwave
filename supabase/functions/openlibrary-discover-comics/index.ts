@@ -141,6 +141,31 @@ function normalizeTitle(t: string): string {
   return (t || "").trim().toLowerCase();
 }
 
+// Open Libraryの「subject=comics」検索は、日本の漫画(英訳版)や日本の小説まで
+// 紛れ込むことがあった(実例:「鬼滅の刃」「人間失格」がcountry=アメリカの
+// 候補に混ざった)。タイトル・著者名のどちらかに日本語(かな/漢字)が
+// 含まれる候補は、英語圏/他の国の作品ではないとみなして除外する。
+function containsCJK(s: string): boolean {
+  return /[぀-ヿ㐀-鿿]/.test(s || "");
+}
+
+// 日本の漫画は著者名がローマ字表記(例:「Tsugumi Ohba」=大場つぐみ)の場合、
+// containsCJKだけではすり抜ける(実例:「Death Note」「Akira」)。Open Library
+// はこれらに"Manga"/"east asian style"というsubjectを明示的に付けているため、
+// こちらも除外条件に使う。
+function looksLikeManga(subjects: string[]): boolean {
+  const lower = subjects.map((s) => s.toLowerCase());
+  return lower.some((s) => s.includes("manga") || s.includes("east asian style"));
+}
+// subject検索自体が緩く、コミックと無関係な作品(実例:アプトン・シンクレア
+// 「The Jungle」=食肉産業を描いた1906年の小説で、漫画版は無い)が紛れ込む
+// ことがあった。候補自身のsubjectに「comic」「graphic novel」等が無ければ、
+// そもそもコミックではないとみなして除外する。
+function looksLikeComic(subjects: string[]): boolean {
+  const lower = subjects.map((s) => s.toLowerCase());
+  return lower.some((s) => s.includes("comic") || s.includes("graphic novel") || s.includes("bande dessin"));
+}
+
 async function selectAllRows(supabase: any, table: string, columns: string): Promise<any[]> {
   const PAGE_SIZE = 1000;
   let all: any[] = [];
@@ -176,6 +201,12 @@ Deno.serve(async (req: Request) => {
       // オーナー要望)ため、新規候補が見つかった順に先頭N件だけを詳細取得・
       // 挿入する。nullなら従来通り無制限。
       limit = null,
+      // アメリカ以外の国の作品も取り込めるようにする(オーナー要望:「アメリカ
+      // 以外の作品も検索できるよう取り込んでほしい」)。Open Libraryの検索対象
+      // 言語(ISO639-2、例: fre=フランス語のbande dessinée、ger=ドイツ語)と、
+      // それをmoviesテーブルに書き込む時の国名表記のペアを呼び出し側で指定する。
+      language = "eng",
+      country = "アメリカ",
     } = await req.json().catch(() => ({}));
 
     const supabase = createClient(SUPABASE_URL, SERVICE_ROLE);
@@ -190,7 +221,7 @@ Deno.serve(async (req: Request) => {
     for (const page of pages) {
       const url = new URL(OPENLIBRARY_SEARCH);
       url.searchParams.set("subject", subject);
-      url.searchParams.set("language", "eng");
+      url.searchParams.set("language", language);
       url.searchParams.set("limit", String(hits));
       url.searchParams.set("page", String(page));
       url.searchParams.set("fields", "key,title,author_name,first_publish_year,cover_i,subject,language");
@@ -200,9 +231,20 @@ Deno.serve(async (req: Request) => {
     }
 
     // 2) 既存作品との重複を除外(タイトル+初版年で判定)。タイトルが無い・
-    // 年が無い候補はそもそも判定も表示もできないため除外する。
+    // 年が無い候補はそもそも判定も表示もできないため除外する。日本語の
+    // タイトル・著者名を含む候補(日本の漫画の英訳版等)もここで弾く。
+    // コミックという表現形式自体が一般化したのは19世紀末以降なので、
+    // それより前の年はOpen Library側のデータ誤り(無関係な版の年を拾っている
+    // 等)の可能性が高い(実例:「The Jungle」が1791年と誤表示)。
+    const currentYear = new Date().getFullYear();
     const fresh = candidates.filter((c: any) => {
       if (!c.title || !c.first_publish_year) return false;
+      if (c.first_publish_year < 1830 || c.first_publish_year > currentYear) return false;
+      if (containsCJK(c.title)) return false;
+      if (Array.isArray(c.author_name) && c.author_name.some((a: string) => containsCJK(a))) return false;
+      const subjectsForFilter: string[] = Array.isArray(c.subject) ? c.subject : [];
+      if (looksLikeManga(subjectsForFilter)) return false;
+      if (!looksLikeComic(subjectsForFilter)) return false;
       const key = `${normalizeTitle(c.title)}|${c.first_publish_year}`;
       return !existingKeys.has(key);
     });
@@ -229,6 +271,12 @@ Deno.serve(async (req: Request) => {
 
       const { genre, tags } = pickGenreAndTags(subjects);
       const authors: string[] = Array.isArray(c.author_name) ? c.author_name : [];
+      // 著者名が英語表記のまま残ると分かりにくいとの指摘(オーナー:「あらすじや
+      // 作者名が英語表記になりがちだから直したりしてほしい」)を受け、synopsis
+      // と同じ翻訳APIでカタカナ表記に変換する(実際に「Alan Moore」→
+      // 「アラン・ムーア」のように、著名な作家名は翻訳メモリにヒットして
+      // 正しく変換されることを確認済み)。
+      const directorJa = authors.length ? (await translateToJa(authors.join("、"))).trim() : null;
       const coverUrl = c.cover_i ? `${OPENLIBRARY_COVERS}/${c.cover_i}-L.jpg` : null;
 
       rows.push({
@@ -236,9 +284,9 @@ Deno.serve(async (req: Request) => {
         release_year: c.first_publish_year,
         emotion_tags: tags,
         genre: genre.length ? genre : null,
-        director: authors.length ? authors.join("、") : null,
+        director: directorJa || null,
         cast_members: null,
-        country: "アメリカ",
+        country,
         synopsis,
         poster_path: coverUrl,
         japan_release_date: null,
