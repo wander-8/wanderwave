@@ -6180,25 +6180,47 @@ const RESULTS_PAGE_SIZE = 30;
 let resultsFiltered = [];
 let resultsShownCount = RESULTS_PAGE_SIZE;
 
+// 英数字だけの短い語(1〜2文字)は、タイトル・あらすじ・出演者名等の
+// 自由文フィールドへの素朴な部分一致では、無関係な単語にたまたま含まれる
+// だけで大量にヒットしてしまう(実データで確認: 映画モードで「BL」を
+// 検索すると、"Black"・"cable"・"Casablanca"等の中の"bl"を拾って無関係な
+// 4327件がヒットしていた。これが「AI検索が直っていない」報告の実体の
+// 1つだった)。日本語は1文字あたりの情報量が多くこの問題が起きにくいため、
+// 対象は英数字だけの語に限定する。
+function isNoisyShortTerm(term){
+  return /^[a-z0-9]{1,2}$/.test(term);
+}
+// タイトルだけは「RRR」「Oz」「K」のような実在の短いタイトルもあるため、
+// 単純に対象から外すのではなく、単語境界で区切られた完全な単語として
+// 現れる時だけ一致とみなす(元のタイトル文字列で判定。正規化済みtitleNorm
+// は空白や記号を取り除いてしまっていて境界が分からないため使えない)。
+function buildShortTermTitleRegex(term){
+  const escaped = term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return new RegExp('(^|[^a-z0-9])' + escaped + '($|[^a-z0-9])', 'i');
+}
+
 // 1つの正規化済み語(term)が作品のどこかに部分一致するかどうか。通常の
 // 単一文字列検索と、AI検索が拾った複数キーワードのAND絞り込み(下記
 // queryKeywords)の両方から、語を1つずつ渡して使う共通処理。
-// relevantVibeKwsは「term1つに対して」1回だけ求まる値なので、作品の
-// ループの外(呼び出し側)で計算して渡してもらう(作品ごとに呼び直すと、
-// 検索1文字打つたびに数万件×90件のエイリアス総当たりが復活してしまう。
-// relevantVibeKeywords関数のコメント参照)。
-function termMatchesMovie(m, term, relevantVibeKws){
-  return m.titleNorm.includes(term)
+// relevantVibeKws・shortTermTitleReは共に「term1つに対して」1回だけ
+// 求まる値なので、作品のループの外(呼び出し側)で計算して渡してもらう
+// (作品ごとに呼び直すと、検索1文字打つたびに数万件×90件のエイリアス
+// 総当たりが復活してしまう。relevantVibeKeywords関数のコメント参照)。
+function termMatchesMovie(m, term, relevantVibeKws, shortTermTitleRe){
+  const noisy = !!shortTermTitleRe;
+  return (noisy ? shortTermTitleRe.test(m.title) : m.titleNorm.includes(term))
     || String(m.year).includes(term)
-    || (m.castNorm && m.castNorm.some(a => a.includes(term)))
-    || (m.directorNorm && m.directorNorm.includes(term))
-    || (m.countryNorm && m.countryNorm.includes(term))
+    || (!noisy && m.castNorm && m.castNorm.some(a => a.includes(term)))
+    || (!noisy && m.directorNorm && m.directorNorm.includes(term))
+    || (!noisy && m.countryNorm && m.countryNorm.includes(term))
+    // ジャンルは少数の管理された語彙(FILTER_GENRES)なので、"BL"等の短い
+    // 語でも偶然の誤マッチが起きにくく、noisy判定の対象から外している。
     || (m.genreNorm && m.genreNorm.some(g => g.includes(term)))
-    || (m.synopsisNorm && m.synopsisNorm.includes(term))
+    || (!noisy && m.synopsisNorm && m.synopsisNorm.includes(term))
     // TMDbのキーワード(英語)をそのまま検索対象にする。日本語の言い方は
     // 別途VIBE_QUERY_ALIASESで対応するが、"gore"や"heist"のように英単語の
     // まま探す人にもそのまま応えられるようにしておく。
-    || (m.keywordsNorm && m.keywordsNorm.some(k => k.includes(term)))
+    || (!noisy && m.keywordsNorm && m.keywordsNorm.some(k => k.includes(term)))
     || matchesCountryAlias(m, term)
     || matchesVibeAlias(m, relevantVibeKws)
     || matchesMarvelAlias(m, term);
@@ -6251,10 +6273,14 @@ function renderResults(){
   const keywordTerms = state.queryKeywords.length
     ? state.queryKeywords.map(normalizeForSearch).filter(Boolean)
     : null;
-  // termMatchesMovieが要求するrelevantVibeKwsを、各termにつき1回だけ
-  // (作品のループの外で)求めておく。
+  // termMatchesMovieが要求するrelevantVibeKws・shortTermTitleReを、
+  // 各termにつき1回だけ(作品のループの外で)求めておく。
   const relevantVibeKws = keywordTerms ? null : relevantVibeKeywords(q);
   const keywordTermsVibeKws = keywordTerms ? keywordTerms.map(relevantVibeKeywords) : null;
+  const qShortTermTitleRe = (!keywordTerms && isNoisyShortTerm(q)) ? buildShortTermTitleRegex(q) : null;
+  const keywordTermsShortTitleRe = keywordTerms
+    ? keywordTerms.map(t => isNoisyShortTerm(t) ? buildShortTermTitleRegex(t) : null)
+    : null;
   // 検索欄に「絵本」「ホラー」等のジャンル名をそのまま打った時は、以前は
   // タイトル・あらすじ・キーワード等も含めた通常の曖昧検索に流れてしまい、
   // 「絵本」というジャンルの作品だけでなく、あらすじ中にたまたま「絵本」
@@ -6275,11 +6301,11 @@ function renderResults(){
     // 以前はここで毎回normalizeForSearchを呼んでおり、あらすじ(最大400字)
     // まで含め全作品を正規化し直していたため、検索1文字目で固まっていた。
     const matchQuery = keywordTerms
-      ? keywordTerms.every((term, i) => termMatchesMovie(m, term, keywordTermsVibeKws[i]))
+      ? keywordTerms.every((term, i) => termMatchesMovie(m, term, keywordTermsVibeKws[i], keywordTermsShortTitleRe[i]))
       : q === ""
         || (exactGenreQuery
           ? !!(m.genre && m.genre.includes(exactGenreQuery))
-          : termMatchesMovie(m, q, relevantVibeKws)
+          : termMatchesMovie(m, q, relevantVibeKws, qShortTermTitleRe)
             || personAliasNorms.some(alias =>
               (m.castNorm && m.castNorm.some(a => a.includes(alias)))
               || (m.directorNorm && m.directorNorm.includes(alias))));
