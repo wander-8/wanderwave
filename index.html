@@ -48,6 +48,7 @@
     --plum-deep: #e3b6cc;
     --gold: #a084f2;
     --love: #e8899e;
+    --terracotta: #e8a06a;
     --line: #202c3d;
 
     --safe: #4f9d89;
@@ -1699,13 +1700,15 @@
   /* 「リストに追加」ドロワーの中で、ポケット・気になるの2つだけは他の
      (ユーザーが自分で作った)リストのボタンと役割が違う固定メニューなので、
      見分けやすいよう色を分ける(オーナー指摘:「ポケットと気になるだけは
-     少し分かりやすいように色分けしてほしい」)。気になるは既存の
-     .watch-later-btn.active(ハート横のボタン)と同じ--goldに揃える。 */
+     少し分かりやすいように色分けしてほしい」)。配色はプレビューで数案
+     見比べてオーナーに選んでもらった組み合わせ(ポケット=プラム、
+     気になる=テラコッタ)。テラコッタは明るい暖色なので白文字だと
+     コントラストが足りず、濃い文字色にしている。 */
   .ghost-btn.pocket-option, .ghost-btn.pocket-option.active{
-    background: var(--love); border-color: var(--love); color: #fff;
+    background: var(--plum); border-color: var(--plum); color: #fff;
   }
   .ghost-btn.watch-later-option, .ghost-btn.watch-later-option.active{
-    background: var(--gold); border-color: var(--gold); color: #fff;
+    background: var(--terracotta); border-color: var(--terracotta); color: #2a1608;
   }
 
   .oauth-btn{
