@@ -3296,6 +3296,9 @@
 
     <div id="list-delete-confirm" style="margin-bottom:14px;"></div>
 
+    <div style="text-align:right; margin-bottom:8px; display:none;" id="list-edit-toggle-row">
+      <button class="link-btn" id="list-edit-toggle-btn" style="padding:4px 0;" onclick="toggleListItemEditMode()">削除する作品を選ぶ</button>
+    </div>
     <div id="list-detail-items" class="pocket-grid"></div>
   </div>
 
@@ -11139,9 +11142,21 @@ async function confirmCreateNewList(){
 
 function goListDetail(listId){
   state.currentListId = listId;
+  // 別のリストを開き直したら、前のリストで入っていた削除モードは引き継がない。
+  listItemEditMode = false;
   renderListDetail();
   switchView('view-list-detail');
   saveViewState('view-list-detail', { listId });
+}
+
+// リストの中身一覧の×ボタンは、以前は常に出しっぱなしだったが、タップ
+// ミスで消してしまいそうで怖いとの指摘を受けた(オーナー:「最初から×
+// つけるのやめてほしい。削除ボタンを押した時に表示するようにして」)。
+// 「削除する作品を選ぶ」を押した時だけ×を出す編集モードに切り替える。
+let listItemEditMode = false;
+function toggleListItemEditMode(){
+  listItemEditMode = !listItemEditMode;
+  renderListDetail();
 }
 
 // 「あとで観る」はDBの行を持たない特別なリストなので共有リンクを作れない。
@@ -11261,12 +11276,16 @@ function renderListDetail(){
   // 出す。曲カードも.result-cardを使い回すので、カード出現時のフェード+
   // 浮き上がりアニメーション(cardFadeIn)はそのまま効く(オーナー要望:
   // 「リスト表示はモーションをつけて出して」)。
-  if(movies.length === 0 && tracks.length === 0){
+  const hasItems = movies.length > 0 || tracks.length > 0;
+  if(!hasItems){
     root.innerHTML = '<div class="empty">このリストにはまだ作品がありません。作品の詳細ページから追加できます。</div>';
   } else {
-    root.innerHTML = movies.map(m => buildCardHTML(m, { removableListId: list.id })).join('')
-      + tracks.map(t => buildTrackCardHTML(t, { removableListId: list.id })).join('');
+    const cardOpts = listItemEditMode ? { removableListId: list.id } : {};
+    root.innerHTML = movies.map(m => buildCardHTML(m, cardOpts)).join('')
+      + tracks.map(t => buildTrackCardHTML(t, cardOpts)).join('');
   }
+  document.getElementById('list-edit-toggle-row').style.display = hasItems ? 'block' : 'none';
+  document.getElementById('list-edit-toggle-btn').textContent = listItemEditMode ? '完了' : '削除する作品を選ぶ';
 
   // 「あとで観る」は名前変更・削除できない特別なリストなので、鉛筆のヒント・削除アイコンごと出さない
   document.getElementById('list-name-pencil-hint').style.display = list.isBuiltIn ? 'none' : 'block';
