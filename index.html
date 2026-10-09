@@ -1157,6 +1157,14 @@
     text-shadow: 0 0 10px rgba(240,237,232,0.2);
   }
   .detail-head .sub{ font-size:14px; color:var(--ink-soft); margin-bottom: 20px; }
+  /* 「記録」件数が.subの小さな地味な文字のままで見落とされがちだった
+     (オーナー指摘)ため、数字だけ大きく目立つ色で強調する。 */
+  .record-count-num{
+    font-family:'M PLUS Rounded 1c', sans-serif; font-weight:800;
+    font-size: 26px; color: var(--gold);
+    text-shadow: 0 0 10px rgba(160,132,242,0.3);
+  }
+  .record-count-unit{ font-size: 13px; color: var(--ink-soft); margin-left:2px; }
 
   .detail-poster{
     width: calc(100% + 40px);
@@ -1311,18 +1319,6 @@
     position: absolute; inset: 0;
     background: linear-gradient(180deg, rgba(0,0,0,0) 45%, rgba(0,0,0,0.4) 100%);
     pointer-events: none;
-  }
-  /* タイトルの上に出す媒体種別バッジ(映画/アニメ/ドラマ/漫画/本/音楽)。
-     「みんなの声」のreview-feed-type(色付き文字+暗い丸ピル)と同じ見た目に
-     揃える(オーナー要望)。 */
-  .poster-genre-row{
-    display:flex; justify-content:flex-end; gap:6px; flex-wrap:wrap;
-    margin-bottom: 6px;
-  }
-  .poster-genre-badge{
-    font-size: 10px; font-weight: 700;
-    padding: 2px 9px; border-radius: 999px;
-    background: rgba(0,0,0,0.35);
   }
   .poster-title-row{
     display:flex; align-items:baseline; justify-content:flex-end;
@@ -3342,7 +3338,7 @@
     <div class="detail-head">
       <div style="display:flex; align-items:baseline; justify-content:space-between; gap:10px;">
         <h2>記録</h2>
-        <span id="viewing-record-count" class="sub" style="margin-bottom:0; flex-shrink:0;"></span>
+        <span id="viewing-record-count" style="flex-shrink:0;"></span>
       </div>
       <div class="sub">これまでの記録を、新しい順に並べています</div>
     </div>
@@ -7117,9 +7113,7 @@ function renderPosterMood(m){
 
   // タイトルをポスターの主役として配置(Zパターンの視線の終着点=右下)
   const motifEl = document.getElementById('poster-motif');
-  const typeInfo = mediaTypeInfo(m);
-  const genreRowHtml = `<div class="poster-genre-row"><span class="poster-genre-badge" style="color:${typeInfo.color};">${typeInfo.label}</span></div>`;
-  motifEl.innerHTML = `${genreRowHtml}<div class="poster-title-row"><div class="poster-title-type">${m.title}</div><div class="poster-year-type">${m.year}年${releaseVerb(m)}</div></div>`;
+  motifEl.innerHTML = `<div class="poster-title-row"><div class="poster-title-type">${m.title}</div><div class="poster-year-type">${m.year}年${releaseVerb(m)}</div></div>`;
 }
 
 // 「公開」は映画・アニメ映画向けの言い方で、漫画・小説・音楽にそのまま
@@ -9299,33 +9293,44 @@ async function loadNonMovieCatalogInBackground(statsByMovie, estimatesByMovie){
     renderHomeRows();
     renderResults();
   };
-  try{
-    const firstPageResults = await Promise.all(NON_MOVIE_TYPE_FLAGS.map(flag =>
-      supabase.from('movies').select(MOVIE_LIGHT_COLUMNS).eq(flag, true).order('id', { ascending: true }).range(0, PER_TYPE_FIRST_PAGE_SIZE - 1)
-    ));
-    firstPageResults.forEach(r => { if(r.error) throw r.error; });
-    const firstPageRows = firstPageResults.flatMap(r => r.data || []);
-    MOVIES = MOVIES.concat(firstPageRows.map(row => buildMovieRecord(row, statsByMovie, estimatesByMovie)));
-    nonMovieCatalogLoaded = true;
-    rerenderIfNeeded();
-
-    // 種別ごとに、1ページ目で取り切れなかった分だけ残りを取得する(種別に
-    // よっては1ページ目で全件読み終わっている)。CONCURRENCY分の接続を
-    // 同時に何種別も重ねないよう、1種別ずつ順番に待つ(過去にstats/estimates
-    // と movies残りページを同時に走らせてanonロールのstatement_timeout
-    // (3秒)に引っかかった事故があるため、ここでも安全側に倒す)。
-    for(let i = 0; i < NON_MOVIE_TYPE_FLAGS.length; i++){
-      if((firstPageResults[i].data || []).length < PER_TYPE_FIRST_PAGE_SIZE) continue;
-      const flag = NON_MOVIE_TYPE_FLAGS[i];
-      const restRows = await selectAllRows('movies', MOVIE_LIGHT_COLUMNS, (q) => q.eq(flag, true), 'id', 1500, PER_TYPE_FIRST_PAGE_SIZE);
-      const existingIds = new Set(MOVIES.map(m => m.id));
-      const newRecords = restRows.filter(row => !existingIds.has(row.id)).map(row => buildMovieRecord(row, statsByMovie, estimatesByMovie));
-      MOVIES = MOVIES.concat(newRecords);
+  // 種別ごとに1つずつ、独立したtry/catchで順番に取得する。以前は5種を
+  // Promise.allで同時並列に投げていたが、1つ1つは軽いクエリでも接続が
+  // 重なり、匿名ロールのstatement_timeout(3秒、エラーコード57014)に
+  // 引っかかって5種類まるごと0件になる事故が実際に起きた(オーナー報告:
+  // 「今日の贈り物」の日替わり先がたまたま音楽の日に、ポケットの贈り物が
+  // 消えて見えた→実際はMOVIESに音楽が1件も読み込めていなかった)。1種ずつ
+  // 順番に待ち、かつ1種類の失敗が他の種類を巻き込まないようにする。
+  for(let i = 0; i < NON_MOVIE_TYPE_FLAGS.length; i++){
+    const flag = NON_MOVIE_TYPE_FLAGS[i];
+    try{
+      // 単発のstatement_timeout(読み込み専用の軽いクエリでも、DB側の
+      // 瞬間的な混雑でごくまれに起きる)で1種類がまるごと消えてしまうのを
+      // 避けるため、最大2回まで短い間隔を置いて取り直す。
+      let firstPageData = null;
+      let lastErr = null;
+      for(let attempt = 0; attempt < 3; attempt++){
+        if(attempt > 0) await new Promise(r => setTimeout(r, 600));
+        const { data, error } = await supabase.from('movies').select(MOVIE_LIGHT_COLUMNS).eq(flag, true).order('id', { ascending: true }).range(0, PER_TYPE_FIRST_PAGE_SIZE - 1);
+        if(!error){ firstPageData = data; lastErr = null; break; }
+        lastErr = error;
+      }
+      if(lastErr) throw lastErr;
+      const firstPageRows = firstPageData || [];
+      MOVIES = MOVIES.concat(firstPageRows.map(row => buildMovieRecord(row, statsByMovie, estimatesByMovie)));
       rerenderIfNeeded();
+
+      if(firstPageRows.length === PER_TYPE_FIRST_PAGE_SIZE){
+        const restRows = await selectAllRows('movies', MOVIE_LIGHT_COLUMNS, (q) => q.eq(flag, true), 'id', 1500, PER_TYPE_FIRST_PAGE_SIZE);
+        const existingIds = new Set(MOVIES.map(m => m.id));
+        const newRecords = restRows.filter(row => !existingIds.has(row.id)).map(row => buildMovieRecord(row, statsByMovie, estimatesByMovie));
+        MOVIES = MOVIES.concat(newRecords);
+        rerenderIfNeeded();
+      }
+    }catch(err){
+      console.error(`${flag}のカタログ読み込みに失敗しました(他の種別には影響させず続行)`, err);
     }
-  }catch(err){
-    console.error('アニメ・ドラマ・漫画・小説・音楽カタログの読み込みに失敗しました', err);
   }
+  nonMovieCatalogLoaded = true;
 }
 
 // 上のloadNonMovieCatalogInBackground()で後回しにしたsynopsis・cast_membersを、
@@ -10273,7 +10278,9 @@ function renderViewingRecord(){
 function goViewingRecordAll(){
   const entries = buildViewingRecordEntries();
   document.getElementById('viewing-record-grid').innerHTML = entries.map(renderRecordTileHTML).join('');
-  document.getElementById('viewing-record-count').textContent = entries.length ? `${entries.length}件` : '';
+  document.getElementById('viewing-record-count').innerHTML = entries.length
+    ? `<span class="record-count-num">${entries.length}</span><span class="record-count-unit">件</span>`
+    : '';
   switchView('view-viewing-record');
 }
 
