@@ -1312,6 +1312,18 @@
     background: linear-gradient(180deg, rgba(0,0,0,0) 45%, rgba(0,0,0,0.4) 100%);
     pointer-events: none;
   }
+  /* タイトルの上に出す媒体種別バッジ(映画/アニメ/ドラマ/漫画/本/音楽)。
+     「みんなの声」のreview-feed-type(色付き文字+暗い丸ピル)と同じ見た目に
+     揃える(オーナー要望)。 */
+  .poster-genre-row{
+    display:flex; justify-content:flex-end; gap:6px; flex-wrap:wrap;
+    margin-bottom: 6px;
+  }
+  .poster-genre-badge{
+    font-size: 10px; font-weight: 700;
+    padding: 2px 9px; border-radius: 999px;
+    background: rgba(0,0,0,0.35);
+  }
   .poster-title-row{
     display:flex; align-items:baseline; justify-content:flex-end;
     gap: 8px; flex-wrap: wrap;
@@ -3039,7 +3051,7 @@
           <div class="omikuji-poster" id="omikuji-poster"></div>
           <div class="omikuji-text">
             <div class="omikuji-title" id="omikuji-title"></div>
-            <div class="omikuji-line">今日はこの1つを、そっと差し出してみます。</div>
+            <div class="omikuji-line" id="omikuji-line"></div>
           </div>
         </div>
       </div>
@@ -3966,6 +3978,7 @@ function mediaTypeInfo(m){
   if(m.isMusic) return { mode: 'music', label: '音楽', color: MEDIA_TYPE_COLORS.music };
   return { mode: 'movie', label: '映画', color: MEDIA_TYPE_COLORS.movie };
 }
+
 
 // movie_reviewsはRLS上「誰でも投稿できる」公開レビューなので、他人の投稿を
 // innerHTMLに差し込む箇所では必ずエスケープしてスクリプト注入を防ぐ。
@@ -7102,7 +7115,9 @@ function renderPosterMood(m){
 
   // タイトルをポスターの主役として配置(Zパターンの視線の終着点=右下)
   const motifEl = document.getElementById('poster-motif');
-  motifEl.innerHTML = `<div class="poster-title-row"><div class="poster-title-type">${m.title}</div><div class="poster-year-type">${m.year}年${releaseVerb(m)}</div></div>`;
+  const typeInfo = mediaTypeInfo(m);
+  const genreRowHtml = `<div class="poster-genre-row"><span class="poster-genre-badge" style="color:${typeInfo.color};">${typeInfo.label}</span></div>`;
+  motifEl.innerHTML = `${genreRowHtml}<div class="poster-title-row"><div class="poster-title-type">${m.title}</div><div class="poster-year-type">${m.year}年${releaseVerb(m)}</div></div>`;
 }
 
 // 「公開」は映画・アニメ映画向けの言い方で、漫画・小説・音楽にそのまま
@@ -10576,6 +10591,31 @@ function pickOmikujiMovie(topTag, secondTag, excludeIds){
   return candidates[Math.floor(rand() * candidates.length)].id;
 }
 
+// 「今日はこの1つを、そっと差し出してみます。」固定だったおみくじの添え書きを、
+// 日替わりでランダムに変える(オーナー要望)。映画・漫画・音楽など媒体を
+// 問わず使える言い回しだけにしている(「1本」のような媒体限定の数え方は避ける)。
+// pickOmikujiMovieと同じtodaySeedの仕組みで、同じ日は同じ文になる。
+const OMIKUJI_MESSAGES = [
+  "今日はこの1つを、そっと差し出してみます。",
+  "今日のあなたに、合う気がして選びました。",
+  "迷ったときは、これも一つの答えかもしれません。",
+  "気まぐれに選んだ1つ、受け取ってください。",
+  "こういう日に出会うのも、何かの縁かもしれません。",
+  "少しだけ、寄り道してみませんか。",
+  "偶然にしては、ちょうどいい1つです。",
+  "今日のあなたへ、小さな贈り物です。",
+  "何も考えず、まずは開けてみてください。",
+  "たまには、運まかせもいいものです。",
+  "開けるまでは、ちょっとだけ秘密にしておきます。",
+  "肩の力を抜いて、受け取ってください。",
+  "今日という日のための、1つです。",
+  "ふと目に留まったので、置いていきます。"
+];
+function pickOmikujiMessage(){
+  const rand = mulberry32(todaySeed('omikuji-message'));
+  return OMIKUJI_MESSAGES[Math.floor(rand() * OMIKUJI_MESSAGES.length)];
+}
+
 // 本物のおみくじと同じく、表示された瞬間に結果を見せず、タップして
 // 「引く」までは伏せておく。1回目のタップで開封、開封済みの状態で
 // もう一度タップしたら、その作品の詳細ページへ移動する。
@@ -10603,6 +10643,7 @@ function renderOmikujiCard(movieId){
   // m.titleは既にHTMLエスケープ済みなので、featured-title-textと同じ理由で
   // innerHTMLを使う(textContentだとエスケープ文字列がそのまま見えてしまう)。
   document.getElementById('omikuji-title').innerHTML = m.title;
+  document.getElementById('omikuji-line').textContent = pickOmikujiMessage();
   card.style.display = 'block';
 }
 
