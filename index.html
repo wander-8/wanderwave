@@ -6486,12 +6486,27 @@ function renderRecommended(currentMovie){
   // で、誤マッチは「グッドラック」のような一般的な言い回しの同名タイトル1件
   // のみだった(表示のみに使う機能のため、この程度の残存誤差は許容する)。
   const currentAdaptationKey = seriesTitleKey(currentMovie.title);
+  const currentAdaptationCore = coreSeriesKey(currentMovie.title);
   const currentNativeMode = nativeModeOf(currentMovie);
-  const adaptationSiblings = currentAdaptationKey.length >= 6
-    ? dedupeByNormalizedTitleYear(others.filter(m =>
-        nativeModeOf(m) !== currentNativeMode && seriesTitleKey(m.title) === currentAdaptationKey
-      )).sort((a, b) => a.year - b.year)
-    : [];
+  // 「半沢直樹」(TVドラマ)のように、ドラマ・映画側はシリーズ名そのものだけ
+  // なのに、原作小説側は「半沢直樹　1　オレたちバブル入行組」のような
+  // 「シリーズ名+巻数+副題」の形でカタログに入っている実例があり、完全
+  // 一致(seriesTitleKey)だけでは一切結び付けられなかった(オーナー指摘)。
+  // isSameTitleSeries(同一メディア種別同士のシリーズ判定)で既に使っている
+  // coreSeriesKey(先頭の区切り文字より前だけを見る完全一致、4文字以上)を
+  // メディアを跨いだ判定にも使う。導入前にカタログ全件(9万件超)で実際に
+  // この条件に当てはまる組み合わせを洗い出して目視確認した(1568件、うち
+  // 既存の完全一致では拾えていなかった新規分871件)。ほぼ全てシャイニング・
+  // るろうに剣心・アベンジャーズのような正真正銘の関連作品だったが、coreが
+  // 数字だけ(「1122」「2025」)のケースだけは日付・年号の偶然一致(通関士の
+  // 参考書とK-POPライブ映像など)で誤マッチしていたため、数字のみの核は
+  // 対象から除外する。
+  const adaptationSiblings = dedupeByNormalizedTitleYear(others.filter(m => {
+    if(nativeModeOf(m) === currentNativeMode) return false;
+    if(currentAdaptationKey.length >= 6 && seriesTitleKey(m.title) === currentAdaptationKey) return true;
+    return currentAdaptationCore.length >= 4 && !/^[0-9]+$/.test(currentAdaptationCore)
+      && currentAdaptationCore === coreSeriesKey(m.title);
+  })).sort((a, b) => a.year - b.year);
 
   // 「シリーズの他の作品」は同じコレクション/タイトル系列だけを拾うので、
   // 「アベンジャーズ」の個別シリーズだけでなく、マーベル作品全体のような
