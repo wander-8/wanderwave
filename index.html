@@ -3479,7 +3479,7 @@ const INITIAL_AUTH_REDIRECT_SEARCH = window.location.search || '';
 // これだったため、ここにデプロイのたびに変わる値を置き、
 // checkForStalePage()で「今見ているページが最新かどうか」を確認できる
 // ようにする。
-const BUILD_VERSION = "2026-10-09T16:10:18Z";
+const BUILD_VERSION = "2026-10-09T16:13:50Z";
 
 // --- Supabase接続 -----------------------------------------------------
 // profiles(プロフィール)とmovie_logs(視聴ログ)はSupabaseに保存する。
@@ -4573,22 +4573,24 @@ function selectBookType(value){
   renderResults();
 }
 
-// チップを2段の千鳥(ジグザグ)配置で並べる共通ヘルパー。1行の横スクロール
-// だと件数が多いモード(音楽のジャンル47種等)では単調に見えるとの指摘を
-// 受け、偶数番目を上段・奇数番目を下段に振り分ける(下段は.chip-row-offset
-// で半チップ分ずらす)。2段ぶんをまとめて1つの横スクロール領域として扱う
-// (段ごとに別々にスクロールさせるわけではない)。
+// チップを千鳥(ジグザグ)配置で並べる共通ヘルパー。1行の横スクロールだと
+// 件数が多いモード(音楽のジャンル47種等)では単調に見えるとの指摘を受け、
+// 複数段に振り分ける(各段をまとめて1つの横スクロール領域として扱う。
+// 段ごとに別々にスクロールさせるわけではない)。
+// 音楽のジャンルのように件数自体が多いと、2段のままでは1段あたりが
+// 横に伸びすぎて使いにくいとの指摘を受け(オーナー:「音楽のジャンルが
+// 触ると横に伸びすぎて使いにくいから...2列はやめて3列とかにしよう」)、
+// 件数が多い時は自動で3段に増やし、1段あたりの長さを抑える。
 function renderZigzagChips(container, items, buildChip){
   container.innerHTML = "";
-  const rowA = document.createElement('div');
-  rowA.className = 'chip-row';
-  const rowB = document.createElement('div');
-  rowB.className = 'chip-row chip-row-offset';
-  items.forEach((item, i) => {
-    (i % 2 === 0 ? rowA : rowB).appendChild(buildChip(item));
+  const rowCount = items.length > 24 ? 3 : 2;
+  const rows = Array.from({ length: rowCount }, (_, i) => {
+    const row = document.createElement('div');
+    row.className = 'chip-row' + (i % 2 === 1 ? ' chip-row-offset' : '');
+    return row;
   });
-  container.appendChild(rowA);
-  container.appendChild(rowB);
+  items.forEach((item, i) => rows[i % rowCount].appendChild(buildChip(item)));
+  rows.forEach(row => container.appendChild(row));
 }
 
 function renderGenreCloud(){
