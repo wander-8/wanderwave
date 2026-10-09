@@ -1682,6 +1682,15 @@
     border-radius:10px; padding: 12px 20px; font-size:15px; cursor:pointer;
     transition: transform .15s cubic-bezier(.22,.8,.32,1), border-color .2s ease;
   }
+  /* 「リストに追加」ドロワーの中で、ポケット・気になるの2つだけは他の
+     (ユーザーが自分で作った)リストのボタンと役割が違う固定メニューなので、
+     見分けやすいよう色を分ける(オーナー指摘:「ポケットと気になるだけは
+     少し分かりやすいように色分けしてほしい」)。気になるは既存の
+     .watch-later-btn.active(ハート横のボタン)と同じ--goldに揃える。 */
+  .ghost-btn.pocket-option{ border-color: var(--love); color: var(--love); }
+  .ghost-btn.pocket-option.active{ background: rgba(232,137,158,0.12); border-color: var(--love); color: var(--love); }
+  .ghost-btn.watch-later-option{ border-color: var(--gold); color: var(--gold); }
+  .ghost-btn.watch-later-option.active{ background: rgba(160,132,242,0.14); border-color: var(--gold); color: var(--gold); }
 
   .oauth-btn{
     display:flex; align-items:center; justify-content:center; gap:10px;
@@ -11569,7 +11578,7 @@ function renderAddToListOptions(){
   if(pending){
     const pocketActive = isInPocket(pending.movieId);
     let html = `<div class="post-block-label" style="margin-bottom:10px;">「${escapeHtml(pending.trackName)}」をリストに追加</div>`;
-    html += `<button class="ghost-btn${pocketActive ? ' active' : ''}" style="width:100%; margin-bottom:8px; text-align:left;" onclick="addMovieToList('pocket')">${pocketActive ? '✓ ' : ''}このアルバムをポケットに入れる(診断に使われます)</button>`;
+    html += `<button class="ghost-btn pocket-option${pocketActive ? ' active' : ''}" style="width:100%; margin-bottom:8px; text-align:left;" onclick="addMovieToList('pocket')">${pocketActive ? '✓ ' : ''}このアルバムをポケットに入れる(診断に使われます)</button>`;
     if(!state.myLists.length){
       html += `<div class="sub" style="margin-bottom:10px;">まだリストがありません。下から作ってください。</div>`;
     }
@@ -11584,8 +11593,8 @@ function renderAddToListOptions(){
   const m = MOVIES.find(x => x.id === state.currentMovieId);
   const pocketActive = isInPocket(m.id);
   const watchLaterActive = !!state.myWatchLater[m.id];
-  let html = `<button class="ghost-btn${pocketActive ? ' active' : ''}" style="width:100%; margin-bottom:8px; text-align:left;" onclick="addMovieToList('pocket')">${pocketActive ? '✓ ' : ''}ポケットに入れる(診断に使われます)</button>`;
-  html += `<button class="ghost-btn${watchLaterActive ? ' active' : ''}" style="width:100%; margin-bottom:8px; text-align:left;" onclick="addMovieToList('watch_later')">${watchLaterActive ? '✓ ' : ''}気になる</button>`;
+  let html = `<button class="ghost-btn pocket-option${pocketActive ? ' active' : ''}" style="width:100%; margin-bottom:8px; text-align:left;" onclick="addMovieToList('pocket')">${pocketActive ? '✓ ' : ''}ポケットに入れる(診断に使われます)</button>`;
+  html += `<button class="ghost-btn watch-later-option${watchLaterActive ? ' active' : ''}" style="width:100%; margin-bottom:8px; text-align:left;" onclick="addMovieToList('watch_later')">${watchLaterActive ? '✓ ' : ''}気になる</button>`;
   html += state.myLists.map(list => {
     const inList = list.movieIds.includes(m.id);
     return `<button class="ghost-btn${inList ? ' active' : ''}" style="width:100%; margin-bottom:8px; text-align:left;" onclick="addMovieToList('${list.id}')">${inList ? '✓ ' : ''}${list.name}(${listItemCount(list)}件)</button>`;
