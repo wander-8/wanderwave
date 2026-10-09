@@ -3904,7 +3904,16 @@ supabase.auth.onAuthStateChange((event, session) => {
       // 走って新規登録したはずのアカウントがゲスト扱いになる事故が起きていた。
       // setTimeoutでコールバックの外の別タスクに逃がすことでデッドロックを回避する。
       setTimeout(() => {
-        loadProfile().then(() => { updateHeader(); if(state.profile) goProfile(); });
+        loadProfile().then(() => {
+          updateHeader();
+          // ニックネーム未設定(=本当に登録直後でこれから名乗る必要がある)の
+          // 時だけプロフィール画面へ連れて行く。ページを開き直すたびに
+          // セッションが復元されてこの'SIGNED_IN'自体は毎回発火するため、
+          // 無条件にgoProfile()していると、既に登録済みのユーザーまで
+          // 毎回強制的にアカウント画面へ飛ばされてしまっていた(オーナー
+          // 指摘:「サイトを最新にするとアカウントにすぐ飛ぶのやめてほしい」)。
+          if(state.profile && !state.profile.nickname) goProfile();
+        });
       }, 0);
     } else {
       lastKnownAuthUserId = newUserId;
