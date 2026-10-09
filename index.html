@@ -3479,7 +3479,7 @@ const INITIAL_AUTH_REDIRECT_SEARCH = window.location.search || '';
 // これだったため、ここにデプロイのたびに変わる値を置き、
 // checkForStalePage()で「今見ているページが最新かどうか」を確認できる
 // ようにする。
-const BUILD_VERSION = "2026-10-09T11:58:44Z";
+const BUILD_VERSION = "2026-10-09T12:08:19Z";
 
 // --- Supabase接続 -----------------------------------------------------
 // profiles(プロフィール)とmovie_logs(視聴ログ)はSupabaseに保存する。
@@ -11583,7 +11583,7 @@ function openAddTrackToListModal(index){
     playModalRevealAnimation(panel);
   }catch(err){
     console.error('曲をリストに追加するモーダルを開けませんでした', err);
-    showToast('うまく開けませんでした。もう一度お試しください');
+    showToast('エラー: ' + (err && err.message ? err.message : String(err)));
   }
 }
 
