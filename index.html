@@ -4691,7 +4691,14 @@ function positionFilterTrack(animated){
     dragging = false;
     pointerId = e.pointerId;
     track.style.transition = 'none';
-    tabs.setPointerCapture(pointerId);
+    // 以前はここ(pointerdownの時点)で即座にsetPointerCaptureしていたが、
+    // 実際にはドラッグしていないただのタップでもポインターがキャプチャ
+    // されてしまい、「国」「年代」タブのボタン本来のclickが一切発火しなく
+    // なっていた(オーナー指摘:「ジャンルは触れるのに国と年代が触れない」。
+    // ジャンルは最初から選ばれているタブなのでクリックせずに済んでいた
+    // だけで、実際には3つとも同じバグを踏んでいた。実機のクリックで
+    // 検証済み)。実際にドラッグと判定できた時(pointermove側)だけ
+    // キャプチャするようにし、単なるタップはボタンのclickへ素通りさせる。
   });
   tabs.addEventListener('pointermove', (e) => {
     if(e.pointerId !== pointerId) return;
@@ -4699,6 +4706,7 @@ function positionFilterTrack(animated){
     if(!dragging){
       if(Math.abs(dx) < 10) return;
       dragging = true;
+      tabs.setPointerCapture(pointerId);
     }
     const viewport = document.getElementById('filter-pages-viewport');
     const base = -visibleFilterIndex() * viewport.offsetWidth;
