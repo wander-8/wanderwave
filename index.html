@@ -2480,7 +2480,7 @@
            実際に検索を確定させた時(検索ボタン・Enter)だけAIを呼ぶ
            (毎回のキー入力では呼ばない、コスト・速度の両面で論外なのは変わらない)。 -->
       <div class="search-box">
-        <input type="text" id="search-input" placeholder="作品名・ジャンル・雰囲気で探す" oninput="onSearchInput()" onkeydown="if(event.key==='Enter'){ event.preventDefault(); this.blur(); submitSearch(); }">
+        <input type="text" id="search-input" placeholder="作品名・ジャンル・雰囲気で探す" oninput="onSearchInput()" oncompositionstart="searchComposing=true" oncompositionend="searchComposing=false; onSearchInput();" onkeydown="if(event.key==='Enter'){ event.preventDefault(); this.blur(); submitSearch(); }">
         <button class="search-clear-btn" id="search-clear-btn" onclick="clearSearch()" style="display:none;">×</button>
         <button class="ai-search-btn" id="ai-search-btn" onclick="submitSearch()">検索</button>
       </div>
@@ -3479,7 +3479,7 @@ const INITIAL_AUTH_REDIRECT_SEARCH = window.location.search || '';
 // これだったため、ここにデプロイのたびに変わる値を置き、
 // checkForStalePage()で「今見ているページが最新かどうか」を確認できる
 // ようにする。
-const BUILD_VERSION = "2026-10-09T12:38:49Z";
+const BUILD_VERSION = "2026-10-09T12:59:16Z";
 
 // --- Supabase接続 -----------------------------------------------------
 // profiles(プロフィール)とmovie_logs(視聴ログ)はSupabaseに保存する。
@@ -4903,7 +4903,14 @@ function renderDecadeCloud(){
   renderFilterTabs();
 }
 
+// IME変換中(漢字・カタカナ変換の候補確定前)にもoninputは発火する。この時点で
+// renderResults()のような重い全件再描画を挟むと、一部のブラウザ/環境で変換中の
+// 文字が二重に確定してしまう不具合があった(オーナー報告:「クリスマスと打つと
+// 2回同じ文字が出てしまう」)。compositionstart〜compositionendの間はこの関数の
+// 実処理を止め、変換が確定した瞬間(compositionend)に1回だけ反映する。
+let searchComposing = false;
 function onSearchInput(){
+  if(searchComposing) return;
   state.query = document.getElementById('search-input').value.trim();
   // 手で打ち直した時点で、直前のAI検索が拾った複数キーワードのAND絞り込み
   // は引き継がない(以後は通常の単一文字列の部分一致検索に戻る)。
@@ -5331,12 +5338,37 @@ function renderHomeRows(){
 
   let html = "";
 
+  // タイトル先頭の語でシリーズをざっくり束ねる鍵。「今話題の新作」棚で、
+  // ドラえもんのように刊行点数が非常に多いシリーズが発売日順の上位を
+  // 独占してしまう事故があった(オーナー指摘:「漫画の項目、ドラえもん
+  // だらけだから他の作品出して」)。完全なシリーズ判定(detail側の
+  // coreSeriesKey)ほど厳密でなくてよく、ここでは「同じシリーズが棚を
+  // 埋め尽くさない」程度の粗い束ねで十分。
+  function seriesCapKey(title){
+    const m = (title || '').trim().match(/^([^\s　「『（(\-−~〜:：]+)/u);
+    return m ? m[1].toLowerCase() : '';
+  }
+  function pickWithSeriesCap(sortedList, limit, maxPerSeries){
+    const picked = [];
+    const counts = {};
+    for(const m of sortedList){
+      const key = seriesCapKey(m.title);
+      const c = counts[key] || 0;
+      if(c >= maxPerSeries) continue;
+      counts[key] = c + 1;
+      picked.push(m);
+      if(picked.length >= limit) break;
+    }
+    return picked;
+  }
+
   // 「今話題の新作」を一番上に。日本で未公開の作品(公開日が無い、または
   // 公開日がまだ来ていない予定作品)が混ざると不自然なので、公開日が判明していて、
-  // かつ今日以前の作品だけを対象に、公開日が新しい順に選ぶ。
-  const newReleases = visibleMovies.filter(m => m.japanReleaseDate && m.japanReleaseDate <= todayStr)
-    .sort((a, b) => b.japanReleaseDate.localeCompare(a.japanReleaseDate) || (b.id - a.id))
-    .slice(0, 12);
+  // かつ今日以前の作品だけを対象に、公開日が新しい順に選ぶ。同じシリーズは
+  // 最大2件までにして、他の作品も混ざるようにする。
+  const newReleasesSorted = visibleMovies.filter(m => m.japanReleaseDate && m.japanReleaseDate <= todayStr)
+    .sort((a, b) => b.japanReleaseDate.localeCompare(a.japanReleaseDate) || (b.id - a.id));
+  const newReleases = pickWithSeriesCap(newReleasesSorted, 12, 2);
   if(newReleases.length){
     html += `
       <div class="section-label">今話題の新作</div>
