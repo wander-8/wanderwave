@@ -3479,7 +3479,7 @@ const INITIAL_AUTH_REDIRECT_SEARCH = window.location.search || '';
 // これだったため、ここにデプロイのたびに変わる値を置き、
 // checkForStalePage()で「今見ているページが最新かどうか」を確認できる
 // ようにする。
-const BUILD_VERSION = "2026-10-09T12:15:10Z";
+const BUILD_VERSION = "2026-10-09T12:18:23Z";
 
 // --- Supabase接続 -----------------------------------------------------
 // profiles(プロフィール)とmovie_logs(視聴ログ)はSupabaseに保存する。
@@ -11476,7 +11476,9 @@ function renderAddToListOptions(){
   const pending = state.pendingTrackAdd;
 
   if(pending){
+    const pocketActive = isInPocket(pending.movieId);
     let html = `<div class="post-block-label" style="margin-bottom:10px;">「${escapeHtml(pending.trackName)}」をリストに追加</div>`;
+    html += `<button class="ghost-btn${pocketActive ? ' active' : ''}" style="width:100%; margin-bottom:8px; text-align:left;" onclick="addMovieToList('pocket')">${pocketActive ? '✓ ' : ''}このアルバムをポケットに入れる(診断に使われます)</button>`;
     if(!state.myLists.length){
       html += `<div class="sub" style="margin-bottom:10px;">まだリストがありません。下から作ってください。</div>`;
     }
