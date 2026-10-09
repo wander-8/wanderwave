@@ -1687,10 +1687,12 @@
      見分けやすいよう色を分ける(オーナー指摘:「ポケットと気になるだけは
      少し分かりやすいように色分けしてほしい」)。気になるは既存の
      .watch-later-btn.active(ハート横のボタン)と同じ--goldに揃える。 */
-  .ghost-btn.pocket-option{ border-color: var(--love); color: var(--love); }
-  .ghost-btn.pocket-option.active{ background: rgba(232,137,158,0.12); border-color: var(--love); color: var(--love); }
-  .ghost-btn.watch-later-option{ border-color: var(--gold); color: var(--gold); }
-  .ghost-btn.watch-later-option.active{ background: rgba(160,132,242,0.14); border-color: var(--gold); color: var(--gold); }
+  .ghost-btn.pocket-option, .ghost-btn.pocket-option.active{
+    background: var(--love); border-color: var(--love); color: #fff;
+  }
+  .ghost-btn.watch-later-option, .ghost-btn.watch-later-option.active{
+    background: var(--gold); border-color: var(--gold); color: #fff;
+  }
 
   .oauth-btn{
     display:flex; align-items:center; justify-content:center; gap:10px;
