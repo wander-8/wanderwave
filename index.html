@@ -3479,7 +3479,7 @@ const INITIAL_AUTH_REDIRECT_SEARCH = window.location.search || '';
 // これだったため、ここにデプロイのたびに変わる値を置き、
 // checkForStalePage()で「今見ているページが最新かどうか」を確認できる
 // ようにする。
-const BUILD_VERSION = "2026-10-09T12:59:16Z";
+const BUILD_VERSION = "2026-10-09T16:10:18Z";
 
 // --- Supabase接続 -----------------------------------------------------
 // profiles(プロフィール)とmovie_logs(視聴ログ)はSupabaseに保存する。
@@ -6541,6 +6541,17 @@ function renderRecommended(currentMovie){
     const m = (title || '').trim().match(/^([^\s　「『（(\-−~〜:：]+)/u);
     return m ? m[1].toLowerCase() : '';
   }
+  // 核(coreSeriesKey)だけでの完全一致は、日本語なら4文字でもほぼ確実に
+  // 固有名詞(「半沢直樹」等)で偶然一致のリスクが低いが、英数字だけの核は
+  // 話が別。英訳された漫画・小説タイトル(Perfect Life System: Double Cash
+  // for Her Favor等)は「Perfect」のようなありふれた形容詞1語だけが核に
+  // なりがちで、実際に映画・漫画・音楽を問わず18件もの無関係な作品が
+  // 「Perfect」という核だけで結び付いてしまっていた(オーナー指摘:「原作
+  // 関連作品...全然関係ない作品ばかり出る」)。英数字だけの核はもっと長い
+  // (=ありふれた単語1つだけとは考えにくい)場合に限って信頼する。
+  function coreSeriesMinLen(core){
+    return /^[a-z0-9]+$/.test(core) ? 10 : 4;
+  }
   function isSameTitleSeries(a, b, sameCategory){
     if(!sameCategory(a) || !sameCategory(b)) return false;
     const ka = seriesTitleKey(a.title);
@@ -6554,10 +6565,11 @@ function renderRecommended(currentMovie){
     // より前)が4文字の人名タイトルは6文字未満のため上の判定に乗らず、
     // シリーズとして全く結び付けられなかった(オーナー指摘)。coreSeriesKeyは
     // 前方一致ではなく完全一致だけを見るため、startsWith判定より元々
-    // 偶然一致のリスクが低く、閾値を4文字まで下げても安全と判断する。
+    // 偶然一致のリスクが低く、閾値を4文字まで下げても安全と判断する
+    // (英数字だけの核はcoreSeriesMinLenでより高い閾値になる)。
     const ca = coreSeriesKey(a.title);
     const cb = coreSeriesKey(b.title);
-    return ca.length >= 4 && ca === cb;
+    return ca.length >= coreSeriesMinLen(ca) && ca === cb;
   }
 
   // シリーズの他の作品(公開年順)。実写はTMDbのcollection一致(series列)、
