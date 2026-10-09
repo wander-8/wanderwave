@@ -2269,6 +2269,22 @@
   }
   .list-card-badge.public{ background: rgba(79,157,137,0.28); color: #9fe0cd; border: 1px solid rgba(79,157,137,0.5); }
   .list-card-badge.private{ background: rgba(255,255,255,0.1); color: rgba(255,255,255,0.75); border: 1px solid rgba(255,255,255,0.15); }
+  /* マイリスト一覧のカードから、開かずにそのままリストを丸ごと削除できる
+     ボタン(オーナー要望:「マイリストのところでも削除ボタンをおいて
+     リスト丸ごと消す選択ができるようにして」)。リスト内の1件を外す
+     .card-remove-btn(×)とは意味が違う(こちらはリストそのものを消す)ため、
+     見た目をゴミ箱アイコンにして混同しないようにする。 */
+  .list-card-delete-btn{
+    position:absolute; top:6px; right:6px; z-index:4;
+    width:26px; height:26px; border-radius:50%;
+    background: rgba(5,8,15,0.65);
+    border: 1px solid rgba(255,255,255,0.35);
+    color:#fff;
+    display:flex; align-items:center; justify-content:center;
+    cursor:pointer;
+  }
+  .list-card-delete-btn svg{ width:14px; height:14px; }
+  .list-card-delete-btn:active{ transform: scale(0.88); }
   .list-card-empty{
     display:flex; align-items:center; justify-content:center;
     color: var(--ink-soft); font-size:11px;
@@ -3449,6 +3465,17 @@
     <div class="modal-actions">
       <button class="primary-btn" onclick="reconsiderEdit()">見直す</button>
       <button class="ghost-btn" onclick="reconsiderPostAnyway()">このまま投稿する</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="list-grid-delete-modal">
+  <div class="modal-box">
+    <div class="modal-title">リストを削除しますか？</div>
+    <div class="modal-body" id="list-grid-delete-modal-text"></div>
+    <div class="modal-actions">
+      <button class="primary-btn" style="background:var(--danger);" onclick="executeDeleteListFromGrid()">削除する</button>
+      <button class="ghost-btn" onclick="closeListGridDeleteModal()">やめる</button>
     </div>
   </div>
 </div>
@@ -11066,11 +11093,19 @@ function renderListsGrid(targetId){
         ${list.isPublic ? '公開中' : '非公開'}
       </div>
     `;
+    // 「あとで観る」は削除できない組み込みリストなので、ゴミ箱ボタン自体を出さない
+    // (list-detail側で削除アイコンをisBuiltInの時に隠すのと同じ扱い)。
+    const deleteBtn = list.isBuiltIn ? '' : `
+      <button type="button" class="list-card-delete-btn" onclick="event.stopPropagation(); confirmDeleteListFromGrid('${list.id}')" title="リストを削除する">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>
+      </button>
+    `;
     return `
       <div class="list-card" onclick="goListDetail('${list.id}')">
         <div class="list-card-blobs">${blobs}</div>
         <div class="poster-grain"></div>
         ${badge}
+        ${deleteBtn}
         <div class="list-card-name">${list.name}</div>
         <div class="list-card-count">${movies.length + tracks.length}本</div>
       </div>
@@ -11376,6 +11411,39 @@ async function confirmDeleteList(){
     if(error) throw error;
     state.myLists = state.myLists.filter(l => l.id !== listId);
     goLists();
+    showToast('リストを削除しました');
+  }catch(err){
+    console.error(err);
+    showToast(friendlyErrorMessage(err, '削除に失敗しました。通信環境を確認してください。'));
+  }
+}
+
+// マイリスト一覧のカードから、開かずにその場でリストを丸ごと削除する
+// (オーナー要望:「マイリストのところでも削除ボタンをおいてリスト丸ごと
+// 消す選択ができるようにして」)。list-detail側のdeleteCurrentList/
+// confirmDeleteListと同じ削除処理だが、一覧ではカードが複数並ぶため
+// 確認はモーダルにして、どのリストを消そうとしているかを文中に出す。
+let listGridDeletePendingId = null;
+function confirmDeleteListFromGrid(listId){
+  const list = state.myLists.find(l => l.id === listId);
+  if(!list) return;
+  listGridDeletePendingId = listId;
+  document.getElementById('list-grid-delete-modal-text').textContent = `「${list.name}」を削除しますか?元に戻せません。`;
+  document.getElementById('list-grid-delete-modal').style.display = 'flex';
+}
+function closeListGridDeleteModal(){
+  document.getElementById('list-grid-delete-modal').style.display = 'none';
+  listGridDeletePendingId = null;
+}
+async function executeDeleteListFromGrid(){
+  const listId = listGridDeletePendingId;
+  if(listId == null) return;
+  try{
+    const { error } = await supabase.from('user_lists').delete().eq('id', parseInt(listId, 10));
+    if(error) throw error;
+    state.myLists = state.myLists.filter(l => l.id !== listId);
+    closeListGridDeleteModal();
+    renderListsGrid();
     showToast('リストを削除しました');
   }catch(err){
     console.error(err);
