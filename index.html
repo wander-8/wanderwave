@@ -356,6 +356,20 @@
   @media (min-width: 1000px){
     .episodes-grid{ grid-template-columns: repeat(4, 1fr); }
   }
+  /* 収録曲は話数と違いアートワーク画像がどの曲も同じアルバムジャケットの
+     使い回しで、1曲ずつ大きな正方形カードにする意味が薄い(オーナー指摘)。
+     ジャケット無しで「曲名・試聴ボタン・追加ボタン」だけの横一列に簡略化する。 */
+  .tracks-list{ display:flex; flex-direction:column; gap:8px; margin-top:12px; }
+  .track-row{
+    background: var(--surface); border:1px solid var(--line); border-radius:12px;
+    padding:10px 12px; display:flex; align-items:center; gap:10px;
+  }
+  .track-row-num{ font-size:11px; color:var(--ink-soft); width:18px; flex-shrink:0; text-align:right; }
+  .track-row-name{
+    flex:1; min-width:0; font-size:13.5px; font-weight:600; color:var(--ink);
+    white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+  }
+  .track-row-duration{ font-size:10.5px; color:var(--ink-soft); flex-shrink:0; }
   .episode-card{
     background: var(--surface); border:1px solid var(--line); border-radius:12px;
     overflow:hidden; display:flex; flex-direction:column;
@@ -2661,7 +2675,7 @@
       </button>
       <div class="filter-disclosure-body episodes-disclosure-body" id="tracks-body">
         <div class="filter-disclosure-inner">
-          <div class="episodes-grid" id="tracks-grid"></div>
+          <div class="tracks-list" id="tracks-grid"></div>
           <div class="episodes-loading" id="tracks-loading" style="display:none;">読み込み中…</div>
         </div>
       </div>
@@ -3465,7 +3479,7 @@ const INITIAL_AUTH_REDIRECT_SEARCH = window.location.search || '';
 // これだったため、ここにデプロイのたびに変わる値を置き、
 // checkForStalePage()で「今見ているページが最新かどうか」を確認できる
 // ようにする。
-const BUILD_VERSION = "2026-10-09T11:48:14Z";
+const BUILD_VERSION = "2026-10-09T11:55:21Z";
 
 // --- Supabase接続 -----------------------------------------------------
 // profiles(プロフィール)とmovie_logs(視聴ログ)はSupabaseに保存する。
@@ -7664,19 +7678,14 @@ function isTrackInAnyList(movieId, trackId){
 function renderTracksGrid(tracks){
   const root = document.getElementById('tracks-grid');
   root.innerHTML = tracks.map((t, i) => `
-    <div class="episode-card">
-      <div class="episode-thumb">${t.artworkUrl ? `<img src="${t.artworkUrl}" alt="" loading="lazy" decoding="async">` : (t.trackNumber || '♪')}</div>
-      <div class="episode-meta">
-        <div class="episode-num">${t.trackNumber ? `${t.trackNumber}曲目` : ''}</div>
-        <div class="episode-name">${escapeHtml(t.trackName)}</div>
-        <div class="episode-love-row">
-          ${t.previewUrl ? `
-            <button class="heart-single-btn mini track-play-btn" id="track-play-${i}" data-track-index="${i}" data-preview-url="${escapeHtml(t.previewUrl)}">${playingTrackIndex === i ? '⏸' : '▶'}</button>
-          ` : ''}
-          ${t.trackId ? `<button class="track-add-btn${isTrackInAnyList(state.currentMovieId, t.trackId) ? ' added' : ''}" id="track-add-${i}" data-track-index="${i}" title="リストに追加">+</button>` : ''}
-          <span class="episode-love-hint">${t.previewUrl ? '30秒試聴(ループ)' : ''}${t.trackTimeMillis ? `${t.previewUrl ? '・' : ''}${formatTrackDuration(t.trackTimeMillis)}` : ''}</span>
-        </div>
-      </div>
+    <div class="track-row">
+      <div class="track-row-num">${t.trackNumber || i + 1}</div>
+      <div class="track-row-name">${escapeHtml(t.trackName)}</div>
+      ${t.trackTimeMillis ? `<span class="track-row-duration">${formatTrackDuration(t.trackTimeMillis)}</span>` : ''}
+      ${t.previewUrl ? `
+        <button class="heart-single-btn mini track-play-btn" id="track-play-${i}" data-track-index="${i}" data-preview-url="${escapeHtml(t.previewUrl)}">${playingTrackIndex === i ? '⏸' : '▶'}</button>
+      ` : ''}
+      ${t.trackId ? `<button class="track-add-btn${isTrackInAnyList(state.currentMovieId, t.trackId) ? ' added' : ''}" id="track-add-${i}" data-track-index="${i}" title="リストに追加">+</button>` : ''}
     </div>
   `).join('');
 }
