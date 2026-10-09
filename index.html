@@ -11305,7 +11305,7 @@ async function addMovieToList(listId){
     if(error) throw error;
     list.movieIds.push(m.id);
     showToast(`「${list.name}」に追加しました`);
-    renderAddToListOptions();
+    closeAddToListModalWithMotion();
   }catch(err){
     console.error(err);
     showToast(friendlyErrorMessage(err, '追加に失敗しました。通信環境を確認してください。'));
@@ -11344,8 +11344,8 @@ async function addTrackToList(listId){
     list.tracks = list.tracks || [];
     list.tracks.push({ ...pending });
     showToast(`「${list.name}」に追加しました`);
-    renderAddToListOptions();
     renderTrackAddButtons();
+    closeAddToListModalWithMotion();
   }catch(err){
     console.error(err);
     showToast(friendlyErrorMessage(err, '追加に失敗しました。通信環境を確認してください。'));
@@ -11398,6 +11398,23 @@ function playModalRevealAnimation(panel){
   panel.classList.remove('soft-reveal');
   void panel.offsetWidth;
   panel.classList.add('soft-reveal');
+}
+
+// リストへの追加が完了したら、即座にdisplay:noneにするのではなく
+// soft-dismissでふわっと縮みながら消えてから隠す(投稿パネルのclosePostPanel
+// と同じパターン。オーナー要望:「リストに登録し終わったらモーション付きで
+// 閉じてほしい」)。ポケット/気になるはトグルなので対象外(再タップしたい
+// ことがあるため開いたままにする)。
+const ADD_TO_LIST_DISMISS_MS = 320;
+function closeAddToListModalWithMotion(){
+  const panel = document.getElementById('add-to-list-modal');
+  panel.classList.remove('soft-reveal');
+  panel.classList.add('soft-dismiss');
+  setTimeout(() => {
+    panel.style.display = 'none';
+    panel.classList.remove('soft-dismiss');
+  }, ADD_TO_LIST_DISMISS_MS);
+  state.pendingTrackAdd = null;
 }
 
 function openAddToListModal(){
@@ -11463,8 +11480,8 @@ async function confirmCreateListFromModal(){
       : await createUserList(name, state.currentMovieId);
     showToast(`「${newList.name}」を作って追加しました`);
     document.getElementById('new-list-from-detail-form').innerHTML = '';
-    renderAddToListOptions();
     if(pending) renderTrackAddButtons();
+    closeAddToListModalWithMotion();
   }catch(err){
     console.error(err);
     showToast(friendlyErrorMessage(err, 'リストの作成に失敗しました。通信環境を確認してください。'));
