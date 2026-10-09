@@ -111,11 +111,17 @@ Deno.serve(async (req: Request) => {
     // previewUrl: iTunesが提供する30秒プレビュー音源(AAC)。「開いたら音楽を
     // 聞けるようにしてほしい」という要望を受けて追加。著作権的にも、iTunes公式の
     // 試聴用音源をそのまま使うのが安全(フル楽曲の取得・配信は行わない)。
+    // trackId・artworkUrl・artistNameは、1曲ずつリストに追加する機能
+    // (user_list_items.track_id等)のために追加。trackIdはiTunes内で
+    // 安定した曲の識別子なので、同じ曲の重複追加を防ぐ一意キーに使う。
     const tracks = trackResults
       .sort((a: any, b: any) => (a.trackNumber || 0) - (b.trackNumber || 0))
       .map((t: any) => ({
+        trackId: t.trackId != null ? String(t.trackId) : null,
         trackNumber: t.trackNumber || null,
         trackName: t.trackName || "",
+        artistName: t.artistName || artist || "",
+        artworkUrl: t.artworkUrl100 || t.artworkUrl60 || t.artworkUrl30 || null,
         trackTimeMillis: t.trackTimeMillis || null,
         previewUrl: t.previewUrl || null,
       }));

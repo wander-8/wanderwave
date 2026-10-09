@@ -375,6 +375,18 @@
   .episode-love-row{ display:flex; align-items:center; gap:6px; margin-top:4px; }
   .episode-love-hint{ font-size:10.5px; color:var(--ink-soft); }
   .episodes-loading{ text-align:center; color:var(--ink-soft); font-size:12.5px; padding:14px 0; }
+  /* 収録曲を1曲ずつリストに追加できるボタン(オーナー要望)。話数カードの
+     ミニ再生ボタンと揃えた大きさで、押した曲だけ色が付いて「追加済み」が
+     分かるようにする。 */
+  .track-add-btn{
+    width:28px; height:28px; border-radius:50%; flex-shrink:0;
+    border:1px solid var(--line); background:none; color:var(--ink-soft);
+    font-size:16px; line-height:1; cursor:pointer;
+    display:flex; align-items:center; justify-content:center;
+    transition: transform .15s cubic-bezier(.22,.8,.32,1), color .15s ease, border-color .15s ease;
+  }
+  .track-add-btn:active{ transform: scale(0.9); }
+  .track-add-btn.added{ color:var(--love); border-color:var(--love); }
 
   /* 話数カードは一覧なので、詳細ページ本体のハートボタンより小さく
      控えめにする(呼吸アニメーションは目立ちすぎるのでここでは止める)。
@@ -4336,7 +4348,7 @@ function shouldHidePosterForIntensity(m){
   return pct.sexual >= 40 || pct.violence >= 60;
 }
 
-let state = { query: "", queryKeywords: [], activeTags: new Set(), currentMovieId: null, hasReviewed: {}, myReviewsById: {}, myReviewRows: [], myReviewRowsLoaded: false, myLove: {}, myIntensity: {}, myReason: {}, myTagVotes: {}, myWatchLater: {}, myPocket: [], myLists: [], currentListId: null, profile: null, profileLoaded: false, myLogs: [], myLogsLoaded: false, mySubmittedMovieIds: [], mySubmittedMovies: [], mySubmittedMoviesLoaded: false, lastSubmissionDate: null, todaySubmissionCount: 0, intensityFilter: 0, decadeFilter: 0, diagnosisHistory: [], activeGenres: new Set(), activeCountries: new Set(), catalogMode: 'movie', bookType: null, crossMediaSearch: false };
+let state = { query: "", queryKeywords: [], activeTags: new Set(), currentMovieId: null, hasReviewed: {}, myReviewsById: {}, myReviewRows: [], myReviewRowsLoaded: false, myLove: {}, myIntensity: {}, myReason: {}, myTagVotes: {}, myWatchLater: {}, myPocket: [], myLists: [], currentListId: null, profile: null, profileLoaded: false, myLogs: [], myLogsLoaded: false, mySubmittedMovieIds: [], mySubmittedMovies: [], mySubmittedMoviesLoaded: false, lastSubmissionDate: null, todaySubmissionCount: 0, intensityFilter: 0, decadeFilter: 0, diagnosisHistory: [], activeGenres: new Set(), activeCountries: new Set(), catalogMode: 'movie', bookType: null, crossMediaSearch: false, pendingTrackAdd: null };
 
 
 function riskLabel(v){
@@ -5046,6 +5058,26 @@ function buildCardHTML(m, opts){
       </div>
       <div class="interest-count">${loveCountTextForCard(m)}</div>
       ` : ''}
+    </div>
+  `;
+}
+
+// マイリストに1曲だけ追加した曲用のカード。track自体はカタログ
+// (MOVIES)に存在しないので、タップしたら元のアルバムの詳細ページへ
+// 飛ばす(曲単体の詳細ページは無いため)。.result-cardを使い回すことで
+// 見た目もカード出現アニメーションも通常の作品カードと揃える。
+function buildTrackCardHTML(item){
+  const album = MOVIES.find(m => m.id === item.movieId);
+  const artUrl = item.artworkUrl || (album ? album.posterUrl : null);
+  const bg = album ? album.posterColor : '#2a2a2f';
+  const img = artUrl ? `<img src="${artUrl}" alt="" loading="lazy" decoding="async">` : '';
+  const initial = artUrl ? '' : escapeHtml((item.trackName || '♪').charAt(0));
+  const subtitle = item.artistName || (album ? album.title : '');
+  return `
+    <div class="result-card" onclick="goDetail(${item.movieId})">
+      <div class="poster-thumb" style="background:${bg}">${img}${initial}</div>
+      <div class="result-title">${escapeHtml(item.trackName)}</div>
+      <div class="result-year">${escapeHtml(subtitle)}</div>
     </div>
   `;
 }
@@ -7542,19 +7574,25 @@ function toggleTrackPreview(index, url){
   });
 }
 
+function isTrackInAnyList(movieId, trackId){
+  if(!trackId) return false;
+  return state.myLists.some(l => (l.tracks || []).some(t => t.movieId === movieId && t.trackId === trackId));
+}
+
 function renderTracksGrid(tracks){
   const root = document.getElementById('tracks-grid');
   root.innerHTML = tracks.map((t, i) => `
     <div class="episode-card">
-      <div class="episode-thumb">${t.trackNumber || '♪'}</div>
+      <div class="episode-thumb">${t.artworkUrl ? `<img src="${t.artworkUrl}" alt="" loading="lazy" decoding="async">` : (t.trackNumber || '♪')}</div>
       <div class="episode-meta">
         <div class="episode-num">${t.trackNumber ? `${t.trackNumber}曲目` : ''}</div>
         <div class="episode-name">${escapeHtml(t.trackName)}</div>
         <div class="episode-love-row">
           ${t.previewUrl ? `
             <button class="heart-single-btn mini" id="track-play-${i}" onclick="toggleTrackPreview(${i}, '${t.previewUrl}')">${playingTrackIndex === i ? '⏸' : '▶'}</button>
-            <span class="episode-love-hint">30秒試聴(ループ)${t.trackTimeMillis ? `・${formatTrackDuration(t.trackTimeMillis)}` : ''}</span>
-          ` : (t.trackTimeMillis ? `<span class="episode-love-hint">${formatTrackDuration(t.trackTimeMillis)}</span>` : '')}
+          ` : ''}
+          ${t.trackId ? `<button class="track-add-btn${isTrackInAnyList(state.currentMovieId, t.trackId) ? ' added' : ''}" id="track-add-${i}" onclick="openAddTrackToListModal(${i})" title="リストに追加">+</button>` : ''}
+          <span class="episode-love-hint">${t.previewUrl ? '30秒試聴(ループ)' : ''}${t.trackTimeMillis ? `${t.previewUrl ? '・' : ''}${formatTrackDuration(t.trackTimeMillis)}` : ''}</span>
         </div>
       </div>
     </div>
@@ -10707,6 +10745,7 @@ function getWatchLaterAsList(){
     id: 'watch_later',
     name: '気になる',
     movieIds: Object.keys(state.myWatchLater).map(id => parseInt(id, 10)),
+    tracks: [],
     isBuiltIn: true
   };
 }
@@ -10719,8 +10758,11 @@ function renderListsGrid(targetId){
   const root = document.getElementById(targetId || 'lists-grid');
   const lists = getAllListsForDisplay();
   root.innerHTML = lists.map(list => {
+    const tracks = list.tracks || [];
     const movies = list.movieIds.map(id => MOVIES.find(m => m.id === id)).filter(Boolean);
-    const firstMovie = movies[0];
+    // 表紙の色は1件目の作品から取るが、リストの1件目が曲だけの場合も
+    // あるので、その曲が属するアルバムの色で代用する。
+    const firstMovie = movies[0] || (tracks[0] ? MOVIES.find(m => m.id === tracks[0].movieId) : null);
 
     let colors;
     if(firstMovie){
@@ -10755,7 +10797,7 @@ function renderListsGrid(targetId){
         <div class="poster-grain"></div>
         ${badge}
         <div class="list-card-name">${list.name}</div>
-        <div class="list-card-count">${movies.length}本</div>
+        <div class="list-card-count">${movies.length + tracks.length}本</div>
       </div>
     `;
   }).join('');
@@ -10779,14 +10821,28 @@ function createNewList(){
   showNewListInput('new-list-form', 'confirmCreateNewList');
 }
 
-// list_itemsテーブルへの新規行と(必要なら)最初の1本の映画をまとめて作る。
-// 呼び出し側でrequireVerifiedUser()済みであることを前提とする。
-async function createUserList(name, initialMovieId){
+// list_itemsテーブルへの新規行と(必要なら)最初の1件(映画丸ごと、または
+// initialTrackで曲1つ)をまとめて作る。呼び出し側でrequireVerifiedUser()
+// 済みであることを前提とする。
+async function createUserList(name, initialMovieId, initialTrack){
   const userId = await currentUserId();
   const { data, error } = await supabase.from('user_lists').insert({ user_id: userId, name }).select('id, share_token, is_public').single();
   if(error) throw error;
-  const newList = { id: String(data.id), name, shareToken: data.share_token, isPublic: !!data.is_public, movieIds: [] };
-  if(initialMovieId != null){
+  const newList = { id: String(data.id), name, shareToken: data.share_token, isPublic: !!data.is_public, movieIds: [], tracks: [] };
+  if(initialTrack){
+    const { error: itemErr } = await supabase.from('user_list_items').insert({
+      list_id: data.id,
+      movie_id: initialTrack.movieId,
+      track_id: initialTrack.trackId,
+      track_name: initialTrack.trackName,
+      track_artist: initialTrack.artistName,
+      track_artwork_url: initialTrack.artworkUrl,
+      track_preview_url: initialTrack.previewUrl,
+      track_duration_ms: initialTrack.trackTimeMillis,
+    });
+    if(itemErr) throw itemErr;
+    newList.tracks.push({ ...initialTrack });
+  } else if(initialMovieId != null){
     const { error: itemErr } = await supabase.from('user_list_items').insert({ list_id: data.id, movie_id: initialMovieId });
     if(itemErr) throw itemErr;
     newList.movieIds.push(initialMovieId);
@@ -10926,10 +10982,19 @@ function renderListDetail(){
   nameEl.textContent = list.name;
   nameEl.style.display = 'block';
   document.getElementById('list-name-inline-input').style.display = 'none';
-  document.getElementById('list-detail-count').textContent = `${list.movieIds.length}件`;
+  const tracks = list.tracks || [];
+  document.getElementById('list-detail-count').textContent = `${list.movieIds.length + tracks.length}件`;
   const movies = list.movieIds.map(id => MOVIES.find(m => m.id === id)).filter(Boolean);
   const root = document.getElementById('list-detail-items');
-  renderMovieCards(root, movies, 'このリストにはまだ作品がありません。作品の詳細ページから追加できます。');
+  // 作品丸ごとのカードと、1曲だけ追加した曲のカードを同じグリッドに混ぜて
+  // 出す。曲カードも.result-cardを使い回すので、カード出現時のフェード+
+  // 浮き上がりアニメーション(cardFadeIn)はそのまま効く(オーナー要望:
+  // 「リスト表示はモーションをつけて出して」)。
+  if(movies.length === 0 && tracks.length === 0){
+    root.innerHTML = '<div class="empty">このリストにはまだ作品がありません。作品の詳細ページから追加できます。</div>';
+  } else {
+    root.innerHTML = movies.map(m => buildCardHTML(m, {})).join('') + tracks.map(buildTrackCardHTML).join('');
+  }
 
   // 「あとで観る」は名前変更・削除できない特別なリストなので、鉛筆のヒント・削除アイコンごと出さない
   document.getElementById('list-name-pencil-hint').style.display = list.isBuiltIn ? 'none' : 'block';
@@ -11232,36 +11297,139 @@ async function addMovieToList(listId){
   }
 }
 
-function renderAddToListOptions(){
-  const m = MOVIES.find(x => x.id === state.currentMovieId);
-  const root = document.getElementById('add-to-list-options');
+// リストに入っている件数は、アルバム単位(movieIds)と曲単位(tracks)の
+// 合計で数える(オーナー要望: 音楽は曲単位でも追加できるようにしたいため、
+// 「N本」の表示がアルバムだけを数えて実態より少なく見えるのを防ぐ)。
+function listItemCount(list){
+  return list.movieIds.length + (list.tracks || []).length;
+}
 
+async function addTrackToList(listId){
+  if(!requireVerifiedUser()) return;
+  const pending = state.pendingTrackAdd;
+  if(!pending) return;
+  const list = state.myLists.find(l => l.id === listId);
+  if(!list) return;
+  if((list.tracks || []).some(t => t.movieId === pending.movieId && t.trackId === pending.trackId)){
+    showToast(`すでに「${list.name}」に入っています`);
+    return;
+  }
+  try{
+    const { error } = await supabase.from('user_list_items').insert({
+      list_id: parseInt(list.id, 10),
+      movie_id: pending.movieId,
+      track_id: pending.trackId,
+      track_name: pending.trackName,
+      track_artist: pending.artistName,
+      track_artwork_url: pending.artworkUrl,
+      track_preview_url: pending.previewUrl,
+      track_duration_ms: pending.trackTimeMillis,
+    });
+    if(error) throw error;
+    list.tracks = list.tracks || [];
+    list.tracks.push({ ...pending });
+    showToast(`「${list.name}」に追加しました`);
+    renderAddToListOptions();
+    renderTrackAddButtons();
+  }catch(err){
+    console.error(err);
+    showToast(friendlyErrorMessage(err, '追加に失敗しました。通信環境を確認してください。'));
+  }
+}
+
+// 収録曲一覧(renderTracksGrid)の「+」ボタンの済みマークだけを、曲一覧
+// 全体を作り直さずに更新する(再生中の試聴を止めずに済む)。
+function renderTrackAddButtons(){
+  (tracksCache || []).forEach((t, i) => {
+    if(!t.trackId) return;
+    const btn = document.getElementById(`track-add-${i}`);
+    if(btn) btn.classList.toggle('added', isTrackInAnyList(state.currentMovieId, t.trackId));
+  });
+}
+
+function renderAddToListOptions(){
+  const root = document.getElementById('add-to-list-options');
+  const pending = state.pendingTrackAdd;
+
+  if(pending){
+    let html = `<div class="post-block-label" style="margin-bottom:10px;">「${escapeHtml(pending.trackName)}」をリストに追加</div>`;
+    if(!state.myLists.length){
+      html += `<div class="sub" style="margin-bottom:10px;">まだリストがありません。下から作ってください。</div>`;
+    }
+    html += state.myLists.map(list => {
+      const inList = (list.tracks || []).some(t => t.movieId === pending.movieId && t.trackId === pending.trackId);
+      return `<button class="ghost-btn${inList ? ' active' : ''}" style="width:100%; margin-bottom:8px; text-align:left;" onclick="addTrackToList('${list.id}')">${inList ? '✓ ' : ''}${list.name}(${listItemCount(list)}件)</button>`;
+    }).join('');
+    root.innerHTML = html;
+    return;
+  }
+
+  const m = MOVIES.find(x => x.id === state.currentMovieId);
   const pocketActive = isInPocket(m.id);
   const watchLaterActive = !!state.myWatchLater[m.id];
   let html = `<button class="ghost-btn${pocketActive ? ' active' : ''}" style="width:100%; margin-bottom:8px; text-align:left;" onclick="addMovieToList('pocket')">${pocketActive ? '✓ ' : ''}ポケットに入れる(診断に使われます)</button>`;
   html += `<button class="ghost-btn${watchLaterActive ? ' active' : ''}" style="width:100%; margin-bottom:8px; text-align:left;" onclick="addMovieToList('watch_later')">${watchLaterActive ? '✓ ' : ''}気になる</button>`;
   html += state.myLists.map(list => {
     const inList = list.movieIds.includes(m.id);
-    return `<button class="ghost-btn${inList ? ' active' : ''}" style="width:100%; margin-bottom:8px; text-align:left;" onclick="addMovieToList('${list.id}')">${inList ? '✓ ' : ''}${list.name}(${list.movieIds.length}本)</button>`;
+    return `<button class="ghost-btn${inList ? ' active' : ''}" style="width:100%; margin-bottom:8px; text-align:left;" onclick="addMovieToList('${list.id}')">${inList ? '✓ ' : ''}${list.name}(${listItemCount(list)}件)</button>`;
   }).join('');
   root.innerHTML = html;
+}
+
+// パネルを開くたびにsoft-reveal(フェード+浮き上がり)を最初から再生する。
+// クラスを一度外してoffsetWidthを読ませてから付け直す定番パターン
+// (startInlineRename等、他のパネルと同じ)。
+function playModalRevealAnimation(panel){
+  panel.classList.remove('soft-reveal');
+  void panel.offsetWidth;
+  panel.classList.add('soft-reveal');
 }
 
 function openAddToListModal(){
   if(!requireVerifiedUser()) return;
   const panel = document.getElementById('add-to-list-modal');
   const isOpen = panel.style.display === 'block';
-  if(isOpen){
+  if(isOpen && !state.pendingTrackAdd){
     panel.style.display = 'none';
     return;
   }
+  state.pendingTrackAdd = null;
   renderAddToListOptions();
   document.getElementById('new-list-from-detail-form').innerHTML = '';
   panel.style.display = 'block';
+  playModalRevealAnimation(panel);
+}
+
+// 収録曲一覧の「+」ボタンから、1曲だけを対象にリストに追加するモーダルを開く。
+// 中身の見た目(パネル・リスト選択)は作品まるごと追加する時と同じものを
+// 使い回し、state.pendingTrackAddがあるかどうかでrenderAddToListOptions
+// 側が曲向けの表示に切り替える。
+function openAddTrackToListModal(index){
+  if(!requireVerifiedUser()) return;
+  const track = (tracksCache || [])[index];
+  if(!track || !track.trackId){
+    showToast('この曲はリストに追加できません');
+    return;
+  }
+  state.pendingTrackAdd = {
+    movieId: state.currentMovieId,
+    trackId: track.trackId,
+    trackName: track.trackName,
+    artistName: track.artistName,
+    artworkUrl: track.artworkUrl,
+    previewUrl: track.previewUrl,
+    trackTimeMillis: track.trackTimeMillis,
+  };
+  const panel = document.getElementById('add-to-list-modal');
+  renderAddToListOptions();
+  document.getElementById('new-list-from-detail-form').innerHTML = '';
+  panel.style.display = 'block';
+  playModalRevealAnimation(panel);
 }
 
 function closeAddToListModal(){
   document.getElementById('add-to-list-modal').style.display = 'none';
+  state.pendingTrackAdd = null;
 }
 
 function createListFromModal(){
@@ -11274,10 +11442,14 @@ async function confirmCreateListFromModal(){
   const name = input.value.trim();
   if(!name) return;
   try{
-    const newList = await createUserList(name, state.currentMovieId);
+    const pending = state.pendingTrackAdd;
+    const newList = pending
+      ? await createUserList(name, null, pending)
+      : await createUserList(name, state.currentMovieId);
     showToast(`「${newList.name}」を作って追加しました`);
     document.getElementById('new-list-from-detail-form').innerHTML = '';
     renderAddToListOptions();
+    if(pending) renderTrackAddButtons();
   }catch(err){
     console.error(err);
     showToast(friendlyErrorMessage(err, 'リストの作成に失敗しました。通信環境を確認してください。'));
@@ -11290,17 +11462,32 @@ async function loadMyLists(){
     if(!userId){ state.myLists = []; return; }
     const { data, error } = await supabase
       .from('user_lists')
-      .select('id, name, share_token, is_public, user_list_items(movie_id)')
+      .select('id, name, share_token, is_public, user_list_items(movie_id, track_id, track_name, track_artist, track_artwork_url, track_preview_url, track_duration_ms)')
       .eq('user_id', userId)
       .order('created_at', { ascending: true });
     if(error) throw error;
-    state.myLists = (data || []).map(row => ({
-      id: String(row.id),
-      name: row.name,
-      shareToken: row.share_token,
-      isPublic: !!row.is_public,
-      movieIds: (row.user_list_items || []).map(item => item.movie_id)
-    }));
+    state.myLists = (data || []).map(row => {
+      const items = row.user_list_items || [];
+      return {
+        id: String(row.id),
+        name: row.name,
+        shareToken: row.share_token,
+        isPublic: !!row.is_public,
+        // track_idが無い行=アルバム・映画など作品丸ごとの追加、ある行=
+        // 1曲だけの追加(user_list_items_album_unique/track_uniqueの
+        // 使い分けと揃える。マイグレーション参照)。
+        movieIds: items.filter(item => item.track_id == null).map(item => item.movie_id),
+        tracks: items.filter(item => item.track_id != null).map(item => ({
+          movieId: item.movie_id,
+          trackId: item.track_id,
+          trackName: item.track_name,
+          artistName: item.track_artist,
+          artworkUrl: item.track_artwork_url,
+          previewUrl: item.track_preview_url,
+          trackTimeMillis: item.track_duration_ms,
+        })),
+      };
+    });
   }catch(err){ state.myLists = []; }
 }
 
