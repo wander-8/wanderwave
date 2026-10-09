@@ -4946,8 +4946,12 @@ async function submitSearch(){
     state.queryKeywords = keywords;
     state.query = keywords.join(' ');
     state.crossMediaSearch = false;
-    input.value = state.query;
-
+    // 以前はここで検索欄の中身をAIが拾ったキーワードに書き換えていたが、
+    // 感情タグ・ジャンルだけが拾えてキーワードが無かった時は空文字列が
+    // 入り、自分で打った文章がそのまま消えて見えていた(オーナー指摘:
+    // 「ユーザーの検索のまま出してほしい」)。絞り込み自体(queryKeywords/
+    // activeTags等)はこれまで通り内部で保持しつつ、検索欄の見た目は
+    // 触らず、自分が打った文章をそのまま残す。
     renderTagCloud();
     renderGenreCloud();
     renderCountryCloud();
