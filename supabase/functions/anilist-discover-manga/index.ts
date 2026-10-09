@@ -97,10 +97,31 @@ function stripHtml(html: string): string {
   return html.replace(/<[^>]+>/g, "").replace(/\s+/g, " ").trim();
 }
 
+// 480文字で単純に切り詰めると文の途中(単語の途中)で切れ、その壊れた
+// 英文を翻訳した結果も途中で切れた日本語になってしまう(実例:「Perfect
+// Girlfriend Online」のあらすじが「小説「ラブパッチf」で終わっていた。
+// オーナー指摘)。tmdb-movie-reviewsと同じく、文の区切り(. ! ?)が
+// 見つかればそこで切る。
+function trimToSentenceBoundary(text: string, maxLen: number): string {
+  if (text.length <= maxLen) return text;
+  const cut = text.slice(0, maxLen);
+  const lastPunct = Math.max(cut.lastIndexOf(". "), cut.lastIndexOf("! "), cut.lastIndexOf("? "));
+  return lastPunct > maxLen * 0.5 ? cut.slice(0, lastPunct + 1) : cut;
+}
+
+// 翻訳後の日本語あらすじをSYNOPSIS_MAX_LENで切る時も、単純なsliceだと
+// 文の途中で切れる。日本語の句点(。！？)で同様に区切る。
+function trimToSentenceBoundaryJa(text: string, maxLen: number): string {
+  if (text.length <= maxLen) return text;
+  const cut = text.slice(0, maxLen);
+  const lastPunct = Math.max(cut.lastIndexOf("。"), cut.lastIndexOf("！"), cut.lastIndexOf("？"));
+  return lastPunct > maxLen * 0.5 ? cut.slice(0, lastPunct + 1) : cut;
+}
+
 // AniListのdescriptionは英語であることが多く、他の取り込み(映画/アニメ/ドラマ)と
 // 同じくMyMemory APIで日本語化する(サイト内の表記を日本語に揃えるため)。
 async function translateToJa(text: string): Promise<string> {
-  const trimmed = text.slice(0, 480);
+  const trimmed = trimToSentenceBoundary(text, 480);
   try {
     const url = new URL("https://api.mymemory.translated.net/get");
     url.searchParams.set("q", trimmed);
@@ -280,7 +301,7 @@ const fresh = candidates.filter((c: any) => {
         // 既に日本語(ひらがな/カタカナ/漢字)を含む場合は翻訳せずそのまま使う。
         const looksJapanese = /[぀-ヿ一-鿿]/.test(plain);
         const translated = looksJapanese ? plain : await translateToJa(plain);
-        synopsis = translated.slice(0, SYNOPSIS_MAX_LEN);
+        synopsis = trimToSentenceBoundaryJa(translated, SYNOPSIS_MAX_LEN);
       }
       const country = countryNameJa(c.countryOfOrigin);
       const coverUrl = c.coverImage?.extraLarge || c.coverImage?.large || null;

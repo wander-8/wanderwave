@@ -559,6 +559,16 @@ async function selectAllRows(supabase: any, table: string, columns: string): Pro
 
 const SYNOPSIS_MAX_LEN = 400;
 
+// 単純なsliceだと400文字ちょうどで文の途中(単語の途中)で切れてしまう
+// ことがある(オーナー指摘: あらすじが途中で切れている作品がある)。
+// 日本語の句点(。！？)が見つかればそこで切る。
+function trimToSentenceBoundaryJa(text: string, maxLen: number): string {
+  if (text.length <= maxLen) return text;
+  const cut = text.slice(0, maxLen);
+  const lastPunct = Math.max(cut.lastIndexOf("。"), cut.lastIndexOf("！"), cut.lastIndexOf("？"));
+  return lastPunct > maxLen * 0.5 ? cut.slice(0, lastPunct + 1) : cut;
+}
+
 Deno.serve(async (req: Request) => {
   try {
     const {
@@ -737,7 +747,7 @@ Deno.serve(async (req: Request) => {
         // 見ているので、この中に外国の小説ジャンルが含まれるかどうかで
         // 判定する。
         country: (isForeignBook(item.booksGenreId) || isForeignAuthorName(item.author)) ? "海外" : "日本",
-        synopsis: caption ? caption.slice(0, SYNOPSIS_MAX_LEN) : null,
+        synopsis: caption ? trimToSentenceBoundaryJa(caption, SYNOPSIS_MAX_LEN) : null,
         poster_path: coverUrl,
         japan_release_date: null,
         japan_release_checked_at: null,

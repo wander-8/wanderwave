@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="google-site-verification" content="WBGLlgHQZ3BErZu6rBw-IZLlIY0CSek6CSNZVIE6MCY" />
 <meta name="google-adsense-account" content="ca-pub-4493802852826281">
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4493802852826281" crossorigin="anonymous"></script>
 <title>Wander ― 気になるものを拾いに行こう</title>
 <meta name="description" content="気分やムードから作品を探せる、あなたのための作品発見サイト。感情タグや雰囲気で検索して、今の気分にぴったりの1つを見つけよう。">
 <link rel="canonical" href="https://wander-8.site/">
@@ -1340,6 +1341,22 @@
     margin: 26px 0 10px;
     text-shadow: 0 0 8px rgba(160,132,242,0.3);
   }
+  /* Google広告の既定の白背景のまま出すと、ダークテーマのサイトの中で
+     浮いてしまう(オーナー指摘)。枠自体を既存のカード(.menu-row等)と
+     同じ背景・枠線・角丸で包み、「広告」ラベルだけ小さく添えることで、
+     ポスター群や他のセクションと地続きの見た目にする。 */
+  .ad-unit{
+    background: var(--surface); border:1px solid var(--line);
+    border-radius: 14px; padding: 10px;
+    margin: 20px 0; overflow:hidden;
+    min-height: 100px;
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+  }
+  .ad-unit-label{
+    font-size: 10px; color: var(--ink-soft); opacity:.65;
+    align-self:flex-start; margin-bottom: 6px; letter-spacing:.05em;
+  }
+  .ad-unit ins.adsbygoogle{ width:100%; }
   /* プロフィール画面が縦に長くなりすぎないよう、比重の大きいセクション
      (診断・ポケット・リスト)は専用ページへの入口だけをここに置く
      (設定アプリのメニュー行のような見た目)。 */
@@ -2758,6 +2775,8 @@
       <div class="section-label">こんな音楽もおすすめ</div>
       <div class="results" id="d-recommended-music"></div>
     </div>
+
+    <div id="d-ad-slot"></div>
   </div>
 
   <!-- ============ ADD MOVIE VIEW ============ -->
@@ -5023,6 +5042,40 @@ function buildCardHTML(m, opts){
 // ホームの棚を「毎回同じ顔ぶれ」にしないための、日付シード付き擬似乱数。
 // 同じ日の間は結果が変わらない(リロードのたびにガチャガチャしない)一方、
 // 日が変われば自動的にラインナップが変わる(auto-rotate)。
+// Google AdSense。作品の一覧(ポスター列)に関係のない広告を混ぜるのは
+// 不自然という判断(オーナー指摘)で、作品そのものの表示が一通り終わった
+// 詳細ページ最下部にだけ置く。slotが空("")の間は枠自体を出さない(空の
+// insタグがそのまま残るとAdSenseの規約違反になりうるため)。
+// detail: 記事内広告ユニットができるまでの暫定でディスプレイ広告を流用。
+const ADSENSE_CLIENT = "ca-pub-4493802852826281";
+const AD_UNITS = {
+  detail: { slot: "8571732883", format: "auto", fullWidthResponsive: true },
+};
+
+function buildAdUnitHTML(key){
+  const cfg = AD_UNITS[key];
+  if(!cfg || !cfg.slot) return "";
+  const attrs = [`data-ad-client="${ADSENSE_CLIENT}"`, `data-ad-slot="${cfg.slot}"`, `data-ad-format="${cfg.format}"`];
+  if(cfg.layoutKey) attrs.push(`data-ad-layout-key="${cfg.layoutKey}"`);
+  if(cfg.fullWidthResponsive) attrs.push(`data-full-width-responsive="true"`);
+  return `
+    <div class="ad-unit">
+      <div class="ad-unit-label">広告</div>
+      <ins class="adsbygoogle" style="display:block" ${attrs.join(' ')}></ins>
+    </div>
+  `;
+}
+
+// innerHTMLでad-unitを差し込んだ直後に呼ぶと、新しく現れたinsタグだけに
+// pushする(data-ad-status付き=既に読み込み済みのものは対象から除く)。
+function initAdsInNewDOM(){
+  try{
+    document.querySelectorAll('ins.adsbygoogle:not([data-ad-status])').forEach(() => {
+      (window.adsbygoogle = window.adsbygoogle || []).push({});
+    });
+  }catch(e){}
+}
+
 function mulberry32(seed){
   return function(){
     seed |= 0; seed = (seed + 0x6D2B79F5) | 0;
@@ -5324,6 +5377,7 @@ function renderHomeRows(){
   }
 
   root.innerHTML = html;
+  initAdsInNewDOM();
   // カード列は継ぎ目のない無限スクロール用に2回複製して挿入しているため、
   // id指定だと後半分がgetElementByIdで拾えない。class+data属性で全件に
   // 適用する(オーナー指摘: 「アイコンをみんなの声にもつけてほしい」)。
@@ -6622,6 +6676,9 @@ function renderRecommended(currentMovie){
   } else {
     universeWrap.style.display = 'none';
   }
+
+  document.getElementById('d-ad-slot').innerHTML = buildAdUnitHTML('detail');
+  initAdsInNewDOM();
 }
 
 function openSeriesListModal(seriesName, movieIds, originId){

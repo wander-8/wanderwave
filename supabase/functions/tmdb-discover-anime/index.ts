@@ -111,8 +111,27 @@ function pickEmotionTags(genreIds: number[]): string[] {
   return order.sort((a, b) => freq[b] - freq[a]).slice(0, 3);
 }
 
+// 480文字で単純に切り詰めると文の途中(単語の途中)で切れ、その壊れた
+// 英文を翻訳した結果も途中で切れた日本語になってしまう(オーナー指摘:
+// あらすじが途中で切れている作品がある)。tmdb-movie-reviewsと同じく、
+// 文の区切り(. ! ?)が見つかればそこで切る。
+function trimToSentenceBoundary(text: string, maxLen: number): string {
+  if (text.length <= maxLen) return text;
+  const cut = text.slice(0, maxLen);
+  const lastPunct = Math.max(cut.lastIndexOf(". "), cut.lastIndexOf("! "), cut.lastIndexOf("? "));
+  return lastPunct > maxLen * 0.5 ? cut.slice(0, lastPunct + 1) : cut;
+}
+// 日本語側をSYNOPSIS_MAX_LENで切る時も、単純なsliceだと文の途中で切れる。
+// 日本語の句点(。！？)で同様に区切る。
+function trimToSentenceBoundaryJa(text: string, maxLen: number): string {
+  if (text.length <= maxLen) return text;
+  const cut = text.slice(0, maxLen);
+  const lastPunct = Math.max(cut.lastIndexOf("。"), cut.lastIndexOf("！"), cut.lastIndexOf("？"));
+  return lastPunct > maxLen * 0.5 ? cut.slice(0, lastPunct + 1) : cut;
+}
+
 async function translateToJa(text: string): Promise<string> {
-  const trimmed = text.slice(0, 480);
+  const trimmed = trimToSentenceBoundary(text, 480);
   try {
     const url = new URL("https://api.mymemory.translated.net/get");
     url.searchParams.set("q", trimmed);
@@ -302,7 +321,7 @@ Deno.serve(async (req: Request) => {
             const detailsEn = await tmdbFetch(detailPath, { language: "en-US" });
             if (detailsEn?.overview) overviewJa = await translateToJa(detailsEn.overview);
           }
-          const synopsis = overviewJa.slice(0, SYNOPSIS_MAX_LEN);
+          const synopsis = trimToSentenceBoundaryJa(overviewJa, SYNOPSIS_MAX_LEN);
 
           const countries: string[] = media === "movie"
             ? (details.production_countries || []).map((co: any) => countryNameJa(co.iso_3166_1, co.name))

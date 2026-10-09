@@ -9,6 +9,16 @@ const RAKUTEN_ENDPOINT = "https://openapi.rakuten.co.jp/services/api/BooksBook/S
 const SITE_URL = "https://wander-8.site/";
 const SYNOPSIS_MAX_LEN = 400;
 
+// 単純なsliceだと400文字ちょうどで文の途中(単語の途中)で切れてしまう
+// ことがある(オーナー指摘: あらすじが途中で切れている作品がある)。
+// 日本語の句点(。！？)が見つかればそこで切る。
+function trimToSentenceBoundaryJa(text: string, maxLen: number): string {
+  if (text.length <= maxLen) return text;
+  const cut = text.slice(0, maxLen);
+  const lastPunct = Math.max(cut.lastIndexOf("。"), cut.lastIndexOf("！"), cut.lastIndexOf("？"));
+  return lastPunct > maxLen * 0.5 ? cut.slice(0, lastPunct + 1) : cut;
+}
+
 // カタログ代表(最も若い巻)としてまとめた1件が、たまたまitemCaptionの
 // 無い巻だったためあらすじが空のままの作品がある。同じシリーズの別の巻に
 // あらすじが付いていることが多いので、タイトルで再検索し、巻数違い等を
@@ -117,7 +127,7 @@ Deno.serve(async (req: Request) => {
         if (normalizeTitle(stripVolumeSuffix(item.title)) !== targetNorm) continue;
         const c = (item.itemCaption || "").trim();
         if (c) {
-          caption = c.slice(0, SYNOPSIS_MAX_LEN);
+          caption = trimToSentenceBoundaryJa(c, SYNOPSIS_MAX_LEN);
           break;
         }
       }
