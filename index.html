@@ -876,6 +876,20 @@
     font-size:11px; font-weight:700; color:#fff;
     text-shadow: 0 1px 2px rgba(0,0,0,0.4);
   }
+  /* マイリストの中身一覧だけで出す、1件ずつ外すための×ボタン(オーナー
+     要望:「リスト内の作品、削除できるボタンと機能を追加してほしい」)。
+     カード全体のonclick(詳細ページへ)より手前に浮かせ、タップ時は
+     stopPropagation()で詳細ページ遷移を起こさないようにする。 */
+  .card-remove-btn{
+    position:absolute; top:6px; right:6px; z-index:4;
+    width:24px; height:24px; border-radius:50%;
+    background: rgba(5,8,15,0.65);
+    border: 1px solid rgba(255,255,255,0.35);
+    color:#fff; font-size:15px; line-height:1; font-family: inherit;
+    display:flex; align-items:center; justify-content:center;
+    cursor:pointer;
+  }
+  .card-remove-btn:active{ transform: scale(0.88); }
   .series-more-thumb{
     background: var(--surface);
     border: 1.5px dashed var(--line);
@@ -5164,9 +5178,14 @@ function buildCardHTML(m, opts){
   // カードに種別バッジを出す(通常の一覧はモード単一なので不要)。
   const typeInfo = (opts && opts.showTypeBadge) ? mediaTypeInfo(m) : null;
   const typeBadge = typeInfo ? `<div class="result-type-badge" style="background:${typeInfo.color};">${typeInfo.label}</div>` : '';
+  // マイリストの中身一覧(renderListDetail)からだけ、1件ずつ外す×ボタンを
+  // 出す(オーナー要望:「リスト内の作品、削除できるボタンと機能」)。
+  const removeBtn = (opts && opts.removableListId != null)
+    ? `<button type="button" class="card-remove-btn" onclick="event.stopPropagation(); removeItemFromList('${opts.removableListId}', ${m.id})" title="リストから外す">×</button>`
+    : '';
   return `
     <div class="result-card" onclick="${clickHandler}">
-      <div class="poster-thumb" style="background:${m.posterColor}">${posterImg}${initialOrTitle}${typeBadge}</div>
+      <div class="poster-thumb" style="background:${m.posterColor}">${posterImg}${initialOrTitle}${typeBadge}${removeBtn}</div>
       ${overlayTitle ? '' : `<div class="result-title">${m.title}</div>`}
       <div class="result-year">${m.year}</div>
       ${m.loveCount > 0 ? `
@@ -5184,16 +5203,19 @@ function buildCardHTML(m, opts){
 // (MOVIES)に存在しないので、タップしたら元のアルバムの詳細ページへ
 // 飛ばす(曲単体の詳細ページは無いため)。.result-cardを使い回すことで
 // 見た目もカード出現アニメーションも通常の作品カードと揃える。
-function buildTrackCardHTML(item){
+function buildTrackCardHTML(item, opts){
   const album = MOVIES.find(m => m.id === item.movieId);
   const artUrl = item.artworkUrl || (album ? album.posterUrl : null);
   const bg = album ? album.posterColor : '#2a2a2f';
   const img = artUrl ? `<img src="${artUrl}" alt="" loading="lazy" decoding="async">` : '';
   const initial = artUrl ? '' : escapeHtml((item.trackName || '♪').charAt(0));
   const subtitle = item.artistName || (album ? album.title : '');
+  const removeBtn = (opts && opts.removableListId != null)
+    ? `<button type="button" class="card-remove-btn" onclick="event.stopPropagation(); removeItemFromList('${opts.removableListId}', ${item.movieId}, '${item.trackId}')" title="リストから外す">×</button>`
+    : '';
   return `
     <div class="result-card" onclick="goDetail(${item.movieId})">
-      <div class="poster-thumb" style="background:${bg}">${img}${initial}</div>
+      <div class="poster-thumb" style="background:${bg}">${img}${initial}${removeBtn}</div>
       <div class="result-title">${escapeHtml(item.trackName)}</div>
       <div class="result-year">${escapeHtml(subtitle)}</div>
     </div>
@@ -11226,7 +11248,8 @@ function renderListDetail(){
   if(movies.length === 0 && tracks.length === 0){
     root.innerHTML = '<div class="empty">このリストにはまだ作品がありません。作品の詳細ページから追加できます。</div>';
   } else {
-    root.innerHTML = movies.map(m => buildCardHTML(m, {})).join('') + tracks.map(buildTrackCardHTML).join('');
+    root.innerHTML = movies.map(m => buildCardHTML(m, { removableListId: list.id })).join('')
+      + tracks.map(t => buildTrackCardHTML(t, { removableListId: list.id })).join('');
   }
 
   // 「あとで観る」は名前変更・削除できない特別なリストなので、鉛筆のヒント・削除アイコンごと出さない
@@ -11567,6 +11590,46 @@ async function addTrackToList(listId){
   }catch(err){
     console.error(err);
     showToast(friendlyErrorMessage(err, '追加に失敗しました。通信環境を確認してください。'));
+  }
+}
+
+// マイリストの中身一覧(renderListDetail)のカードについた×ボタンから、
+// 1件だけをリストから外す(オーナー要望:「リスト内の作品、削除できる
+// ボタンと機能を追加してほしい」)。「気になる」は専用のwatch_laterテーブル
+// を使う特別なリストなので別経路、それ以外は通常通りuser_list_itemsから
+// 削除する(曲単体ならtrack_idも含めて一致する行だけを消す)。
+async function removeItemFromList(listId, movieId, trackId){
+  if(listId === 'watch_later'){
+    const userId = await currentUserId();
+    try{
+      const { error } = await supabase.from('watch_later').delete().eq('user_id', userId).eq('movie_id', movieId);
+      if(error) throw error;
+      delete state.myWatchLater[movieId];
+      showToast('気になるリストから外しました');
+      renderListDetail();
+    }catch(err){
+      console.error(err);
+      showToast(friendlyErrorMessage(err, '削除に失敗しました。通信環境を確認してください。'));
+    }
+    return;
+  }
+  const list = state.myLists.find(l => String(l.id) === String(listId));
+  if(!list) return;
+  try{
+    let q = supabase.from('user_list_items').delete().eq('list_id', parseInt(listId, 10)).eq('movie_id', movieId);
+    q = trackId != null ? q.eq('track_id', trackId) : q.is('track_id', null);
+    const { error } = await q;
+    if(error) throw error;
+    if(trackId != null){
+      list.tracks = (list.tracks || []).filter(t => !(t.movieId === movieId && t.trackId === trackId));
+    } else {
+      list.movieIds = list.movieIds.filter(id => id !== movieId);
+    }
+    showToast(`「${list.name}」から外しました`);
+    renderListDetail();
+  }catch(err){
+    console.error(err);
+    showToast(friendlyErrorMessage(err, '削除に失敗しました。通信環境を確認してください。'));
   }
 }
 
