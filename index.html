@@ -557,6 +557,26 @@
   .genre-cloud::-webkit-scrollbar, .country-cloud::-webkit-scrollbar{ display:none; }
   .chip-row{ display:flex; flex-wrap:nowrap; gap:8px; }
   .chip-row-offset{ margin-left:24px; }
+  /* 音楽のジャンル(47種)を「ポップ・ロック・ダンス...」のようにざっくり
+     見出し付きで束ねて出す時の見た目(renderGenreCloud参照)。外側の
+     #genre-cloudは1本の横スクロールをやめて縦積みにし(genre-cloud-grouped)、
+     グループごとに短い横スクロール帯(chip-strip)を見出し付きで並べる。 */
+  .genre-cloud.genre-cloud-grouped{
+    display:block; overflow-x:visible; padding-bottom:0;
+  }
+  .genre-group{ margin-bottom: 12px; }
+  .genre-group:last-child{ margin-bottom: 0; }
+  .genre-group-label{
+    font-size: 11.5px; color: var(--ink-soft); font-weight:700;
+    margin-bottom: 6px; letter-spacing: .02em;
+  }
+  .chip-strip{
+    display:flex; flex-direction:column; gap:8px;
+    overflow-x:auto; -webkit-overflow-scrolling:touch;
+    padding-bottom:2px;
+    scrollbar-width:none;
+  }
+  .chip-strip::-webkit-scrollbar{ display:none; }
   /* ジャンル/国チップは選択が変わるたびに(押した本人以外も含めて)クラウド
      全体を作り直しているため、押した瞬間だけでなく再描画のたびに小さく
      ポップして現れるようにする(結果カードの登場演出と同じ言語)。 */
@@ -3976,6 +3996,19 @@ const TAG_COLORS = {
 // CONTENT_GENRE_KEYWORDSで判定できる(BL_GL_backfillで既存行にも反映済み)。
 const FILTER_GENRES = ["ドラマ","コメディ","アクション","スリラー","アドベンチャー","クライム","恋愛","BL","ホラー","SF","ファンタジー","ミステリー","アニメーション","ファミリー","歴史","戦争","音楽","ドキュメンタリー","西部劇","特撮","TVムービー","J-Pop","K-Pop","Rock","Classical","Anime","Hip Hop/Rap","Pop","R&B/Soul","Jazz","Soundtrack","World","Alternative","Christian & Gospel","Electronic","New Age","Dance","Vocal","Country","Opera","Singer/Songwriter","Heavy Metal","Pop in Spanish","Latin","Arena Rock","Classical Crossover","Hard Rock","Salsa y Tropical","House","Musicals","Folk","Alternative & Rock in Spanish","Cantopop","Mandopop","French Pop","Children's Music","Blues","Reggae","Indie Rock","Regional Mexicano","Ambient","Electronica","Funk","Bollywood","Gospel","Spoken Word","Video Game","Soul","小説・エッセイ","暮らし・健康・料理","語学・学習参考書","旅行・留学・アウトドア","人文・思想・社会","ビジネス・経済・就職","パソコン・システム開発","科学・医学・技術","エンタメ","日本美術","東洋美術","西洋美術","デザイン","イラスト","美術館","技法書","写真","建築","陶芸","書道","骨董","染織・漆","風景写真集"];
 const FILTER_COUNTRIES = ["アメリカ","イギリス","フランス","ドイツ","日本","海外","カナダ","イタリア","スペイン","中国","香港","韓国","インド","オーストラリア","ベルギー","メキシコ","スウェーデン","デンマーク","ブラジル","ロシア","アイルランド","オランダ","ポーランド","スイス","アルゼンチン","トルコ","ノルウェー","フィンランド","オーストリア","ルクセンブルク","ルーマニア","チェコ","台湾","ハンガリー","南アフリカ","タイ","ニュージーランド","ポルトガル"];
+// 音楽のジャンル(FILTER_GENRES内の47種)を、見出し付きの小グループに
+// ざっくり束ねるための分類。iTunesのジャンル分類をそのまま出すと件数が
+// 多すぎて探しにくい(オーナー指摘:「音楽のジャンルのところまだ
+// わかりにくいかも。ある程度配置わけしてほしい」)ため、厳密な音楽理論の
+// 分類ではなく「だいたいここを見ればありそう」という実用的な括りにする。
+const MUSIC_GENRE_GROUPS = [
+  { label: "ポップ・歌もの", genres: ["J-Pop","K-Pop","Pop","R&B/Soul","Soul","Funk","Hip Hop/Rap","Singer/Songwriter","Folk","Country"] },
+  { label: "ロック・バンド", genres: ["Rock","Alternative","Heavy Metal","Hard Rock","Arena Rock","Indie Rock","Blues"] },
+  { label: "ダンス・エレクトロニック", genres: ["Electronic","Dance","House","Electronica","Ambient"] },
+  { label: "クラシック・舞台・映像", genres: ["Classical","Jazz","Opera","Classical Crossover","Vocal","New Age","Soundtrack","Musicals","Video Game"] },
+  { label: "世界の音楽", genres: ["World","Latin","Pop in Spanish","Salsa y Tropical","Alternative & Rock in Spanish","Cantopop","Mandopop","French Pop","Regional Mexicano","Bollywood","Reggae"] },
+  { label: "その他", genres: ["Christian & Gospel","Gospel","Children's Music","Spoken Word","Anime"] },
+];
 // 新書のサブジャンル名(rakuten-discover-novelのSHINSHO_SUBGENRE_NAMESと同じ値)。
 // 「ある作品が新書かどうか」はis_novelだけでは分からず、genre配列にこの中の
 // 値が入っているかで判定する(絵本・図鑑はgenreに単に"絵本"/"図鑑"が入るだけ
@@ -4584,7 +4617,8 @@ function renderGenreCloud(){
   // 選択を解除する(消えたチップの分だけ絞り込みが宙に浮いて0件のまま
   // 気づけない、という事故を防ぐ)。
   [...state.activeGenres].forEach(g => { if(!genres.includes(g)) state.activeGenres.delete(g); });
-  renderZigzagChips(el, genres, (genre) => {
+
+  const buildChip = (genre) => {
     const chip = document.createElement('div');
     const isActive = state.activeGenres.has(genre);
     chip.className = 'genre-chip' + (isActive ? ' active' : '');
@@ -4596,7 +4630,36 @@ function renderGenreCloud(){
       renderResults();
     };
     return chip;
-  });
+  };
+
+  // 音楽はジャンルの種類自体が47種と多く、1本の横スクロールのままだと
+  // 目当てのジャンルを探すのに延々と流し見する必要があって分かりにくい
+  // (オーナー指摘:「音楽のジャンルのところまだわかりにくいかも。ある程度
+  // 配置わけしてほしい」)。MUSIC_GENRE_GROUPSのざっくりした括りで見出し
+  // 付きの小グループに分け、グループの中だけで千鳥(2段)の横スクロールに
+  // する(グループ自体は縦に並べる。genre-cloud-grouped参照)。
+  if(currentCatalogMode() === 'music'){
+    el.classList.add('genre-cloud-grouped');
+    el.innerHTML = "";
+    MUSIC_GENRE_GROUPS.forEach(group => {
+      const groupGenres = group.genres.filter(g => genres.includes(g));
+      if(groupGenres.length === 0) return;
+      const wrap = document.createElement('div');
+      wrap.className = 'genre-group';
+      const label = document.createElement('div');
+      label.className = 'genre-group-label';
+      label.textContent = group.label;
+      const strip = document.createElement('div');
+      strip.className = 'chip-strip';
+      renderZigzagChips(strip, groupGenres, buildChip);
+      wrap.appendChild(label);
+      wrap.appendChild(strip);
+      el.appendChild(wrap);
+    });
+  } else {
+    el.classList.remove('genre-cloud-grouped');
+    renderZigzagChips(el, genres, buildChip);
+  }
   renderFilterTabs();
 }
 // 小説モード限定の「本の種類」タブ(小説/新書/児童書/美術/写真/建築)。
