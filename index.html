@@ -3465,7 +3465,7 @@ const INITIAL_AUTH_REDIRECT_SEARCH = window.location.search || '';
 // これだったため、ここにデプロイのたびに変わる値を置き、
 // checkForStalePage()で「今見ているページが最新かどうか」を確認できる
 // ようにする。
-const BUILD_VERSION = "2026-10-09T11:38:34Z";
+const BUILD_VERSION = "2026-10-09T11:48:14Z";
 
 // --- Supabase接続 -----------------------------------------------------
 // profiles(プロフィール)とmovie_logs(視聴ログ)はSupabaseに保存する。
@@ -7671,15 +7671,41 @@ function renderTracksGrid(tracks){
         <div class="episode-name">${escapeHtml(t.trackName)}</div>
         <div class="episode-love-row">
           ${t.previewUrl ? `
-            <button class="heart-single-btn mini" id="track-play-${i}" onclick="toggleTrackPreview(${i}, '${t.previewUrl}')">${playingTrackIndex === i ? '⏸' : '▶'}</button>
+            <button class="heart-single-btn mini track-play-btn" id="track-play-${i}" data-track-index="${i}" data-preview-url="${escapeHtml(t.previewUrl)}">${playingTrackIndex === i ? '⏸' : '▶'}</button>
           ` : ''}
-          ${t.trackId ? `<button class="track-add-btn${isTrackInAnyList(state.currentMovieId, t.trackId) ? ' added' : ''}" id="track-add-${i}" onclick="openAddTrackToListModal(${i})" title="リストに追加">+</button>` : ''}
+          ${t.trackId ? `<button class="track-add-btn${isTrackInAnyList(state.currentMovieId, t.trackId) ? ' added' : ''}" id="track-add-${i}" data-track-index="${i}" title="リストに追加">+</button>` : ''}
           <span class="episode-love-hint">${t.previewUrl ? '30秒試聴(ループ)' : ''}${t.trackTimeMillis ? `${t.previewUrl ? '・' : ''}${formatTrackDuration(t.trackTimeMillis)}` : ''}</span>
         </div>
       </div>
     </div>
   `).join('');
 }
+
+// 以前は▶/+の各ボタンにインラインonclick属性を付けていたが、「+ボタンを
+// 押しても何も起きない」という報告が実機で何度解決を試みても再現・解消
+// できず、インラインonclick属性+動的innerHTML差し替えの組み合わせ自体に
+// 何らかの相性問題がある可能性を疑い、より手堅いイベント委譲方式に
+// 書き換えた。tracks-grid自体(中身がinnerHTMLで何度差し替わっても、
+// この入れ物のDOMノード自体は再生成されない)に1回だけ listener を
+// 付けておけば、中の個々のボタンが後から何度作り直されても効き続ける。
+(function initTracksGridDelegation(){
+  const grid = document.getElementById('tracks-grid');
+  if(!grid) return;
+  grid.addEventListener('click', (e) => {
+    const addBtn = e.target.closest('.track-add-btn');
+    if(addBtn){
+      const idx = parseInt(addBtn.dataset.trackIndex, 10);
+      if(!Number.isNaN(idx)) openAddTrackToListModal(idx);
+      return;
+    }
+    const playBtn = e.target.closest('.track-play-btn');
+    if(playBtn){
+      const idx = parseInt(playBtn.dataset.trackIndex, 10);
+      const url = playBtn.dataset.previewUrl;
+      if(!Number.isNaN(idx) && url) toggleTrackPreview(idx, url);
+    }
+  });
+})();
 
 async function toggleEpisodesSection(){
   episodesOpen = !episodesOpen;
