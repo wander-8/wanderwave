@@ -978,6 +978,7 @@
     transition: color .2s ease, border-color .2s ease;
   }
   .add-list-icon-btn svg{ width: 18px; height: 18px; }
+  .add-list-icon-btn.active{ background: var(--plum-btn); border-color: var(--plum-btn); color:#fff; }
   .mini-switch{
     position: relative;
     width: 38px; height: 22px;
@@ -3279,6 +3280,9 @@
         <div class="sub" id="list-detail-count"></div>
       </div>
       <div id="list-header-icons" style="display:flex; align-items:center; gap:8px; flex-shrink:0; margin-top:6px;">
+        <button class="add-list-icon-btn" id="list-edit-toggle-btn" onclick="toggleListItemEditMode()" title="作品を選んで削除する" style="display:none;">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M8 12h8"/></svg>
+        </button>
         <button class="add-list-icon-btn" id="list-delete-icon-btn" onclick="deleteCurrentList()" title="削除する">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>
         </button>
@@ -3296,9 +3300,6 @@
 
     <div id="list-delete-confirm" style="margin-bottom:14px;"></div>
 
-    <div style="text-align:right; margin-bottom:8px; display:none;" id="list-edit-toggle-row">
-      <button class="link-btn" id="list-edit-toggle-btn" style="padding:4px 0;" onclick="toggleListItemEditMode()">削除する作品を選ぶ</button>
-    </div>
     <div id="list-detail-items" class="pocket-grid"></div>
   </div>
 
@@ -11284,8 +11285,10 @@ function renderListDetail(){
     root.innerHTML = movies.map(m => buildCardHTML(m, cardOpts)).join('')
       + tracks.map(t => buildTrackCardHTML(t, cardOpts)).join('');
   }
-  document.getElementById('list-edit-toggle-row').style.display = hasItems ? 'block' : 'none';
-  document.getElementById('list-edit-toggle-btn').textContent = listItemEditMode ? '完了' : '削除する作品を選ぶ';
+  const editToggleBtn = document.getElementById('list-edit-toggle-btn');
+  editToggleBtn.style.display = hasItems ? 'flex' : 'none';
+  editToggleBtn.classList.toggle('active', listItemEditMode);
+  editToggleBtn.title = listItemEditMode ? '選択を終える' : '作品を選んで削除する';
 
   // 「あとで観る」は名前変更・削除できない特別なリストなので、鉛筆のヒント・削除アイコンごと出さない
   document.getElementById('list-name-pencil-hint').style.display = list.isBuiltIn ? 'none' : 'block';
