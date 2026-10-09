@@ -6488,15 +6488,17 @@ function renderRecommended(currentMovie){
   }
 
   // シリーズの他の作品(公開年順)。実写はTMDbのcollection一致(series列)、
-  // アニメ・漫画・小説・音楽はそれに加えて上のタイトル部分一致でも拾う
-  // (それぞれ同じメディア種別同士でだけ結び付ける)。
+  // アニメ・漫画・小説はそれに加えて上のタイトル部分一致でも拾う(それぞれ
+  // 同じメディア種別同士でだけ結び付ける)。音楽はアルバム名が「POPS」の
+  // ような短く一般的な単語になりがちで、この部分一致判定とは相性が悪く
+  // 無関係なアルバム同士を誤って結び付けてしまっていた(オーナー指摘:
+  // 「音楽のシリーズの他の作品が毎回間違ってる」)ため対象から外す。
   let seriesSiblings = currentMovie.series
     ? dedupeByNormalizedTitleYear(others.filter(m => m.series === currentMovie.series))
     : [];
   const seriesCategoryCheck = currentIsAnimeWork ? isAnimeWork
     : currentMovie.isManga ? (m => !!m.isManga)
     : currentMovie.isNovel ? (m => !!m.isNovel)
-    : currentMovie.isMusic ? (m => !!m.isMusic)
     : null;
   if(seriesCategoryCheck){
     const seen = new Set(seriesSiblings.map(m => m.id));
@@ -11444,19 +11446,28 @@ function playModalRevealAnimation(panel){
 // 閉じてほしい」)。ポケット/気になるはトグルなので対象外(再タップしたい
 // ことがあるため開いたままにする)。
 const ADD_TO_LIST_DISMISS_MS = 320;
+// 閉じるアニメーション中(320ms)に、再び「+」が押されて新しくモーダルを
+// 開いた直後、前回のclose用setTimeoutが後から発火してdisplay:noneに
+// 巻き戻してしまう競合があった(1件目を追加した直後に手早く次の曲の
+// 「+」を押すと、開いたはずのモーダルが一瞬で消えて見える)。保留中の
+// close用タイマーがあれば、新しく開く前に必ず止める。
+let addToListDismissTimer = null;
 function closeAddToListModalWithMotion(){
   const panel = document.getElementById('add-to-list-modal');
   panel.classList.remove('soft-reveal');
   panel.classList.add('soft-dismiss');
-  setTimeout(() => {
+  if(addToListDismissTimer) clearTimeout(addToListDismissTimer);
+  addToListDismissTimer = setTimeout(() => {
     panel.style.display = 'none';
     panel.classList.remove('soft-dismiss');
+    addToListDismissTimer = null;
   }, ADD_TO_LIST_DISMISS_MS);
   state.pendingTrackAdd = null;
 }
 
 function openAddToListModal(){
   if(!requireVerifiedUser()) return;
+  if(addToListDismissTimer){ clearTimeout(addToListDismissTimer); addToListDismissTimer = null; }
   const panel = document.getElementById('add-to-list-modal');
   const isOpen = panel.style.display === 'block';
   if(isOpen && !state.pendingTrackAdd){
@@ -11475,26 +11486,36 @@ function openAddToListModal(){
 // 使い回し、state.pendingTrackAddがあるかどうかでrenderAddToListOptions
 // 側が曲向けの表示に切り替える。
 function openAddTrackToListModal(index){
-  if(!requireVerifiedUser()) return;
-  const track = (tracksCache || [])[index];
-  if(!track || !track.trackId){
-    showToast('この曲はリストに追加できません');
-    return;
+  // 「+を押しても何も起きない」という報告があったが、ここまで来れていれば
+  // 必ずモーダルが開くか、最低でもトーストが出るはずの作りになっている。
+  // それでも何も起きなかった場合に備え、想定外の例外も必ずトーストと
+  // コンソールに出るようにする(オーナー報告の原因切り分け用)。
+  try{
+    if(!requireVerifiedUser()) return;
+    if(addToListDismissTimer){ clearTimeout(addToListDismissTimer); addToListDismissTimer = null; }
+    const track = (tracksCache || [])[index];
+    if(!track || !track.trackId){
+      showToast('この曲はリストに追加できません');
+      return;
+    }
+    state.pendingTrackAdd = {
+      movieId: state.currentMovieId,
+      trackId: track.trackId,
+      trackName: track.trackName,
+      artistName: track.artistName,
+      artworkUrl: track.artworkUrl,
+      previewUrl: track.previewUrl,
+      trackTimeMillis: track.trackTimeMillis,
+    };
+    const panel = document.getElementById('add-to-list-modal');
+    renderAddToListOptions();
+    document.getElementById('new-list-from-detail-form').innerHTML = '';
+    panel.style.display = 'block';
+    playModalRevealAnimation(panel);
+  }catch(err){
+    console.error('曲をリストに追加するモーダルを開けませんでした', err);
+    showToast('うまく開けませんでした。もう一度お試しください');
   }
-  state.pendingTrackAdd = {
-    movieId: state.currentMovieId,
-    trackId: track.trackId,
-    trackName: track.trackName,
-    artistName: track.artistName,
-    artworkUrl: track.artworkUrl,
-    previewUrl: track.previewUrl,
-    trackTimeMillis: track.trackTimeMillis,
-  };
-  const panel = document.getElementById('add-to-list-modal');
-  renderAddToListOptions();
-  document.getElementById('new-list-from-detail-form').innerHTML = '';
-  panel.style.display = 'block';
-  playModalRevealAnimation(panel);
 }
 
 function closeAddToListModal(){
