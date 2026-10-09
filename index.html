@@ -4139,15 +4139,17 @@ function playFanfare(){
   });
 }
 
+// ハートをタップするたびにnavigator.vibrate()で端末を振動させていたが、
+// スマホでは画面(=持っている端末そのもの)がカタカタ揺れる不快な挙動として
+// 繰り返し指摘されていた(オーナー指摘)。愛度の変化は音とハート自体の
+// アニメーションだけで十分伝わるので、振動は完全に削除した。
 function feedbackLove(level){
   if(level >= 3){
     playFanfare();
-    if(navigator.vibrate) navigator.vibrate([15, 30, 15, 30, 40]);
     return;
   }
   const freqs = { 1: 440, 2: 560 };
   playTone(freqs[level] || 440, 0.16, 0.11);
-  if(navigator.vibrate) navigator.vibrate(12 + (level || 1) * 4);
 }
 
 function feedbackSuccess(){
@@ -7176,7 +7178,12 @@ function updateLoveUI(m){
   document.querySelectorAll('#heart-level-dots .h-dot').forEach((dot, i) => {
     dot.classList.toggle('filled', i < myLevel);
   });
-  document.getElementById('heart-hint').style.display = myLevel > 0 ? 'none' : 'block';
+  // display:none/blockで切り替えると、その分の高さが出たり消えたりして
+  // .vote-widget行の高さが変わり、下のコンテンツごとページがガタッと動いて
+  // 見えていた(オーナー指摘: 「ハートを押すとページがカタカタ動く」)。
+  // visibilityなら場所は確保したまま見た目だけ消えるので、レイアウトは
+  // 一切動かない。
+  document.getElementById('heart-hint').style.visibility = myLevel > 0 ? 'hidden' : 'visible';
 }
 
 // 連打(0→1→2→3→0→…と素早くタップし続ける)すると、以前は前のタップ分の
@@ -10292,7 +10299,9 @@ function renderMlHeart(){
   document.querySelectorAll('#ml-heart-dots .h-dot').forEach((dot, i) => {
     dot.classList.toggle('filled', i < mlLoveLevel);
   });
-  document.getElementById('ml-heart-hint').style.display = mlLoveLevel > 0 ? 'none' : 'block';
+  // heart-hintと同じ理由(display切り替えによるレイアウトのガタつき)で
+  // visibilityに統一。
+  document.getElementById('ml-heart-hint').style.visibility = mlLoveLevel > 0 ? 'hidden' : 'visible';
 }
 
 function cycleMlLove(){
