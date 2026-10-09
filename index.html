@@ -9142,33 +9142,35 @@ async function fetchFreshCatalogAndContinue(FIRST_PAGE_SIZE, plainMovieFilter){
   // 範囲限定版とは別物)。
   const fullStatsPromise = loadFullStatsAndEstimates();
 
-  // movies本体の残りページ取得(CONCURRENCY分の接続)と、stats/estimates
-  // 全件の取得(同じく複数ページ)を同時に走らせると、匿名ロールの
-  // statement_timeout(3秒)に引っかかる事故が過去に実際に起きたため、
-  // stats/estimates全件が終わってから残りページの取得を始める
-  // (どちらもスプラッシュはブロックしないので体感への影響は無い)。
+  // stats/estimates全件が終わったら、まず他メディア種別の軽量カタログ
+  // (アニメ・ドラマ・漫画・小説・音楽)を先に取る。以前は映画の残り
+  // 3万5千件超を先に待ってからこれを始めていたため、映画タブは1ページ目で
+  // 即表示できているのに、他タブへ切り替えると実データが1件も無いまま
+  // 映画の残り全件が終わるのを待たされていた(オーナー指摘:「映画と
+  // アニメ以外の表示が遅い」。一度直したつもりが直り切っていなかった
+  // 箇所)。映画の残りページ取得は映画タブの体感には影響しないので、
+  // 他タブの軽量カタログより後でよい。movies本体の残りページ取得
+  // (CONCURRENCY分の接続)と同時に走らせると匿名ロールのstatement_timeout
+  // (3秒)に引っかかる事故が過去に実際に起きているため、引き続き
+  // 1つずつ順番に待つ(どちらもスプラッシュはブロックしないので体感への
+  // 影響は無い)。
+  const nonMovieLoadedPromise = fullStatsPromise.then(({ statsByMovie, estimatesByMovie }) =>
+    broadFetch ? loadNonMovieCatalogInBackground(statsByMovie, estimatesByMovie) : null
+  );
+
   const restMoviesLoadedPromise = reachedEndOnFirstPage
     ? Promise.resolve()
-    : fullStatsPromise.then(({ statsByMovie, estimatesByMovie }) =>
-        loadRemainingMoviesInBackground(FIRST_PAGE_SIZE, plainMovieFilter, statsByMovie, estimatesByMovie)
-      );
+    : nonMovieLoadedPromise
+        .then(() => fullStatsPromise)
+        .then(({ statsByMovie, estimatesByMovie }) =>
+          loadRemainingMoviesInBackground(FIRST_PAGE_SIZE, plainMovieFilter, statsByMovie, estimatesByMovie)
+        );
 
-  // 以前はここでloadMovieBigFieldsInBackground(映画のsynopsis/cast埋め)を
-  // 先に待ってからloadNonMovieCatalogInBackground(アニメ・ドラマ・漫画・
-  // 小説・音楽の軽量カタログ)を走らせていたため、映画タブは速いのに
-  // 他のタブへ切り替えると長く待たされる(=映画の文章埋めという表示上
-  // 急がない処理が、他タブの最低限の表示をブロックしていた)という
-  // 報告につながっていた。優先順位を入れ替え、他タブの軽量カタログを
-  // 先に、映画のsynopsis/cast埋め(どのタブでも表示には影響しない)は
-  // 後回しにする。loadMovieBigFieldsInBackground()はMOVIES全件をid引きで
-  // 埋めるため、残りページの結合(restMoviesLoadedPromise)が終わってから
-  // 走らせる必要があるのは変わらない。
-  restMoviesLoadedPromise.then(() => {
-    if(!broadFetch) return null;
-    return fullStatsPromise.then(({ statsByMovie, estimatesByMovie }) =>
-      loadNonMovieCatalogInBackground(statsByMovie, estimatesByMovie)
-    );
-  }).then(() => loadMovieBigFieldsInBackground()).then(() => {
+  // 映画のsynopsis/cast埋め(loadMovieBigFieldsInBackground)はどのタブでも
+  // 表示には影響しないので最後に回す。MOVIES全件をid引きで埋めるため、
+  // 残りページの結合(restMoviesLoadedPromise)が終わってから走らせる
+  // 必要があるのは変わらない。
+  restMoviesLoadedPromise.then(() => loadMovieBigFieldsInBackground()).then(() => {
     if(broadFetch) loadNonMovieBigFieldsInBackground();
   });
 }
@@ -9267,51 +9269,62 @@ async function loadMovieBigFieldsInBackground(){
 // まず1ページ分だけ先に取ってnonMovieCatalogLoadedを早く立て、残りは
 // 裏で続けて取る(synopsis/cast_membersは引き続きloadNonMovieBigFieldsInBackground
 // に回す)。「映画とアニメ以外(切り替え先のタブ)の読み込みが遅い」という
-// 報告の主因がこれだった。
+// 報告の主因がこれだった…はずが、実測すると直り切っていなかった。
+// 原因は2つ: ①1ページ目をis_anime/is_drama/is_manga/is_novel/is_musicを
+// まとめた.or()1本・id昇順で取っていたため、idが若い(=カタログに古くから
+// いる)アニメ・ドラマ・漫画だけで1ページ分(2000件)が埋まり、小説・音楽は
+// 実測で1件も入っていなかった。②このバックグラウンド取得自体が、映画の
+// 残り全件(3万5千件超)の取得が終わるまで開始すらされていなかった(本当に
+// 必要なのはstats/estimates全件だけで、映画の残りを待つ理由は無い)。
+// 種類ごとに個別ページ取得にして全種に最初から実データを持たせ、呼び出し
+// 順も映画の残りより先に回すことで両方を直す(fetchFreshCatalogAndContinue参照)。
+const NON_MOVIE_TYPE_FLAGS = ['is_anime', 'is_drama', 'is_manga', 'is_novel', 'is_music'];
 async function loadNonMovieCatalogInBackground(statsByMovie, estimatesByMovie){
-  const NON_MOVIE_FIRST_PAGE_SIZE = 2000;
-  const nonMovieFilter = (q) => q.or('is_anime.eq.true,is_drama.eq.true,is_manga.eq.true,is_novel.eq.true,is_music.eq.true');
+  const PER_TYPE_FIRST_PAGE_SIZE = 500;
+  const rerenderIfNeeded = () => {
+    if(state.catalogMode === 'movie') return;
+    // ジャンル・国・年代チップは「今のモードのプールに実在するものだけ」を
+    // その都度計算して出す作りなので、このバックグラウンド読み込みが
+    // 終わった後も再計算しないと、ページを開いた直後にモードを切り替えた
+    // (=この読み込みが終わる前にrenderGenreCloud等が1度空のプールで
+    // 呼ばれてしまった)場合、ジャンルが後から増えても二度と反映されず
+    // 「詳しく絞り込む」の中身が空のまま固まって見える事故になっていた。
+    // 感情タグも同じ理由(今のモードに実在するものだけを出す仕組みを
+    // availableTags()に入れた)で再計算が必要。
+    renderTagCloud();
+    renderGenreCloud();
+    renderCountryCloud();
+    renderDecadeCloud();
+    renderFeaturedBanner();
+    renderHomeRows();
+    renderResults();
+  };
   try{
-    const { data: firstPageData, error: firstPageError } = await nonMovieFilter(supabase.from('movies').select(MOVIE_LIGHT_COLUMNS)).order('id', { ascending: true }).range(0, NON_MOVIE_FIRST_PAGE_SIZE - 1);
-    if(firstPageError) throw firstPageError;
-    const firstPageRows = firstPageData || [];
+    const firstPageResults = await Promise.all(NON_MOVIE_TYPE_FLAGS.map(flag =>
+      supabase.from('movies').select(MOVIE_LIGHT_COLUMNS).eq(flag, true).order('id', { ascending: true }).range(0, PER_TYPE_FIRST_PAGE_SIZE - 1)
+    ));
+    firstPageResults.forEach(r => { if(r.error) throw r.error; });
+    const firstPageRows = firstPageResults.flatMap(r => r.data || []);
     MOVIES = MOVIES.concat(firstPageRows.map(row => buildMovieRecord(row, statsByMovie, estimatesByMovie)));
     nonMovieCatalogLoaded = true;
-    if(state.catalogMode !== 'movie'){
-      // ジャンル・国・年代チップは「今のモードのプールに実在するものだけ」を
-      // その都度計算して出す作りなので、このバックグラウンド読み込みが
-      // 終わった後も再計算しないと、ページを開いた直後にモードを切り替えた
-      // (=この読み込みが終わる前にrenderGenreCloud等が1度空のプールで
-      // 呼ばれてしまった)場合、ジャンルが後から増えても二度と反映されず
-      // 「詳しく絞り込む」の中身が空のまま固まって見える事故になっていた。
-      // 感情タグも同じ理由(今のモードに実在するものだけを出す仕組みを
-      // availableTags()に入れた)で再計算が必要。
-      renderTagCloud();
-      renderGenreCloud();
-      renderCountryCloud();
-      renderDecadeCloud();
-      renderFeaturedBanner();
-      renderHomeRows();
-      renderResults();
-    }
+    rerenderIfNeeded();
 
-    if(firstPageRows.length === NON_MOVIE_FIRST_PAGE_SIZE){
-      const restRows = await selectAllRows('movies', MOVIE_LIGHT_COLUMNS, nonMovieFilter, 'id', 1500, NON_MOVIE_FIRST_PAGE_SIZE);
+    // 種別ごとに、1ページ目で取り切れなかった分だけ残りを取得する(種別に
+    // よっては1ページ目で全件読み終わっている)。CONCURRENCY分の接続を
+    // 同時に何種別も重ねないよう、1種別ずつ順番に待つ(過去にstats/estimates
+    // と movies残りページを同時に走らせてanonロールのstatement_timeout
+    // (3秒)に引っかかった事故があるため、ここでも安全側に倒す)。
+    for(let i = 0; i < NON_MOVIE_TYPE_FLAGS.length; i++){
+      if((firstPageResults[i].data || []).length < PER_TYPE_FIRST_PAGE_SIZE) continue;
+      const flag = NON_MOVIE_TYPE_FLAGS[i];
+      const restRows = await selectAllRows('movies', MOVIE_LIGHT_COLUMNS, (q) => q.eq(flag, true), 'id', 1500, PER_TYPE_FIRST_PAGE_SIZE);
       const existingIds = new Set(MOVIES.map(m => m.id));
       const newRecords = restRows.filter(row => !existingIds.has(row.id)).map(row => buildMovieRecord(row, statsByMovie, estimatesByMovie));
       MOVIES = MOVIES.concat(newRecords);
-      if(state.catalogMode !== 'movie'){
-        renderTagCloud();
-        renderGenreCloud();
-        renderCountryCloud();
-        renderDecadeCloud();
-        renderFeaturedBanner();
-        renderHomeRows();
-        renderResults();
-      }
+      rerenderIfNeeded();
     }
   }catch(err){
-    console.error('アニメ・ドラマ・漫画・小説カタログの読み込みに失敗しました', err);
+    console.error('アニメ・ドラマ・漫画・小説・音楽カタログの読み込みに失敗しました', err);
   }
 }
 
