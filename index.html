@@ -3479,7 +3479,7 @@ const INITIAL_AUTH_REDIRECT_SEARCH = window.location.search || '';
 // これだったため、ここにデプロイのたびに変わる値を置き、
 // checkForStalePage()で「今見ているページが最新かどうか」を確認できる
 // ようにする。
-const BUILD_VERSION = "2026-10-09T12:18:23Z";
+const BUILD_VERSION = "2026-10-09T12:38:49Z";
 
 // --- Supabase接続 -----------------------------------------------------
 // profiles(プロフィール)とmovie_logs(視聴ログ)はSupabaseに保存する。
@@ -12276,10 +12276,12 @@ async function init(){
     // loadMyLists)が揃ってから復元する。揃う前に開くと、実際には登録済みでも
     // 「ニックネーム登録」のプレースホルダーが一瞬出てしまうため。
     // view-detailの復元は↑のloadMovies直後で済んでいるのでここでは対象外。
+    // view-profile(自分のアカウント画面)は復元の対象から外す。リロードすると
+    // プロフィールに戻ってしまうのをやめてほしいという指摘を複数回受けたため
+    // (指摘のあった画面だけ対象から外し、詳細・ポケット・マイリストの復元は
+    // そのまま残す)。
     if(savedView && document.getElementById('view-home').classList.contains('active')){
-      if(savedView.view === 'view-profile'){
-        goProfile();
-      }else if(savedView.view === 'view-pocket'){
+      if(savedView.view === 'view-pocket'){
         goPocket();
       }else if(savedView.view === 'view-lists'){
         goLists();
