@@ -1703,22 +1703,6 @@
   }
   .toast.show{ opacity:1; }
 
-  /* GitHub Pages+Fastly配信の都合で、ブラウザが古いindex.htmlを長時間
-     キャッシュしたまま使い続けることがあり、「直したと報告しても実機では
-     直っていないまま」という事故が繰り返し起きていた(オーナー報告)。
-     実際にはサーバー側は直っているのに、見ている本人の端末だけが古い
-     ままだった。.toastと似た見た目だが、自動では消えずタップで更新
-     するまで出続ける。 */
-  .update-banner{
-    position: fixed; left:50%; bottom: 28px; transform: translateX(-50%) translateY(16px);
-    background: var(--plum-btn); color:#fff; padding: 12px 20px;
-    border-radius: 999px; font-size: 13.5px; font-weight:700; cursor:pointer;
-    opacity:0; pointer-events:none; transition: opacity .25s ease, transform .25s ease;
-    z-index: 11; max-width: 85%; text-align:center;
-    box-shadow: 0 8px 24px -8px rgba(0,0,0,0.6);
-  }
-  .update-banner.show{ opacity:1; pointer-events:auto; transform: translateX(-50%) translateY(0); }
-
   /* ---- add form ---- */
   .form-grid{ display:grid; gap: 16px; margin-top: 16px; }
   .field label{ display:block; font-size:12.5px; color:var(--ink-soft); margin-bottom:6px; font-weight:600; }
@@ -3391,7 +3375,6 @@
 
 <!-- <button class="fab" onclick="goAdd()">+ 映画を追加</button> 承認フローが整うまで一時的に非表示 -->
 <div class="toast" id="toast"></div>
-<div class="update-banner" id="update-banner" onclick="location.href = location.pathname + '?_r=' + Date.now();">新しいバージョンがあります・タップして更新</div>
 
 <div class="modal-overlay" id="reconsider-modal">
   <div class="modal-box">
@@ -3470,16 +3453,6 @@
 // (「何度ログインしてもゲスト表示に戻る」という報告の原因)。
 const INITIAL_AUTH_REDIRECT_HASH = window.location.hash || '';
 const INITIAL_AUTH_REDIRECT_SEARCH = window.location.search || '';
-
-// GitHub Pages+Fastly配信は、ブラウザ側に最大10分キャッシュされる設定
-// (Cache-Control: max-age=600)になっており、それに加えて端末側のディスク
-// キャッシュや(ホーム画面に追加した場合の)PWA的な挙動も重なって、修正を
-// 公開した後もしばらく古いindex.htmlを見続けてしまうことがあった。「直した
-// はずなのに実機では直っていない」という報告が繰り返し起きていた実体が
-// これだったため、ここにデプロイのたびに変わる値を置き、
-// checkForStalePage()で「今見ているページが最新かどうか」を確認できる
-// ようにする。
-const BUILD_VERSION = "2026-10-09T16:13:50Z";
 
 // --- Supabase接続 -----------------------------------------------------
 // profiles(プロフィール)とmovie_logs(視聴ログ)はSupabaseに保存する。
@@ -12386,28 +12359,9 @@ async function init(){
     if(!ok) showToast('リストが見つかりませんでした');
   }
 
-  // 表示には影響させたくないので待たない(fire-and-forget)。BUILD_VERSION
-  // 参照のコメント参照。
-  wait(3000).then(checkForStalePage);
 }
 
 function wait(ms){ return new Promise(resolve => setTimeout(resolve, ms)); }
-
-// 今ロードされているページが最新かどうかを、キャッシュを一切介さずに
-// (cache: 'no-store'かつ毎回変わるクエリ付きで)確認する。古ければ、
-// 自動リロードはせず(入力中の内容やスクロール位置を勝手に消さないため)
-// タップで更新できるバナーを出すだけにとどめる。
-async function checkForStalePage(){
-  try{
-    const res = await fetch(location.pathname + '?_freshness=' + Date.now(), { cache: 'no-store' });
-    if(!res.ok) return;
-    const text = await res.text();
-    const m = text.match(/const BUILD_VERSION = "([^"]+)"/);
-    if(m && m[1] && m[1] !== BUILD_VERSION){
-      document.getElementById('update-banner').classList.add('show');
-    }
-  }catch(e){ /* 確認できなくても実害は無いので静かに諦める */ }
-}
 
 // 起動時のスプラッシュ画面は廃止した。init()が自前でrenderHomeRows()を
 // 呼ぶので、ここで追加の描画は不要(以前はスプラッシュが隠している間に
