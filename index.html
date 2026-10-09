@@ -3479,7 +3479,7 @@ const INITIAL_AUTH_REDIRECT_SEARCH = window.location.search || '';
 // これだったため、ここにデプロイのたびに変わる値を置き、
 // checkForStalePage()で「今見ているページが最新かどうか」を確認できる
 // ようにする。
-const BUILD_VERSION = "2026-10-09T11:55:21Z";
+const BUILD_VERSION = "2026-10-09T11:58:44Z";
 
 // --- Supabase接続 -----------------------------------------------------
 // profiles(プロフィール)とmovie_logs(視聴ログ)はSupabaseに保存する。
@@ -8137,9 +8137,16 @@ function toggleMovieInfoPanel(){
 // 予告編があるか(TMDbから取れなかった作品も多い)によって、ボタンごと
 // 出し分ける。別の作品に移動した時は、前の作品の予告編を開いたままに
 // しない(音が鳴り続けたり、違う作品のiframeが残ったりしないように)。
+// 音楽・漫画・小説はそもそも「予告編」という概念が無いメディアだが、
+// 実データで確認したところtrailer_keyが混入している行が相当数あった
+// (おそらく映画化・ドラマ化された同名作品の予告編を誤って拾ったもの。
+// 音楽1025件・漫画1012件・小説844件)。データ自体の精査は別途行うとして、
+// 表示だけは media_type を問わず確実に映画・ドラマだけに絞る
+// (オーナー指摘:「音楽の詳細の予告編消して。漫画や書籍にもあった」)。
 function resetTrailerUI(m){
   const btn = document.getElementById('trailer-btn');
-  btn.style.display = m.trailerKey ? 'flex' : 'none';
+  const canHaveTrailer = !m.isMusic && !m.isManga && !m.isNovel;
+  btn.style.display = (canHaveTrailer && m.trailerKey) ? 'flex' : 'none';
   document.getElementById('trailer-btn-label').textContent = '予告編を見る';
   const embed = document.getElementById('trailer-embed');
   embed.style.display = 'none';
