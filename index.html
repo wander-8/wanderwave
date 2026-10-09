@@ -961,11 +961,6 @@
   }
   .mini-switch.on{ background: rgba(160,132,242,0.35); border-color: var(--gold); }
   .mini-switch.on .mini-switch-knob{ background: var(--gold); transform: translateX(16px); }
-  .add-to-list-panel{
-    background: var(--surface); border:1px solid var(--line);
-    border-radius: 12px; padding: 14px; margin-bottom: 18px;
-  }
-  .add-to-list-panel .ghost-btn{ margin-bottom: 8px; text-align:left; }
   .heart-icon{ width: 18px; height: 17px; display:inline-block; vertical-align: middle; }
   .heart-single-wrap{ position: relative; text-align:center; }
   .heart-level-dots{ display:flex; justify-content:center; gap:4px; margin-top:6px; }
@@ -2603,11 +2598,16 @@
       <button class="add-list-text-link" onclick="openAddToListModal()">+ リストに追加</button>
     </div>
 
-    <div class="add-to-list-panel" id="add-to-list-modal" style="display:none;">
-      <div class="post-block-label">リストに追加</div>
-      <div id="add-to-list-options"></div>
-      <button class="ghost-btn" style="width:100%; margin-top:8px;" onclick="createListFromModal()">+ 新しいリストを作って追加</button>
-      <div id="new-list-from-detail-form" style="margin-top:8px;"></div>
+    <div class="diagnosis-history-overlay" id="add-to-list-modal" style="display:none;" onclick="if(event.target===this) closeAddToListModal()">
+      <div class="diagnosis-history-drawer" id="add-to-list-drawer">
+        <div class="diagnosis-history-header">
+          <div class="diagnosis-history-title">リストに追加</div>
+          <button class="diagnosis-history-close" onclick="closeAddToListModal()">×</button>
+        </div>
+        <div id="add-to-list-options"></div>
+        <button class="ghost-btn" style="width:100%; margin-top:8px;" onclick="createListFromModal()">+ 新しいリストを作って追加</button>
+        <div id="new-list-from-detail-form" style="margin-top:8px;"></div>
+      </div>
     </div>
 
     <div class="section-label-row" style="margin-top:0;">
@@ -3479,7 +3479,7 @@ const INITIAL_AUTH_REDIRECT_SEARCH = window.location.search || '';
 // これだったため、ここにデプロイのたびに変わる値を置き、
 // checkForStalePage()で「今見ているページが最新かどうか」を確認できる
 // ようにする。
-const BUILD_VERSION = "2026-10-09T12:08:19Z";
+const BUILD_VERSION = "2026-10-09T12:15:10Z";
 
 // --- Supabase接続 -----------------------------------------------------
 // profiles(プロフィール)とmovie_logs(視聴ログ)はSupabaseに保存する。
@@ -11500,35 +11500,26 @@ function renderAddToListOptions(){
   root.innerHTML = html;
 }
 
-// パネルを開くたびにsoft-reveal(フェード+浮き上がり)を最初から再生する。
-// クラスを一度外してoffsetWidthを読ませてから付け直す定番パターン
-// (startInlineRename等、他のパネルと同じ)。
-function playModalRevealAnimation(panel){
-  panel.classList.remove('soft-reveal');
-  void panel.offsetWidth;
-  panel.classList.add('soft-reveal');
-}
-
-// リストへの追加が完了したら、即座にdisplay:noneにするのではなく
-// soft-dismissでふわっと縮みながら消えてから隠す(投稿パネルのclosePostPanel
-// と同じパターン。オーナー要望:「リストに登録し終わったらモーション付きで
-// 閉じてほしい」)。ポケット/気になるはトグルなので対象外(再タップしたい
-// ことがあるため開いたままにする)。
-const ADD_TO_LIST_DISMISS_MS = 320;
-// 閉じるアニメーション中(320ms)に、再び「+」が押されて新しくモーダルを
-// 開いた直後、前回のclose用setTimeoutが後から発火してdisplay:noneに
-// 巻き戻してしまう競合があった(1件目を追加した直後に手早く次の曲の
-// 「+」を押すと、開いたはずのモーダルが一瞬で消えて見える)。保留中の
+// 以前は詳細ページの途中に置いた「その場」パネルだったため、収録曲欄のように
+// ページ下の方で「+」を押すと、画面の全く見えない位置(ページ上部)でパネルが
+// 開いてしまい、「押しても何も起きない」ように見える事故になっていた(オーナー
+// 指摘:「リストに追加がその場じゃなくて上に入ってたから気づかなかった」)。
+// 過去の記憶/シリーズ一覧と同じ、画面下から常に同じ位置に出てくる固定
+// オーバーレイのドロワーに変更し、ページのどこで「+」を押しても必ず
+// その場(画面内)に出るようにした。
+const ADD_TO_LIST_DISMISS_MS = 280;
+// 閉じるアニメーション中に、再び「+」が押されて新しくモーダルを開いた直後、
+// 前回のclose用setTimeoutが後から発火して隠してしまう競合があった。保留中の
 // close用タイマーがあれば、新しく開く前に必ず止める。
 let addToListDismissTimer = null;
 function closeAddToListModalWithMotion(){
-  const panel = document.getElementById('add-to-list-modal');
-  panel.classList.remove('soft-reveal');
-  panel.classList.add('soft-dismiss');
+  const overlay = document.getElementById('add-to-list-modal');
+  const drawer = document.getElementById('add-to-list-drawer');
+  drawer.classList.add('closing');
   if(addToListDismissTimer) clearTimeout(addToListDismissTimer);
   addToListDismissTimer = setTimeout(() => {
-    panel.style.display = 'none';
-    panel.classList.remove('soft-dismiss');
+    overlay.style.display = 'none';
+    drawer.classList.remove('closing');
     addToListDismissTimer = null;
   }, ADD_TO_LIST_DISMISS_MS);
   state.pendingTrackAdd = null;
@@ -11537,17 +11528,17 @@ function closeAddToListModalWithMotion(){
 function openAddToListModal(){
   if(!requireVerifiedUser()) return;
   if(addToListDismissTimer){ clearTimeout(addToListDismissTimer); addToListDismissTimer = null; }
-  const panel = document.getElementById('add-to-list-modal');
-  const isOpen = panel.style.display === 'block';
+  const overlay = document.getElementById('add-to-list-modal');
+  const isOpen = overlay.style.display === 'flex';
   if(isOpen && !state.pendingTrackAdd){
-    panel.style.display = 'none';
+    closeAddToListModalWithMotion();
     return;
   }
   state.pendingTrackAdd = null;
   renderAddToListOptions();
   document.getElementById('new-list-from-detail-form').innerHTML = '';
-  panel.style.display = 'block';
-  playModalRevealAnimation(panel);
+  document.getElementById('add-to-list-drawer').classList.remove('closing');
+  overlay.style.display = 'flex';
 }
 
 // 収録曲一覧の「+」ボタンから、1曲だけを対象にリストに追加するモーダルを開く。
@@ -11576,11 +11567,10 @@ function openAddTrackToListModal(index){
       previewUrl: track.previewUrl,
       trackTimeMillis: track.trackTimeMillis,
     };
-    const panel = document.getElementById('add-to-list-modal');
     renderAddToListOptions();
     document.getElementById('new-list-from-detail-form').innerHTML = '';
-    panel.style.display = 'block';
-    playModalRevealAnimation(panel);
+    document.getElementById('add-to-list-drawer').classList.remove('closing');
+    document.getElementById('add-to-list-modal').style.display = 'flex';
   }catch(err){
     console.error('曲をリストに追加するモーダルを開けませんでした', err);
     showToast('エラー: ' + (err && err.message ? err.message : String(err)));
@@ -11589,6 +11579,7 @@ function openAddTrackToListModal(index){
 
 function closeAddToListModal(){
   document.getElementById('add-to-list-modal').style.display = 'none';
+  document.getElementById('add-to-list-drawer').classList.remove('closing');
   state.pendingTrackAdd = null;
 }
 
