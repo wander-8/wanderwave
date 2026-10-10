@@ -4052,13 +4052,13 @@ const TAG_COLORS = {
 // 追加する(availableGenres()が実在するものだけ自動で絞ってチップ化する
 // ので、ここに増やした分だけ選択肢が広がる)。
 // 「BL」はオーナー指摘「BL、GLで調べても出てこない」を受けて追加した
-// 漫画専用ジャンル。GL(百合)も検討したが、「百合」はキャラクター名
-// (百合子・百合香等)や「黒百合/白百合」のような花・家名の比喩で頻出し、
-// あらすじの部分一致だけでは正確に判定できなかったため見送った。BLは
-// 作品紹介文中で「BL」単体や「ボーイズラブ」という語が高い精度で
-// ジャンルそのものを指して使われているため、rakuten-discover-mangaの
-// CONTENT_GENRE_KEYWORDSで判定できる(BL_GL_backfillで既存行にも反映済み)。
-const FILTER_GENRES = ["ドラマ","コメディ","アクション","スリラー","アドベンチャー","クライム","恋愛","BL","ホラー","SF","ファンタジー","ミステリー","アニメーション","ファミリー","歴史","戦争","音楽","ドキュメンタリー","西部劇","特撮","TVムービー","J-Pop","K-Pop","Rock","Classical","Anime","Hip Hop/Rap","Pop","R&B/Soul","Jazz","Soundtrack","World","Alternative","Christian & Gospel","Electronic","New Age","Dance","Vocal","Country","Opera","Singer/Songwriter","Heavy Metal","Pop in Spanish","Latin","Arena Rock","Classical Crossover","Hard Rock","Salsa y Tropical","House","Musicals","Folk","Alternative & Rock in Spanish","Cantopop","Mandopop","French Pop","Children's Music","Blues","Reggae","Indie Rock","Regional Mexicano","Ambient","Electronica","Funk","Bollywood","Gospel","Spoken Word","Video Game","Soul","小説・エッセイ","暮らし・健康・料理","語学・学習参考書","旅行・留学・アウトドア","人文・思想・社会","ビジネス・経済・就職","パソコン・システム開発","科学・医学・技術","エンタメ","日本美術","東洋美術","西洋美術","デザイン","イラスト","美術館","技法書","写真","建築","陶芸","書道","骨董","染織・漆","風景写真集"];
+// 漫画専用ジャンル。GL(百合)は当初、「百合子・百合香」等のキャラクター名や
+// 「黒百合/白百合」のような花・家名の比喩への誤爆が約4割と判明し見送って
+// いたが、オーナーから同じ指摘を再度受けたため、「百合」の直後に作品
+// ジャンルを示す語が続く場合・文末に単独で来る場合に限定する等で誤判定を
+// 排除し、GLも追加した(rakuten-discover-mangaのhasGLSignal、既存行は
+// BL_GL_backfillで反映済み)。
+const FILTER_GENRES = ["ドラマ","コメディ","アクション","スリラー","アドベンチャー","クライム","恋愛","BL","GL","ホラー","SF","ファンタジー","ミステリー","アニメーション","ファミリー","歴史","戦争","音楽","ドキュメンタリー","西部劇","特撮","TVムービー","J-Pop","K-Pop","Rock","Classical","Anime","Hip Hop/Rap","Pop","R&B/Soul","Jazz","Soundtrack","World","Alternative","Christian & Gospel","Electronic","New Age","Dance","Vocal","Country","Opera","Singer/Songwriter","Heavy Metal","Pop in Spanish","Latin","Arena Rock","Classical Crossover","Hard Rock","Salsa y Tropical","House","Musicals","Folk","Alternative & Rock in Spanish","Cantopop","Mandopop","French Pop","Children's Music","Blues","Reggae","Indie Rock","Regional Mexicano","Ambient","Electronica","Funk","Bollywood","Gospel","Spoken Word","Video Game","Soul","小説・エッセイ","暮らし・健康・料理","語学・学習参考書","旅行・留学・アウトドア","人文・思想・社会","ビジネス・経済・就職","パソコン・システム開発","科学・医学・技術","エンタメ","日本美術","東洋美術","西洋美術","デザイン","イラスト","美術館","技法書","写真","建築","陶芸","書道","骨董","染織・漆","風景写真集"];
 const FILTER_COUNTRIES = ["アメリカ","イギリス","フランス","ドイツ","日本","海外","カナダ","イタリア","スペイン","中国","香港","韓国","インド","オーストラリア","ベルギー","メキシコ","スウェーデン","デンマーク","ブラジル","ロシア","アイルランド","オランダ","ポーランド","スイス","アルゼンチン","トルコ","ノルウェー","フィンランド","オーストリア","ルクセンブルク","ルーマニア","チェコ","台湾","ハンガリー","南アフリカ","タイ","ニュージーランド","ポルトガル"];
 // 音楽のジャンル(FILTER_GENRES内の47種)を、見出し付きの小グループに
 // ざっくり束ねるための分類。iTunesのジャンル分類をそのまま出すと件数が

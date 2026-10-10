@@ -85,6 +85,28 @@ function hasBLSignal(title: string, caption: string): boolean {
   return /ボーイズラブ/.test(text);
 }
 
+// GL(百合)判定。上のコメントの通り「百合」の部分一致は人名(百合子・百合香等)
+// や花・比喩表現(黒百合・白百合等)への誤爆が約4割と判明し見送っていたが、
+// オーナーから「BL、GLで検索しても出ない」と再度指摘を受けたため再検討した。
+// 「百合」の直後に作品ジャンルを示す語が続く場合に限定すれば、人名の
+// 「子・香・奈」等の1文字接尾語や、花言葉としての「という花」等とは
+// パターンが異なり誤爆しにくい。BLと同じく「GL」が英字に挟まれていない
+// 孤立トークンの場合と、明示的な「ガールズラブ」表記も合わせて拾う。
+const GL_TAGS = ["感動", "美しい"];
+function hasGLSignal(title: string, caption: string): boolean {
+  const text = `${title} ${caption}`;
+  if (/[^a-zA-Z]GL[^a-zA-Z]/.test(text) || /^GL[^a-zA-Z]/.test(title)) return true;
+  if (/ガールズラブ|レズビアン/.test(text)) return true;
+  if (/百合(漫画|系|もの|カップル|ラブ|展開|要素|好き|BL|アンソロジー|作家|えっち)/.test(text)) return true;
+  // 人名の「百合子」等は直後に1文字接尾語が続き、花の比喩「百合の花」は
+  // 直後に「の」が続くため、文末または「!/！」の直前に単独で来る「百合」は
+  // それらと区別でき、ジャンルを指しているとみなせる(DB実データで24件
+  // 検証し誤判定なし。手動検証時の実データ:「黒百合の系図」(ミステリー、
+  // 花の比喩)「百合子姉ちゃん」(人名)はいずれもこの2パターンには該当しない)。
+  if (/百合[!！]/.test(text)) return true;
+  return /百合$/.test(title.trim());
+}
+
 const TIER = { LOW: 15, MILD: 40, STRONG: 65, INTENSE: 85 };
 const HEAVY_WORDS = ["惨殺", "拷問", "陵辱", "強姦", "グロテスク", "残虐", "自殺", "虐待"];
 const SEXUAL_WORDS = ["性的", "ヌード", "官能", "濡れ場", "エッチ"];
@@ -272,6 +294,10 @@ Deno.serve(async (req: Request) => {
       sort = "sales", // standard | sales | -releaseDate | +releaseDate | reviewCount | reviewAverage
       books_genre_id = "001001", // コミック
       dry_run = true,
+      // 自動の日次取り込み用。1日に入れる件数を抑えたい(「少しずつでいい」との
+      // オーナー要望)ため、新規候補が見つかった順に先頭N件だけを挿入する。
+      // nullなら従来通り無制限。
+      limit = null,
     } = await req.json().catch(() => ({}));
 
     const supabase = createClient(SUPABASE_URL, SERVICE_ROLE);
@@ -330,12 +356,13 @@ Deno.serve(async (req: Request) => {
     }
 
     const fresh = representatives.filter((r) => !existingTitles.has(normalizeTitle(r.key)));
+    const limited = limit != null ? fresh.slice(0, limit) : fresh;
 
     const now = new Date();
     const rows: any[] = [];
     const estimates: any[] = [];
     const skipped: any[] = [];
-    for (const { key, item } of fresh) {
+    for (const { key, item } of limited) {
       if (isNonMangaTitle(item.title)) {
         skipped.push({ key, reason: "non_manga_title" });
         continue;
@@ -354,9 +381,15 @@ Deno.serve(async (req: Request) => {
       const caption = (item.itemCaption || "").trim();
       const genreInfo = refineGenreWithCaption(genreInfoFor(item.booksGenreId), caption);
       const hasBL = hasBLSignal(item.title, caption);
+      const hasGL = hasGLSignal(item.title, caption);
       const genreNames = genreInfo.ja ? [genreInfo.ja] : [];
       if (hasBL && !genreNames.includes("BL")) genreNames.push("BL");
-      const emotionTags = hasBL ? Array.from(new Set([...genreInfo.tags, ...BL_TAGS])).slice(0, 3) : genreInfo.tags;
+      if (hasGL && !genreNames.includes("GL")) genreNames.push("GL");
+      const emotionTags = hasBL
+        ? Array.from(new Set([...genreInfo.tags, ...BL_TAGS])).slice(0, 3)
+        : hasGL
+        ? Array.from(new Set([...genreInfo.tags, ...GL_TAGS])).slice(0, 3)
+        : genreInfo.tags;
       const year = saleDate ? saleDate.getUTCFullYear() : null;
       // 表紙画像が無い商品は楽天の「NO IMAGE」プレースホルダーが入るため、
       // そのまま使わずnullにしてサイト側のデフォルト表示に任せる。特典グッズの
