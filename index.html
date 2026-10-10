@@ -4458,14 +4458,27 @@ function reasonPercentages(m){
 
 // 表現度は「実データに忠実に見せる」方針(検索・評価自体は隠さない)だが、
 // ポスター画像そのものはその方針と別物として扱う。性的・グロ表現の比重が
-// 高い作品は、ポスター画像を出さずに(既存の「ポスターが無い時」と同じ)
-// 色ブロック+頭文字の表示にフォールバックする。実際の投票/推定が無い
-// 作品はここでは何も伏せない(判断材料が無いものを一律で疑うのは行き過ぎ)。
-function shouldHidePosterForIntensity(m){
+// 高い作品(過度な肌の露出や、肌の露出を伴う接触描写/暴力的な出血描写)は
+// ポスター画像を出さずに(既存の「ポスターが無い時」と同じ)色ブロック+
+// 頭文字の表示にフォールバックする。実際の投票/推定が無い作品はここでは
+// 何も伏せない(判断材料が無いものを一律で疑うのは行き過ぎ)。
+function hasStrongExplicitContent(m){
   const avg = intensityAverage(m);
   if(avg < 65) return false;
   const pct = reasonPercentages(m);
   return pct.sexual >= 40 || pct.violence >= 60;
+}
+// 以前は該当作品を常にポスター非表示にしていたが、表現度フィルターで
+// 自分から「強い」を選んだ人には素のポスターを見せてよいとの要望
+// (オーナー)を受け、既定では伏せつつ「強い」選択時だけ解除するように
+// した。「今話題の新作」「今、愛されている作品」「みんなの声」のような、
+// 作品を選んだわけではなく受動的に流れてくる棚では、表現度フィルターの
+// 設定に関わらず一旦色のみにしたいとの要望があるため、opts.forcePosterHide
+// で個別に上書きできるようにする。
+function shouldHidePosterForIntensity(m, opts){
+  if(!hasStrongExplicitContent(m)) return false;
+  if(opts && opts.forcePosterHide) return true;
+  return state.intensityFilter !== 100;
 }
 
 let state = { query: "", queryKeywords: [], activeTags: new Set(), currentMovieId: null, hasReviewed: {}, myReviewsById: {}, myReviewRows: [], myReviewRowsLoaded: false, myLove: {}, myIntensity: {}, myReason: {}, myTagVotes: {}, myWatchLater: {}, myPocket: [], myLists: [], currentListId: null, profile: null, profileLoaded: false, myLogs: [], myLogsLoaded: false, mySubmittedMovieIds: [], mySubmittedMovies: [], mySubmittedMoviesLoaded: false, lastSubmissionDate: null, todaySubmissionCount: 0, intensityFilter: 0, decadeFilter: 0, diagnosisHistory: [], activeGenres: new Set(), activeCountries: new Set(), catalogMode: 'movie', bookType: null, crossMediaSearch: false, pendingTrackAdd: null };
@@ -5202,7 +5215,7 @@ function renderMovieCards(root, list, emptyMessage, opts){
 function buildCardHTML(m, opts){
   const avg = loveDisplayValue(m);
   const overlayTitle = !!(opts && opts.overlayTitle);
-  const hasPoster = !!m.posterUrl && !shouldHidePosterForIntensity(m);
+  const hasPoster = !!m.posterUrl && !shouldHidePosterForIntensity(m, opts);
   const posterImg = hasPoster ? `<img src="${m.posterUrl}" alt="" loading="lazy" decoding="async">` : '';
   const initialOrTitle = overlayTitle
     ? `${hasPoster ? '' : `<span class="poster-thumb-initial">${m.title.charAt(0)}</span>`}<div class="poster-thumb-title">${m.title}</div>`
@@ -5502,7 +5515,7 @@ function renderHomeRows(){
   if(newReleases.length){
     html += `
       <div class="section-label">今話題の新作</div>
-      <div class="results">${newReleases.map(buildCardHTML).join('')}</div>
+      <div class="results">${newReleases.map(m => buildCardHTML(m, { forcePosterHide: true })).join('')}</div>
     `;
   }
 
@@ -5594,7 +5607,7 @@ function renderHomeRows(){
       const m = MOVIES.find(x => x.id === r.movie_id);
       if(!m || matchesExcludedWord(m)) return null;
       const snippet = r.review_text.length > 60 ? r.review_text.slice(0, 60) + '…' : r.review_text;
-      const posterImg = (m.posterUrl && !shouldHidePosterForIntensity(m)) ? `<img src="${m.posterUrl}" alt="" loading="lazy" decoding="async">` : '';
+      const posterImg = (m.posterUrl && !shouldHidePosterForIntensity(m, { forcePosterHide: true })) ? `<img src="${m.posterUrl}" alt="" loading="lazy" decoding="async">` : '';
       const typeInfo = mediaTypeInfo(m);
       const rawName = (r.profiles && r.profiles.user_name) || 'ゲスト';
       const displayName = REVIEW_NAME_HIDDEN.has(rawName) ? 'ゲスト' : rawName;
@@ -5810,7 +5823,7 @@ function applyFeaturedContent(){
   const avg = loveDisplayValue(featured);
 
   const posterBgEl = document.getElementById('featured-poster-bg');
-  if(featured.posterPath && !shouldHidePosterForIntensity(featured)){
+  if(featured.posterPath && !shouldHidePosterForIntensity(featured, { forcePosterHide: true })){
     // 漫画・小説(楽天由来)はposterPathに既にフルURLが入っているため、
     // 常にTMDB_IMAGE_BASE_LARGEを前置きしていると「https://...」の前に
     // さらにTMDBのドメインが付いた壊れたURLになり、バナーの画像が
