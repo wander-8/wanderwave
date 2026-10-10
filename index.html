@@ -6780,8 +6780,22 @@ function renderRecommended(currentMovie){
   // 数字だけ(「1122」「2025」)のケースだけは日付・年号の偶然一致(通関士の
   // 参考書とK-POPライブ映像など)で誤マッチしていたため、数字のみの核は
   // 対象から除外する。
+  // 「ちいかわ」のような人気キャラクターは、本編マンガ以外にも英会話・
+  // パズル・ことわざ・心理テストのようなキャラクターの絵を使っただけの
+  // 実用書・知育本が多数出ており、どれも「ちいかわ」という同じ核に
+  // つぶれてしまうため、TVアニメ本編まで一緒に「原作・関連作品」に
+  // 紛れ込んでいた(オーナー指摘:「ちいかわも...甘すぎる」)。カタログの
+  // 「児童書」ジャンルはこうした非物語系の実用書を指す分類として既に
+  // 使われているので、今見ている作品自身が児童書でない限り、相手が
+  // 児童書の候補は原作・関連作品としては数えない。児童書に分類されて
+  // いない実用書(ジャンル未設定のまま入っているもの)も同じ理由で誤爆
+  // するため、タイトルによく出る語でも追加で弾く。
+  const MERCH_GOODS_TITLE_PATTERN = /(ドリル|パズル|心理テスト|ことわざ|慣用句|四字熟語|英会話|シールいっぱいブック|ハンドメイドBOOK|あいうえお)/;
+  const isMerchGoodsTitle = (m) => (m.genre || []).includes('児童書') || MERCH_GOODS_TITLE_PATTERN.test(m.title);
+  const currentIsMerchGoods = isMerchGoodsTitle(currentMovie);
   const adaptationSiblings = dedupeByNormalizedTitleYear(others.filter(m => {
     if(nativeModeOf(m) === currentNativeMode) return false;
+    if(!currentIsMerchGoods && isMerchGoodsTitle(m)) return false;
     if(currentAdaptationKey.length >= 6 && seriesTitleKey(m.title) === currentAdaptationKey) return true;
     return currentAdaptationCore.length >= 4 && !/^[0-9]+$/.test(currentAdaptationCore)
       && currentAdaptationCore === coreSeriesKey(m.title);
