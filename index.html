@@ -4650,6 +4650,9 @@ function selectBookType(value){
   renderCountryCloud();
   renderDecadeCloud();
   renderResults();
+  // ホームの棚(今話題の新作・気分の棚等)も本の種類で絞っているため、
+  // 検索中でなくホーム表示のままでも切り替えが反映されるようにする。
+  renderHomeRows();
 }
 
 // チップを千鳥(ジグザグ)配置で並べる共通ヘルパー。1行の横スクロールだと
@@ -5431,8 +5434,16 @@ function renderHomeRows(){
   // (検索だけ除けても、棚から見えてしまうと意味が薄いため)。
   // 映画・アニメ・ドラマ、今選ばれているモードのプールだけを対象にする
   // (混ぜない)。判定はisInCatalogMode参照。
+  // 本モードはさらに本の種類(小説/新書/児童書/美術)でも絞る。検索結果
+  // 側(bookTypeNarrowedPool)は既に絞られていたが、ホームの棚だけ適用
+  // 漏れしており、小説の棚に陶芸の専門書や児童書が混ざって出てしまい
+  // 「統一感が無い」状態になっていた(オーナー指摘:「本の作品一覧統一感
+  // ないから整理してほしい」)。
   const catalogMode = currentCatalogMode();
-  const visibleMovies = MOVIES.filter(m => !matchesExcludedWord(m) && isInCatalogMode(m, catalogMode));
+  const visibleMovies = bookTypeNarrowedPool(
+    MOVIES.filter(m => !matchesExcludedWord(m) && isInCatalogMode(m, catalogMode)),
+    catalogMode
+  );
 
   const todayStr = new Date().toISOString().slice(0, 10);
 
