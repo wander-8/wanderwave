@@ -6674,9 +6674,18 @@ function renderRecommended(currentMovie){
   // 「本のシリーズものが詳細に出てこない」)。最初の区切り文字(スペース・
   // 括弧等)の手前までを「シリーズの核」として、核同士が一致するかも
   // 追加の判定材料にする。
+  // 「TVアニメ『MAO』オリジナルサウンドトラック」のような楽曲タイトルは、
+  // 核抽出が最初の括弧の手前で止まるため「TVアニメ」という製品ジャンル名
+  // だけが核になり、同じ接頭辞を持つ全く無関係な他作品(「TVアニメ『鬼滅の刃』
+  // 公式キャラクターズブック」等)と結び付いてしまっていた(オーナー指摘:
+  // 「音楽の関連作品間違うこと多い」)。実データで確認した唯一の実害ある
+  // 汎用接頭辞をブロックリストで除外する(音楽タイトルの大半がこの命名
+  // 規則に従うため、音楽が原因・被害の両方になりやすい)。
+  const GENERIC_CORE_BLOCKLIST = new Set(['tvアニメ']);
   function coreSeriesKey(title){
     const m = (title || '').trim().match(/^([^\s　「『（(\-−~〜:：]+)/u);
-    return m ? m[1].toLowerCase() : '';
+    const core = m ? m[1].toLowerCase() : '';
+    return GENERIC_CORE_BLOCKLIST.has(core) ? '' : core;
   }
   // 核(coreSeriesKey)だけでの完全一致は、日本語なら4文字でもほぼ確実に
   // 固有名詞(「半沢直樹」等)で偶然一致のリスクが低いが、英数字だけの核は
@@ -6686,8 +6695,16 @@ function renderRecommended(currentMovie){
   // 「Perfect」という核だけで結び付いてしまっていた(オーナー指摘:「原作
   // 関連作品...全然関係ない作品ばかり出る」)。英数字だけの核はもっと長い
   // (=ありふれた単語1つだけとは考えにくい)場合に限って信頼する。
+  // 英語の短縮形(It's/Don't/I'm/Let's等)はHTMLエンティティ化されたアポスト
+  // ロフィ(&#39;)を含むため元の判定(英数字のみか)に引っかからず4文字側の
+  // 甘い閾値に流れてしまい、「音楽の関連作品が毎回間違ってる」の実害の
+  // もう1つの原因になっていた(実データ: i&#39;m・it&#39;s・don&#39;t・
+  // let&#39;sだけで計137件が無関係な作品同士を結び付けていた)。アポスト
+  // ロフィ相当の文字を取り除いた上で英数字のみかどうかを見ることで、
+  // これらも「ありふれた英語の一部」として10文字側の閾値に回す。
   function coreSeriesMinLen(core){
-    return /^[a-z0-9]+$/.test(core) ? 10 : 4;
+    const apostropheStripped = core.replace(/&#39;|&apos;|['’]/g, '');
+    return (apostropheStripped && /^[a-z0-9]+$/.test(apostropheStripped)) ? 10 : 4;
   }
   function isSameTitleSeries(a, b, sameCategory){
     if(!sameCategory(a) || !sameCategory(b)) return false;
