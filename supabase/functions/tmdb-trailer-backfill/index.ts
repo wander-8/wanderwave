@@ -39,11 +39,21 @@ async function tmdbFetch(path: string, params: Record<string, string>) {
   return null;
 }
 
+// TMDbのyearパラメータは厳密な絞り込みではなく優先ヒントにすぎないため、
+// 短い/ありふれたタイトルではyear指定時でも無関係な人気作がresults[0]に
+// 来ることがある(実例:「Home」(2009のフランス映画)の検索が「ホーム・
+// アローン2」(1992)を返し、無関係な予告編が貼られる事故。複数のtmdb-*
+// 関数に共通のバグだったとオーナー指摘で発覚)。年指定の検索でも、実際の
+// release_dateが指定年と一致する候補だけを信頼する。
 async function searchTmdbId(title: string, year: number | null): Promise<number | null> {
   if (year) {
     for (const language of ["ja-JP", "en-US"]) {
       const data = await tmdbFetch("/search/movie", { query: title, include_adult: "false", language, year: String(year) });
-      if (data?.results?.length) return data.results[0].id;
+      const corroborated = (data?.results || []).find((c: any) => {
+        const cy = c.release_date ? parseInt(String(c.release_date).slice(0, 4), 10) : null;
+        return cy != null && Math.abs(cy - year) <= 1;
+      });
+      if (corroborated) return corroborated.id;
     }
   }
   const candidates: any[] = [];

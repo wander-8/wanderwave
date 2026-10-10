@@ -37,11 +37,23 @@ async function tmdbFetch(path: string, params: Record<string, string>) {
 
 // include_adult:falseで固定(trueだとタイトルの一部一致だけでアダルト作品が
 // 紛れ込み、無関係な映画に誤ったデータを紐付ける事故になるため)
+// TMDbのsearch/movieのyearパラメータは厳密な絞り込みではなく優先ヒントに
+// すぎないため、"Home"のような短い/ありふれたタイトルではyear指定時でも
+// 無関係な人気作(例:「ホーム・アローン2」)がresults[0]に来ることがある。
+// 以前はこれを無条件にyearCorroborated:trueとして信頼していたため、
+// 「Home」(2009のフランス映画)のような行に無関係な別作品のtmdb_idが
+// 書き込まれる事故が起きていた(オーナー指摘で発覚、ドラえもん関連作品の
+// 英題重複の調査中に発見)。年指定の検索でも、実際のrelease_dateが
+// 指定年と一致する候補だけを信頼する(無ければ下のフォールバックに進む)。
 async function searchMovie(title: string, year: number | null): Promise<{ result: any; yearCorroborated: boolean } | null> {
   if (year) {
     for (const language of ["ja-JP", "en-US"]) {
       const data = await tmdbFetch("/search/movie", { query: title, include_adult: "false", language, year: String(year) });
-      if (data?.results?.length) return { result: data.results[0], yearCorroborated: true };
+      const corroborated = (data?.results || []).find((c: any) => {
+        const cy = c.release_date ? parseInt(String(c.release_date).slice(0, 4), 10) : null;
+        return cy != null && Math.abs(cy - year) <= 1;
+      });
+      if (corroborated) return { result: corroborated, yearCorroborated: true };
     }
   }
 

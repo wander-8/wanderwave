@@ -7001,8 +7001,10 @@ function renderRecommended(currentMovie){
     adaptationWrap.style.display = 'block';
     // カードごとにメディア種別が違う(原作小説・アニメ化・映画化等が混在
     // しうる)ため、forceModeは単一の文字列ではなく各カードの実際の種別を
-    // 返す関数で渡す。
-    renderMovieCards(adaptationRoot, adaptationSiblings, '', { forceModeFn: nativeModeOf });
+    // 返す関数で渡す。件数が多い作品(ドラえもん・ちいかわ等)では種別が
+    // パッと見で分からないとの指摘を受け、横断検索と同じ種別バッジを
+    // 出す(showTypeBadge)。
+    renderMovieCards(adaptationRoot, adaptationSiblings, '', { forceModeFn: nativeModeOf, showTypeBadge: true });
   } else {
     adaptationWrap.style.display = 'none';
   }
