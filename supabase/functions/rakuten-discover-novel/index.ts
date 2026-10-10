@@ -252,7 +252,14 @@ function isForeignAuthorName(author: string | null | undefined): boolean {
 
 const TIER = { LOW: 15, MILD: 40, STRONG: 65, INTENSE: 85 };
 const HEAVY_WORDS = ["惨殺", "拷問", "陵辱", "強姦", "グロテスク", "残虐", "自殺", "虐待"];
-const SEXUAL_WORDS = ["性的", "ヌード", "官能", "濡れ場", "エッチ"];
+const SEXUAL_WORDS = ["性的", "ヌード", "官能", "濡れ場", "エッチ", "妖艶", "セクシーポーズ"];
+// 美術系の人体クロッキー・デッサン参考書は、実際には裸体写真が主体でも
+// キャプションが「裸婦」という学術的な語で書かれ、SEXUAL_WORDS(ヌード・
+// 官能等、アダルト向け商品で使われがちな語)には一致しないまま表現度15
+// (無印扱い)で素通りしていた(オーナー指摘:「裸婦とクロッキーが表に
+// 出していいかわからない」)。アダルト向け商品ほど強い表現とは限らないが、
+// 実際に裸体を写した内容である以上絞り込み可能な程度には表現度を上げる。
+const NUDE_ART_WORDS = ["裸婦", "裸体"];
 
 // コミックと違い、小説カテゴリには目録・読者アンケート等の便乗商品は
 // あまり無いが、念のため明らかな非小説商品だけ弾いておく。
@@ -397,20 +404,29 @@ function inferMoodTags(title: string, caption: string | null | undefined, fallba
 // 付くので対象外。写真は分岐が無いので対象にする。
 const MOOD_INFER_BOOK_TYPES = new Set(["001003003", "001003006", "001003001", "001003002", "001003004", "001013003", "001012011", "001009010001", "001009010002", "001009010003", "001009010008", "001009006004"]);
 
-function estimateExpression(genreId: string | null | undefined, caption: string): { level: number; reasonTags: string[]; basis: string } {
+function estimateExpression(genreId: string | null | undefined, caption: string, title: string): { level: number; reasonTags: string[]; basis: string } {
   const info = genreInfoFor(genreId);
   let level = info.baseTier;
   let basis = "genre-demographic";
   const reasons = new Set<string>();
+  // 「プレミアムヌードポーズブック」のように、キャプション本文は「裸婦
+  // ポーズ集」とだけ書かれ、「ヌード」という語自体はタイトルにしか出て
+  // こない商品があったため、キャプションだけでなくタイトルも判定対象に
+  // 含める(オーナー指摘で発覚)。
+  const text = `${title} ${caption}`;
 
-  if (HEAVY_WORDS.some((w) => caption.includes(w))) {
+  if (HEAVY_WORDS.some((w) => text.includes(w))) {
     level = Math.max(level, TIER.INTENSE);
     reasons.add("violence");
     basis = "keyword-heavy";
-  } else if (SEXUAL_WORDS.some((w) => caption.includes(w))) {
+  } else if (SEXUAL_WORDS.some((w) => text.includes(w))) {
     level = Math.max(level, TIER.STRONG);
     reasons.add("sexual");
     basis = "keyword-sexual";
+  } else if (NUDE_ART_WORDS.some((w) => text.includes(w))) {
+    level = Math.max(level, TIER.MILD);
+    reasons.add("sexual");
+    basis = "keyword-nude-art";
   }
   return { level, reasonTags: Array.from(reasons), basis };
 }
@@ -577,6 +593,10 @@ Deno.serve(async (req: Request) => {
       sort = "sales", // standard | sales | -releaseDate | +releaseDate | reviewCount | reviewAverage
       books_genre_id = "001004", // 小説・エッセイ("001017"を渡せばライトノベル)
       dry_run = true,
+      // 自動の日次取り込み用。1日に入れる件数を抑えたい(「少しずつでいい」との
+      // オーナー要望)ため、新規候補が見つかった順に先頭N件だけを挿入する。
+      // nullなら従来通り無制限。
+      limit = null,
     } = await req.json().catch(() => ({}));
 
     // DIRECT_BOOK_TYPE_MAPのキー(絵本・児童書・図鑑・児童文庫・民話=
@@ -643,6 +663,7 @@ Deno.serve(async (req: Request) => {
     }
 
     const fresh = representatives.filter((r) => !existingTitles.has(normalizeTitle(r.key)));
+    const limited = limit != null ? fresh.slice(0, limit) : fresh;
 
     const now = new Date();
     const rows: any[] = [];
@@ -650,7 +671,7 @@ Deno.serve(async (req: Request) => {
     const skipped: any[] = [];
     const isShinsho = books_genre_id === "001020";
     const isArt = books_genre_id === "001009009";
-    for (const { key, item } of fresh) {
+    for (const { key, item } of limited) {
       // 非小説タイトルのブラックリスト(地球の歩き方等)は小説パイプライン用
       // なので、絵本・新書・図鑑では適用しない。
       if (!directBookType && isNonNovelTitle(item.title)) {
@@ -763,7 +784,7 @@ Deno.serve(async (req: Request) => {
         _key: key,
       });
 
-      const est = estimateExpression(item.booksGenreId, caption);
+      const est = estimateExpression(item.booksGenreId, caption, item.title);
       estimates.push({ key, level: est.level, reasonTags: est.reasonTags, basis: est.basis, isbn: item.isbn });
     }
 
