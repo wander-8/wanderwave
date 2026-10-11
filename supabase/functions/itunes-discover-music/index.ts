@@ -40,7 +40,7 @@ const GENRE_TAG_MAP: Record<string, string[]> = {
   "Vocal": ["美しい"],
   "Country": ["感動"],
   "Opera": ["美しい", "感動"],
-  "Singer/Songwriter": ["考えさせられる", "感動"],
+  "Singer/Songwriter": ["悲しい", "感動"],
   "Heavy Metal": ["ドキドキ"],
   "Pop in Spanish": ["楽しい"],
   "Latin": ["ワクワク", "楽しい"],
@@ -56,7 +56,7 @@ const GENRE_TAG_MAP: Record<string, string[]> = {
   "Mandopop": ["楽しい"],
   "French Pop": ["楽しい", "美しい"],
   "Children's Music": ["楽しい"],
-  "Blues": ["考えさせられる", "感動"],
+  "Blues": ["悲しい", "感動"],
   "Reggae": ["リラックス", "楽しい"],
   "Indie Rock": ["考えさせられる"],
   "Regional Mexicano": ["楽しい"],
@@ -71,7 +71,10 @@ const GENRE_TAG_MAP: Record<string, string[]> = {
   // 「怖い」「笑い」は物語が無い音楽には合わせづらいタグだが、実際には
   // 該当するジャンルがある(コメディソング、デスメタル/インダストリアルの
   // 不穏・冷たい質感等)。この2つだけ無理に対応ジャンルが無いと決めつけず、
-  // ここに実在する分だけ割り当てる(オーナー指摘)。
+  // ここに実在する分だけ割り当てる(オーナー指摘)。同じ理由で「悲しい」も
+  // 以前はどのジャンルにも割り当てておらず、音楽モードで「悲しい」を選ぶと
+  // 必ず0件になっていた(オーナー指摘:「感情検索しても出しにくい」)。
+  // Blues・Singer/Songwriterは内容的に素直に当てはまるので割り当てる。
   "Comedy": ["笑い"],
   "Standup Comedy": ["笑い"],
   "Death Metal/Black Metal": ["怖い"],
@@ -203,6 +206,10 @@ Deno.serve(async (req: Request) => {
       limit = 100, // このAPIの実質上限は200
       genre_id = null, // 例: J-Pop=27, K-Pop=51, ロック=21, ヒップホップ=18, クラシック=5, アニメ=29
       dry_run = true,
+      // 自動の日次取り込み用。1日に入れる件数を抑えたい(「少しずつでいい」との
+      // オーナー要望)ため、新規候補が見つかった順に先頭N件だけ挿入したら
+      // 残りは見ない。既存の"limit"(チャート取得件数)とは別物なので名前を分ける。
+      insert_limit = null,
     } = await req.json().catch(() => ({}));
 
     const supabase = createClient(SUPABASE_URL, SERVICE_ROLE);
@@ -231,6 +238,7 @@ Deno.serve(async (req: Request) => {
     const estimates: any[] = [];
     const skipped: any[] = [];
     for (const e of list) {
+      if (insert_limit != null && rows.length >= insert_limit) break;
       const title = e?.["im:name"]?.label;
       if (!title) { skipped.push({ reason: "no_title" }); continue; }
       if (existingTitles.has(normalizeTitle(title))) { skipped.push({ title, reason: "duplicate" }); continue; }

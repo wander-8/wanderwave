@@ -5341,6 +5341,26 @@ function seededShuffle(list, salt){
   }
   return arr;
 }
+// 検索結果のシャッフル用(renderResults参照)。ホームの棚のtodaySeedは
+// 「日替わり」でちょうどいいが、検索結果は同じ絞り込みを数分おきに
+// 開き直しても毎回代わり映えしないとの指摘(オーナー:「検索した時に
+// 何度やっても上に来る作品は変わらない」)だったため、日より細かい
+// 1時間単位で変わるシードを別に用意する。
+function hourSeed(salt){
+  const hourNum = Math.floor(Date.now() / 3600000);
+  let h = hourNum;
+  for(let i = 0; i < salt.length; i++) h = (h * 31 + salt.charCodeAt(i)) | 0;
+  return h;
+}
+function seededShuffleHourly(list, salt){
+  const rand = mulberry32(hourSeed(salt));
+  const arr = [...list];
+  for(let i = arr.length - 1; i > 0; i--){
+    const j = Math.floor(rand() * (i + 1));
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+  }
+  return arr;
+}
 
 // アニメ機能はまだ方針を固めたばかりの実験段階で、一般ユーザーにはまだ見せない
 // (裏側で先にオーナーだけがレビューできるようにする)。当初はlocalStorageの
@@ -6592,6 +6612,23 @@ function renderResults(){
     if(rankDiff !== 0) return rankDiff;
     return loveAverage(b) - loveAverage(a);
   });
+
+  // 文字検索(作品名・作者名等)が無く、感情タグ・ジャンル・国・年代だけで
+  // 絞り込んでいる時は、愛度順だけだと毎回同じ上位が固定されてしまい
+  // 「検索しても代わり映えしない」という不満につながっていた(オーナー
+  // 指摘:「検索した時に何度やっても上に来る作品は変わらない」、特に
+  // 音楽モードで顕著)。作者名等を直接打って探している時は逆に毎回同じ
+  // 結果が欲しいはずなので、文字検索が入っている(q!=="")時はシャッフル
+  // しない(オーナー指摘:「作者名で検索した時は一律変わらないように」)。
+  // 1時間ごとに入れ替わるシードで、上位(愛度が高い)帯の中だけ並び順を
+  // 散らす(全体をランダムにすると無名作品がいきなり先頭に出て一覧の質が
+  // 落ちるため、帯の外=滅多に見られない下位はそのまま愛度順に残す)。
+  if(!q){
+    const SHUFFLE_WINDOW = 150;
+    const shuffleSalt = `search:${currentCatalogMode()}:${[...state.activeTags].sort().join(',')}:${[...state.activeGenres].sort().join(',')}:${[...state.activeCountries].sort().join(',')}:${state.decadeFilter}:${state.bookType || ''}`;
+    const head = seededShuffleHourly(resultsFiltered.slice(0, SHUFFLE_WINDOW), shuffleSalt);
+    resultsFiltered = head.concat(resultsFiltered.slice(SHUFFLE_WINDOW));
+  }
 
   // 検索条件が変わるたびに最初のRESULTS_PAGE_SIZE件から表示し直す
   resultsShownCount = RESULTS_PAGE_SIZE;
