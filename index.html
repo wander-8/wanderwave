@@ -3437,6 +3437,9 @@
       <p><strong>第三者提供</strong><br>
       法令に基づく場合を除き、収集した情報を第三者に提供することはありません。</p>
 
+      <p><strong>匿名の利用傾向データについて</strong><br>
+      当サイトでは、サービスの向上および統計的分析を目的として、個人を特定しない形(匿名化されたアクセスログ・検索傾向)のデータを収集・利用する場合があります。</p>
+
       <p class="terms-note">これは簡易版の掲載です。詳しい内容や最新の状態については、随時見直しを行っています。</p>
     </div>
   </div>
@@ -8807,6 +8810,21 @@ function goDetailBack(){
   goHome();
 }
 
+// 「どの感情タグが有効な時にどの作品/ジャンルがクリックされたか」の匿名ログ。
+// 個人を特定する情報は一切送らない(プライバシーポリシーに明記済み)。
+// 失敗してもユーザー体験に影響させないため、投げっぱなしでエラーは握り潰す。
+function logDetailClick(m){
+  if(!m) return;
+  try{
+    supabase.from('click_logs').insert({
+      emotion_tag: state.activeTags && state.activeTags.size ? [...state.activeTags][0] : null,
+      media_type: m.mediaType || null,
+      movie_id: m.id,
+      genre: m.genre && m.genre.length ? m.genre[0] : null,
+    }).then(() => {}, () => {});
+  }catch(e){}
+}
+
 async function goDetail(id){
   detailViewsThisSession++; // 「ひとこと便り」を出すかどうかの判定に使う
   detailReturn = pendingDetailReturn;
@@ -8817,6 +8835,7 @@ async function goDetail(id){
 
   const m = MOVIES.find(x => x.id === id);
   state.currentMovieId = id;
+  logDetailClick(m);
   document.getElementById('d-tags').innerHTML = m.tags.map(t =>
     `<span class="mini-tag" style="color:${tagColor(t)}; background:${tagColor(t)}22;">${t}</span>`
   ).join('');
