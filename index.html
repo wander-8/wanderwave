@@ -914,6 +914,24 @@
     font-size: 14px; font-weight: 600;
     text-align: center; line-height: 1.6;
   }
+  /* ポケットの一覧で、埋まっていない分だけ添える「穴」のカード。実際の
+     作品カードと同じ大きさ・並びにすることで、次にここへ何か拾ってくる
+     入り口だと一目で分かるようにする(オーナー指摘:「次にまた入れる
+     機会が訪れたら作品を埋める用の穴をユーザーに見せる形にして」)。 */
+  .pocket-empty-thumb{
+    background: transparent;
+    border: 1.5px dashed var(--line);
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    gap: 4px;
+  }
+  .pocket-empty-plus{
+    font-size: 26px; font-weight: 700; line-height:1; color: var(--plum);
+  }
+  .pocket-empty-label{
+    font-family:'M PLUS Rounded 1c', sans-serif;
+    font-size: 12px; font-weight: 600; color: var(--ink-soft);
+    text-align: center; padding: 0 10px;
+  }
   .poster-thumb img{
     position: absolute; inset: 0;
     width: 100%; height: 100%;
@@ -12317,6 +12335,22 @@ function goPocket(){
 const POCKET_PAGE_SIZE = 9;
 let pocketShownCount = POCKET_PAGE_SIZE;
 
+// ポケットの「もっと見る」が全部出きった(=これ以上ページングする実際の
+// 作品が無い)時だけ、埋まっていない分の「穴」カードを添える。1枚目にだけ
+// 行き先のラベルを付け、残りは同じ見た目を繰り返すだけにする(ラベルが
+// 何枚も並ぶとうるさいため)。タップするとホームに戻り、そのまま探して
+// 「ポケットに入れる」で埋められる。
+function buildPocketEmptySlotHTML(label){
+  return `
+    <div class="result-card pocket-empty-card" onclick="goHome()">
+      <div class="poster-thumb pocket-empty-thumb">
+        <span class="pocket-empty-plus">+</span>
+        ${label ? `<span class="pocket-empty-label">${label}</span>` : ''}
+      </div>
+    </div>
+  `;
+}
+
 function renderPocketView(){
   const pocketMovies = getPocketMovies();
 
@@ -12326,12 +12360,19 @@ function renderPocketView(){
   // 増えすぎた場合は「もっと見る」を押した分だけ追加表示する(縦に伸びすぎないように)
   const sortedPocket = [...pocketMovies].reverse();
   const visiblePocket = sortedPocket.slice(0, pocketShownCount);
+  const remaining = sortedPocket.length - pocketShownCount;
 
   const itemsRoot = document.getElementById('pocket-items');
-  renderMovieCards(itemsRoot, visiblePocket, 'ポケットの中はまだ空っぽです。', { overlayTitle: true });
+  let html = visiblePocket.map(m => buildCardHTML(m, { overlayTitle: true })).join('');
+  if(remaining <= 0){
+    const emptySlotCount = visiblePocket.length === 0 ? 6 : 3;
+    for(let i = 0; i < emptySlotCount; i++){
+      html += buildPocketEmptySlotHTML(i === 0 ? '作品を拾いに行く' : '');
+    }
+  }
+  itemsRoot.innerHTML = html;
 
   const moreBtn = document.getElementById('pocket-expand-btn');
-  const remaining = sortedPocket.length - pocketShownCount;
   if(remaining > 0){
     moreBtn.style.display = 'block';
     moreBtn.textContent = `もっと見る(残り${remaining}個)`;
