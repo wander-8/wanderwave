@@ -8855,11 +8855,7 @@ async function goDetail(id){
   updateIntensityDisplay(mySliderVal);
   delete intensitySoundBandByTracker.review;
 
-  // 配信サービスの表示は一旦停止(内容が頻繁に変わるため、正確なデータ連携ができるまで非表示にする)
-  const watchLabel = document.getElementById('d-watch-label');
-  const watchLinks = document.getElementById('d-watch-links');
-  watchLabel.style.display = 'none';
-  watchLinks.innerHTML = '';
+  renderWatchLinks(m);
 
   editingMovieId = null;
   const textBox = document.getElementById('review-text');
@@ -9444,7 +9440,63 @@ const POSTER_PALETTE = [
   "linear-gradient(160deg, #e2647f, #e0ac4f)"
 ];
 
-// 実際のアフィリエイトリンクに差し替える前提の仮リンク(今は各サービスの検索ページに飛ぶだけ)
+// TMDbのwatch/providersは同じサービスでも表記が複数ある
+// (「Amazon Prime Video with Ads」「Netflix Standard with Ads」
+// 「HBO Max on U-Next」等)。見た目を揃えるための正規化のみ行い、
+// データ自体(vod_flatrate)は元の表記のまま保存しておく。
+function canonicalVodProviderName(name){
+  return name
+    .replace(/ with Ads$/, '')
+    .replace(/ Standard$/, '')
+    .replace(/^HBO Max on U-Next$/, 'U-NEXT(HBO Max)')
+    .replace(/^Sony Pictures Core Amazon Channel$/, 'Sony Pictures Core')
+    .replace(/^FOD Channel Amazon Channel$/, 'FOD');
+}
+
+// 実際のアフィリエイトリンクに差し替える前提の仮リンク(今は各サービスの検索ページに飛ぶだけ)。
+// マップに無いサービスはGoogle検索へのフォールバックにする(配信先は
+// 今後も増えていくため、未対応サービスでもリンク自体は必ず出せるように)。
+const VOD_PROVIDER_LINKS = {
+  "Netflix": (title) => `https://www.netflix.com/search?q=${encodeURIComponent(title)}`,
+  "Amazon Prime Video": (title) => `https://www.amazon.co.jp/s?k=${encodeURIComponent(title)}&i=instant-video`,
+  "U-NEXT": (title) => `https://video.unext.jp/freeword?query=${encodeURIComponent(title)}`,
+  "U-NEXT(HBO Max)": (title) => `https://video.unext.jp/freeword?query=${encodeURIComponent(title)}`,
+  "Hulu": (title) => `https://www.hulu.jp/search?q=${encodeURIComponent(title)}`,
+  "Disney Plus": (title) => `https://www.disneyplus.com/search?q=${encodeURIComponent(title)}`,
+  "FOD": (title) => `https://fod.fujitv.co.jp/s/?q=${encodeURIComponent(title)}`,
+};
+function vodProviderLink(canonicalName, title){
+  const plain = title.replace(/&amp;/g, '&').replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&lt;/g, '<').replace(/&gt;/g, '>');
+  return VOD_PROVIDER_LINKS[canonicalName]
+    ? VOD_PROVIDER_LINKS[canonicalName](plain)
+    : `https://www.google.com/search?q=${encodeURIComponent(plain + ' ' + canonicalName)}`;
+}
+
+// 見放題(flatrate)サービスのみ表示する(オーナー要望:レンタル/購入はまだ
+// 精度への不安が残るため、サブスクの見放題だけ先に出す)。配信終了の
+// 反映にはズレが出うるため、注記を添える。
+function renderWatchLinks(m){
+  const label = document.getElementById('d-watch-label');
+  const links = document.getElementById('d-watch-links');
+  const providers = m.vodFlatrate || [];
+  if(providers.length === 0){
+    label.style.display = 'none';
+    links.innerHTML = '';
+    return;
+  }
+  const seen = new Set();
+  const chips = providers.map(p => {
+    const canonical = canonicalVodProviderName(p);
+    if(seen.has(canonical)) return '';
+    seen.add(canonical);
+    const href = vodProviderLink(canonical, m.title);
+    return `<a class="watch-link" href="${href}" target="_blank" rel="noopener"><span class="dot"></span>${escapeHtml(canonical)}</a>`;
+  }).join('');
+  label.style.display = '';
+  label.textContent = 'ここで観る(見放題)';
+  links.innerHTML = chips + '<div style="font-size:11px;color:var(--ink-soft);width:100%;margin-top:6px;">※配信状況は変動する場合があります</div>';
+}
+
 const PLATFORM_INFO = {
   "Netflix": (title) => `https://www.netflix.com/search?q=${encodeURIComponent(title)}`,
   "Amazon Prime Video": (title) => `https://www.amazon.co.jp/s?k=${encodeURIComponent(title)}&i=instant-video`,
@@ -9625,11 +9677,11 @@ async function selectAllRows(table, columns, applyFilterFn, orderColumn = 'id', 
 // 存在意義に関わるため)初回取得に残したまま、この2つだけ後から
 // バックグラウンドで取得する(loadMovieBigFieldsInBackground参照)。
 const MOVIE_LIGHT_COLUMNS = 'id, title, release_year, emotion_tags, genre, director, country, poster_path, japan_release_date, keywords, series, trailer_key, media_type, is_anime, is_drama, is_manga, is_novel, is_music, volume_count';
-const MOVIE_BIG_COLUMNS = 'id, synopsis, cast_members';
+const MOVIE_BIG_COLUMNS = 'id, synopsis, cast_members, vod_flatrate';
 // アニメ・ドラマ・漫画・小説側(オーナー限定プレビュー)は、今のところ
 // 軽量/追加取得の二段構えにはせず、従来通り一括取得する(この取得自体が
 // 既にバックグラウンド化済みで、スプラッシュをブロックしないため)。
-const MOVIE_FULL_COLUMNS = MOVIE_LIGHT_COLUMNS + ', synopsis, cast_members';
+const MOVIE_FULL_COLUMNS = MOVIE_LIGHT_COLUMNS + ', synopsis, cast_members, vod_flatrate';
 
 // moviesの1行(DBのrow)+集計データから、アプリ内部で使う表示用オブジェクトを
 // 組み立てる。loadMovies()の初回取得と、オーナーのプレビュー用バックグラウンド
@@ -9690,6 +9742,7 @@ function buildMovieRecord(row, statsByMovie, estimatesByMovie){
     volumeCount: volumeCount,
     series: row.series || null,
     trailerKey: row.trailer_key || null,
+    vodFlatrate: row.vod_flatrate || undefined,
     mediaType: row.media_type || 'movie',
     isAnime: !!row.is_anime,
     isDrama: !!row.is_drama,
@@ -9744,6 +9797,7 @@ function applyBigFieldsPatch(movie, row){
   movie.excludedWordHaystack = normalizeForSearch(
     [titleEsc, row.synopsis, ...(genreArr || []), ...keywordsArr].filter(Boolean).join(' ')
   );
+  movie.vodFlatrate = row.vod_flatrate || undefined;
   movie.hasFullData = true;
 }
 
@@ -9997,6 +10051,7 @@ async function loadMovieBigFieldsInBackground(){
         const wasOpen = panel.style.display === 'block';
         renderMovieInfoPanel(current);
         if(wasOpen) panel.style.display = 'block';
+        renderWatchLinks(current);
       }
     }
   }catch(err){

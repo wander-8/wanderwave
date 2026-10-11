@@ -111,6 +111,44 @@ async function fillMissingSynopsis(supabase: any, offset: number, limit: number,
   return results;
 }
 
+// 見放題(flatrate)の配信先だけをJP向けに取得して保存する。vod_checked_at
+// を「確認済みの印」として使い、配信先が無い(空配列)作品も再取得し続け
+// ないようにする(オーナー要望:まず見放題だけ先に再表示したい)。
+async function fillVodFlatrate(supabase: any, offset: number, limit: number, write: boolean) {
+  const { data, error } = await supabase
+    .from("movies")
+    .select("id, title, tmdb_id")
+    .eq("media_type", "movie")
+    .not("tmdb_id", "is", null)
+    .is("vod_checked_at", null)
+    .order("id", { ascending: true })
+    .range(offset, offset + limit - 1);
+  if (error) throw error;
+  const todo = data || [];
+
+  const results = [];
+  const CONCURRENCY = 3;
+  for (let i = 0; i < todo.length; i += CONCURRENCY) {
+    const chunk = todo.slice(i, i + CONCURRENCY);
+    const chunkResults = await Promise.all(
+      chunk.map(async (m: any) => {
+        const wp = await tmdbFetch(`/movie/${m.tmdb_id}/watch/providers`, {});
+        const flatrate = (wp?.results?.JP?.flatrate || []).map((p: any) => p.provider_name);
+        if (write) {
+          await supabase.from("movies").update({
+            vod_flatrate: flatrate,
+            vod_checked_at: new Date().toISOString(),
+          }).eq("id", m.id);
+        }
+        return { movie_id: m.id, title: m.title, tmdb_id: m.tmdb_id, flatrate };
+      }),
+    );
+    results.push(...chunkResults);
+    await sleep(150);
+  }
+  return results;
+}
+
 Deno.serve(async (req: Request) => {
   try {
     const {
@@ -132,6 +170,13 @@ Deno.serve(async (req: Request) => {
 
     if (!ids && target === "missing_synopsis") {
       const results = await fillMissingSynopsis(supabase, offset, limit, write);
+      return new Response(JSON.stringify({ offset, limit, processed: results.length, write, results }), {
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
+    if (!ids && target === "vod_flatrate") {
+      const results = await fillVodFlatrate(supabase, offset, limit, write);
       return new Response(JSON.stringify({ offset, limit, processed: results.length, write, results }), {
         headers: { "Content-Type": "application/json" },
       });
