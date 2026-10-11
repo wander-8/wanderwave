@@ -329,8 +329,13 @@
   }
   /* ジャンル(16件)+国(13件)のチップが折り返す分の高さが400pxでは
      足りず、国の行が途中で切れていた。実際に必要な高さより十分大きい
-     値にしておく。 */
-  .filter-disclosure-body.open{ max-height:700px; }
+     値にしておく。音楽モードでジャンルを見出し付き6グループ(47種類)に
+     増やした結果、1グループだけでも700pxでは収まりきらず下側が
+     見切れていた(オーナー指摘)。これはあくまでアコーディオンの開閉
+     アニメーション用の上限であり、実際の表示高さはpositionFilterTrack()
+     がviewport側で個別に合わせるため、ここは「今後増えても余裕を持って
+     収まる」程度に大きめにしておけばよい。 */
+  .filter-disclosure-body.open{ max-height:1600px; }
   .filter-disclosure-inner{ padding-top:14px; }
 
   /* 話数一覧は長期シリーズ(1000話超もありうる)だと通常の700pxでは全部
@@ -540,8 +545,19 @@
   .filter-tab[data-key="genre"].active{ border-color: var(--gold); color: var(--gold); }
   .filter-tab[data-key="country"].active{ border-color: var(--safe); color: var(--safe); }
   .filter-tab[data-key="decade"].active{ border-color: var(--mild); color: var(--mild); }
-  .filter-pages-viewport{ overflow:hidden; }
-  .filter-pages-track{ display:flex; }
+  /* overflow:hiddenだけだと、track(display:flex、行方向)は既定の
+     align-items:stretchにより全ページ(ジャンル・国・年代)が一番背の高い
+     ページに引っ張られて揃ってしまう。音楽モードでジャンルを47種類を
+     グループ見出し付き(genre-cloud-grouped)で出すようになった結果、
+     ジャンルページだけ突出して背が高くなり、国・年代タブを開いている時も
+     その高さのまま(=下の検索結果との間に大きな空白)になっていた
+     (オーナー指摘:「ジャンル検索の幅が長すぎて国と年代のところが
+     釣られて、検索した作品と距離がある」)。align-items:flex-startで
+     各ページが自分の中身の高さだけを持つようにし、viewport側は
+     positionFilterTrack()で「今表示中のページの高さ」だけをJSで
+     明示的に当てる(transition:heightで滑らかに追従)。 */
+  .filter-pages-viewport{ overflow:hidden; transition: height .26s cubic-bezier(.22,.8,.32,1); }
+  .filter-pages-track{ display:flex; align-items:flex-start; }
   .filter-page{ flex:0 0 100%; min-width:0; }
   /* 音楽モードでジャンル(47種)・国(30種超)まで増やした結果、折り返し
      (flex-wrap:wrap)だと「詳しく絞り込む」が縦に何段も伸びて使いにくいとの
@@ -2643,7 +2659,7 @@
                    その時のモード(映画/アニメ)の中で実際に作品がある年代だけを
                    動的に出す(renderDecadeCloud参照)ことで、選んでも必ず
                    何かしら出てくるようにする。 -->
-              <div class="filter-page">
+              <div class="filter-page" id="decade-filter-group">
                 <div class="genre-cloud" id="decade-cloud"></div>
               </div>
             </div>
@@ -4917,11 +4933,24 @@ function visibleFilterIndex(){
   const idx = visibleKeys.indexOf(FILTER_PAGE_KEYS[filterPageIndex]);
   return idx === -1 ? 0 : idx;
 }
+const FILTER_PAGE_ELEMENT_IDS = { bookType: 'book-type-filter-group', genre: 'genre-filter-group', country: 'country-filter-group', decade: 'decade-filter-group' };
 function positionFilterTrack(animated){
   const viewport = document.getElementById('filter-pages-viewport');
   const track = document.getElementById('filter-pages-track');
   track.style.transition = animated === false ? 'none' : 'transform 0.26s cubic-bezier(.22,.8,.32,1)';
   track.style.transform = `translateX(-${visibleFilterIndex() * viewport.offsetWidth}px)`;
+  // viewportの高さを「今表示中のページ」自身の中身の高さだけに合わせる
+  // (align-items:flex-startと対で、ジャンルページの高さに国・年代が
+  // 引っ張られないようにする。trackのtranslateXと違い、こちらはDOM上の
+  // 実際の要素をキーから直接引く必要がある(非表示ページはdisplay:noneで
+  // flexレイアウトから除外されているため、track.childrenのインデックスは
+  // 見た目上の並びと一致しない)。
+  const activeKey = FILTER_PAGE_KEYS[filterPageIndex];
+  const activeEl = document.getElementById(FILTER_PAGE_ELEMENT_IDS[activeKey]);
+  if(activeEl){
+    viewport.style.transition = animated === false ? 'none' : 'height 0.26s cubic-bezier(.22,.8,.32,1)';
+    viewport.style.height = activeEl.offsetHeight + 'px';
+  }
 }
 // タブ行自体を横にドラッグしてもページを切り替えられるようにする
 // (チップの横スクロールと競合しないよう、ドラッグの起点をタブ行だけに
