@@ -81,6 +81,22 @@ const GENRE_TAG_MAP: Record<string, string[]> = {
   "Industrial": ["怖い"],
 };
 const DEFAULT_TAGS = ["楽しい"];
+// countryは元々「どの国のiTunesチャートから取り込んだか」をそのまま使って
+// いたが、チャートの中身は輸入ヒット曲だらけ(日本のPopチャートにMichael
+// JacksonやSHINee等)なので、実際のアーティストの出身国とは無関係なことが
+// 多かった(オーナー指摘:「ポップで日本と打ったら日本以外の作品が出た」)。
+// ジャンル名自体がほぼ一国に対応する(K-Pop=韓国等)場合だけ、チャートより
+// こちらを信頼して上書きする。genreが「Pop」「Rock」のような汎用語の
+// 場合は依然として手がかりが無く、この方式では直せない(アーティスト単位の
+// 出身国データが別途必要で、今回の修正範囲外)。
+const GENRE_COUNTRY_OVERRIDE: Record<string, string> = {
+  "K-Pop": "韓国",
+  "J-Pop": "日本",
+  "Anime": "日本",
+  "Cantopop": "香港",
+  "French Pop": "フランス",
+  "Bollywood": "インド",
+};
 // 音楽アルバムは基本的に低刺激。Lookup APIのcollectionExplicitnessが
 // "explicit"の時だけ底上げする(fetchExplicitness参照)。
 const BASE_TIER = 15;
@@ -268,7 +284,7 @@ Deno.serve(async (req: Request) => {
         // 万一この先さらに新しい国コードで取り込む時のための保険。生コードを
         // そのまま入れる(今回の不具合と同じ形)よりは、「海外」とだけ分かる
         // 方がまだ安全(絞り込み・表示どちらでも破綻しない)。
-        country: COUNTRY_NAME_JA[country] || "海外",
+        country: (genreName && GENRE_COUNTRY_OVERRIDE[genreName]) || COUNTRY_NAME_JA[country] || "海外",
         synopsis: trackCount ? `収録曲数: ${trackCount}曲` : null,
         poster_path: artworkUrl,
         japan_release_date: country === "jp" && releaseLabel ? releaseLabel.slice(0, 10) : null,
