@@ -212,6 +212,10 @@ Deno.serve(async (req: Request) => {
       primary_release_date_gte = null,
       primary_release_date_lte = null,
       with_original_language = null,
+      // 自動の日次取り込み用。1日に入れる件数を抑えたい(「少しずつでいい」との
+      // オーナー要望)ため、新規候補が見つかった順に先頭N件だけを詳細取得・
+      // 挿入する。nullなら従来通り無制限。
+      limit = null,
     } = await req.json().catch(() => ({}));
 
     const supabase = createClient(SUPABASE_URL, SERVICE_ROLE);
@@ -250,18 +254,20 @@ Deno.serve(async (req: Request) => {
     });
 
     // 3) 詳細情報(監督・出演・制作国・あらすじ)を取得し、挿入用の行を組み立てる
+    const limited = limit != null ? fresh.slice(0, limit) : fresh;
     const rows: any[] = [];
     const skipped: any[] = [];
     const CONCURRENCY = 3;
-    for (let i = 0; i < fresh.length; i += CONCURRENCY) {
-      const chunk = fresh.slice(i, i + CONCURRENCY);
+    for (let i = 0; i < limited.length; i += CONCURRENCY) {
+      const chunk = limited.slice(i, i + CONCURRENCY);
       const chunkRows = await Promise.all(
         chunk.map(async (c: any) => {
-          const [details, credits, releaseDates, keywordsRes] = await Promise.all([
+          const [details, credits, releaseDates, keywordsRes, watchProviders] = await Promise.all([
             tmdbFetch(`/movie/${c.id}`, { language: "ja-JP" }),
             tmdbFetch(`/movie/${c.id}/credits`, { language: "ja-JP" }),
             tmdbFetch(`/movie/${c.id}/release_dates`, {}),
             tmdbFetch(`/movie/${c.id}/keywords`, {}),
+            tmdbFetch(`/movie/${c.id}/watch/providers`, {}),
           ]);
           if (!details) return null;
 
@@ -291,6 +297,7 @@ Deno.serve(async (req: Request) => {
           const japanReleaseDate = extractJapanReleaseDate(releaseDates?.results || []);
           const keywords = (keywordsRes?.keywords || []).slice(0, 15).map((k: any) => k.name);
           const series = details.belongs_to_collection?.name ? cleanSeriesName(details.belongs_to_collection.name) : null;
+          const vodFlatrate = (watchProviders?.results?.JP?.flatrate || []).map((p: any) => p.provider_name);
 
           return {
             title: details.title || c.title,
@@ -308,6 +315,8 @@ Deno.serve(async (req: Request) => {
             keywords_checked_at: new Date().toISOString(),
             series,
             series_checked_at: new Date().toISOString(),
+            vod_flatrate: vodFlatrate,
+            vod_checked_at: new Date().toISOString(),
             tmdb_id: c.id,
             tmdb_vote_count: c.vote_count,
             tmdb_vote_average: c.vote_average,
@@ -320,7 +329,16 @@ Deno.serve(async (req: Request) => {
 
     let inserted = 0;
     if (!dry_run && rows.length > 0) {
-      const insertPayload = rows.map(({ tmdb_id, tmdb_vote_count, tmdb_vote_average, ...rest }) => rest);
+      // 以前はtmdb_idも挿入時に剥がしていたため、保存された行には一切
+      // tmdb_idが残らず、次回以降の実行でexistingTmdbIdsが機能しなかった。
+      // TMDbはタイトル文字列を日によって微妙に変えて返すことがあり(実例:
+      // 「パイレーツ・オブ・カリビアン」→「パイレーツ・オブ・カリビアン／
+      // 呪われた海賊たち」)、タイトル+公開年の一致だけでは重複を防げず、
+      // 同じ作品(tmdb_id=22)が3日連続で毎日1件ずつ重複登録される事故に
+      // なっていた(オーナー指摘:「年代もタイトルも全く同じ作品があった」)。
+      // tmdb-discover-anime/dramaと同じく、tmdb_idは保持して次回の重複
+      // チェックに使えるようにする。
+      const insertPayload = rows.map(({ tmdb_vote_count, tmdb_vote_average, ...rest }) => rest);
       const { error: insertErr } = await supabase.from("movies").insert(insertPayload);
       if (insertErr) throw insertErr;
       inserted = insertPayload.length;
