@@ -13,28 +13,32 @@ const corsHeaders = {
 };
 
 // 「AI検索」: ユーザーが自由文(例:「雨の日に見たい泣ける映画」)を入力すると、
-// フロント側が今選んでいるカタログモードで実際に選択可能な感情タグ・
-// ジャンル・国・年代の一覧をここに渡し、Claudeにその中からだけ選んでもらって
-// 既存の絞り込みチップ(activeTags/activeGenres/activeCountries/decadeFilter)
-// に自動変換する。新しい検索の仕組みを作るのではなく、既にある「詳しく
-// 絞り込む」の操作をAIが代わりにやってくれるだけ、という位置づけ。
-// tool_choiceで強制的にツールを呼ばせることで、存在しないジャンル名等を
-// でっち上げられないようにする(enumで渡した語彙以外は選べない)。
+// 作品の実際の中身(タイトル・あらすじ・ジャンル・出演者・監督/アーティスト・
+// 制作国・感情タグ)に結び付きそうな短い言葉を拾い、フロント側の通常の
+// 部分一致検索(queryKeywords、termMatchesMovie参照)にそのまま渡す。
+//
+// 以前は感情タグ・ジャンル・国を、フロント側が渡したenum語彙の中から選ばせ、
+// 既存の絞り込みチップ(activeTags/activeGenres/activeCountries)に変換して
+// いた。しかしこの「カテゴリを1つ選んで絞り込む」という操作そのものが、
+// 曖昧・感覚的な文章で検索したい時の体験と合わなかった(オーナー指摘:
+// 「感覚で検索した時に、いつも絞り込みされるんだけどそうじゃなくて、
+// Googleとか一般的な検索サイトで見たときに使うような記事の内容とかから
+// イメージさせてほしい」「検索の絞り込み機能やめてほしい。もっと感覚で
+// 視覚的聴覚的にみんながイメージするものを取り入れたい。これは全部の項目の
+// 検索機能に投じてほしい」)。手動でチップを押す「詳しく絞り込む」自体は
+// 従来通り残すが、AI検索はチップへの変換をやめ、実際の中身への部分一致
+// 検索(searchTerms)だけに統一する。media種別を問わず同じ挙動にする。
+//
+// tool_choiceで強制的にツールを呼ばせる(自由回答の文章ではなく、必ず
+// 構造化された配列が返る形にするため。中身は自由記述なので、以前のような
+// enum制約(存在しない値のでっち上げ防止)はもう無い)。
 
 type RequestBody = {
   query?: string;
-  emotionTags?: string[];
-  genres?: string[];
-  countries?: string[];
   decades?: number[];
   mode?: string;
+  genres?: string[];
 };
-
-function sanitizeList(values: unknown, allowed: string[]): string[] {
-  if (!Array.isArray(values)) return [];
-  const allowedSet = new Set(allowed);
-  return values.filter((v): v is string => typeof v === "string" && allowedSet.has(v));
-}
 
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
@@ -49,11 +53,9 @@ Deno.serve(async (req: Request) => {
 
     const body: RequestBody = await req.json().catch(() => ({}));
     const query = (body.query || "").trim();
-    const emotionTags = Array.isArray(body.emotionTags) ? body.emotionTags.filter((t) => typeof t === "string") : [];
-    const genres = Array.isArray(body.genres) ? body.genres.filter((g) => typeof g === "string") : [];
-    const countries = Array.isArray(body.countries) ? body.countries.filter((c) => typeof c === "string") : [];
     const decades = Array.isArray(body.decades) ? body.decades.filter((d) => typeof d === "number") : [];
     const mode = typeof body.mode === "string" ? body.mode : "";
+    const genres = Array.isArray(body.genres) ? body.genres.filter((g) => typeof g === "string") : [];
 
     if (!query) {
       return new Response(JSON.stringify({ error: "query is required" }), {
@@ -63,116 +65,98 @@ Deno.serve(async (req: Request) => {
     }
 
     const decadeProperty: Record<string, unknown> = decades.length
-      ? { type: "integer", enum: decades, description: "最も近い年代。該当が無ければこのフィールド自体を省略する。" }
+      ? { type: "integer", enum: decades, description: "最も近い年代。「80年代の」のように明確な言及がある時だけ入れる。該当が無ければこのフィールド自体を省略する。" }
       : { type: "integer", description: "年代の指定が無いので使わない(省略する)。" };
 
     const tool = {
-      name: "apply_filters",
-      description: "ユーザーの自由文を、与えられた選択肢の中からだけ選んで既存の絞り込みフィルタに変換する。",
+      name: "extract_search_terms",
+      description: "ユーザーの自由文から、作品の実際の中身に結び付きそうな短い言葉を抜き出す。",
       input_schema: {
         type: "object",
         properties: {
-          emotionTags: {
-            type: "array",
-            items: { type: "string", enum: emotionTags.length ? emotionTags : [""] },
-            description: "文章の雰囲気に合う感情タグ。確信が持てるものだけ、最大2〜3個まで。",
-          },
-          genres: {
-            type: "array",
-            items: { type: "string", enum: genres.length ? genres : [""] },
-            description: "文章で言及・示唆されているジャンル。明確なものだけ。",
-          },
-          countries: {
-            type: "array",
-            items: { type: "string", enum: countries.length ? countries : [""] },
-            description: "「海外の」「日本の」のように国籍への言及が明確な場合だけ。",
-          },
-          decade: decadeProperty,
-          searchKeywords: {
+          searchTerms: {
             type: "array",
             items: { type: "string" },
-            description: "感情タグ・ジャンル・国・年代のどれにも当てはまらない、具体的な見た目・" +
-              "設定・物の名前・ストーリーの詳細(「赤いドレス」「双子」「猫」「転生」等)があれば、" +
-              "そのまま検索欄に入力されるような短い単語・フレーズを1つずつ入れる(タイトル・あらすじ・" +
-              "キーワード欄への部分一致検索に使う。それぞれ独立に判定されるAND条件なので、" +
-              "別々の場所に出てくる要素でも構わない)。文章に具体的な要素が複数あれば、省略せず" +
-              "全部(最大3個まで)入れること。例えば「猫を飼っている双子が出てくる映画」なら" +
-              "[\"双子\", \"猫\"]のように両方入れる(片方だけ拾って残りを捨てるのは禁止)。" +
-              "該当する具体的な要素が無ければ空配列。各要素は単語単位(文章全体や長い説明文は" +
-              "そのまま入れない。部分一致なので短いほど当たりやすい)。",
+            description: "文章が思い起こさせる、短い単語・フレーズを基本1〜2個(多くても4個)。" +
+              "タイトル・あらすじ・ジャンル・出演者/監督・アーティスト名・制作国・感情タグの" +
+              "どこかに部分一致しそうな言葉を入れる(各要素は独立に判定されるAND条件。" +
+              "例:「猫を飼っている双子が出てくる怖い映画」→[\"双子\",\"猫\",\"怖い\"])。" +
+              "具体的な見た目・設定・物の名前だけでなく、感情タグ(「楽しい」「感動」" +
+              "「リラックス」「ワクワク」「怖い」「美しい」「ドキドキ」「笑い」「悲しい」" +
+              "「考えさせられる」)・雰囲気や見た目/音の印象を表す言葉も積極的に含めてよい。" +
+              "ジャンル名(「ホラー」「K-Pop」等)は、文章が具体的な物・設定より先にジャンル" +
+              "そのものを前面に出している時だけ使う(既に具体的な物の名前がある時に追加で" +
+              "足すと、ジャンル欄が無い/一致しない作品で0件になりやすい)。各要素は単語単位" +
+              "(文章全体や長い説明文はそのまま入れない。部分一致なので短いほど当たりやすい)。" +
+              "本当に何も思い当たらない曖昧な文章(例:「何か面白いの無い?」)の時だけ空配列にする。",
           },
+          decade: decadeProperty,
         },
-        required: ["emotionTags", "genres", "countries", "searchKeywords"],
+        required: ["searchTerms"],
       },
     };
 
     const systemPrompt = [
       "あなたは映画・アニメ・ドラマ・漫画・小説・音楽の発見サイト「Wander」の検索アシスタントです。",
-      "ユーザーが入力した自由な文章から、サイト側で用意された選択肢(感情タグ・ジャンル・国・年代)の中に",
-      "明確に当てはまるものだけを選び、apply_filtersツールを呼んでください。",
+      "ユーザーが入力した自由な文章から、作品の実際の中身(タイトル・あらすじ・ジャンル・出演者・",
+      "監督/アーティスト・制作国・感情タグ)に結び付きそうな短い言葉を抜き出し、",
+      "extract_search_termsツールを呼んでください。",
       "",
       "重要なルール:",
-      "- 与えられた選択肢に無い値は絶対に作らない(enumに存在するものだけを選ぶ)。",
-      "- 文章から確信を持って読み取れないものは、無理に埋めずそのフィールドを空(または省略)にする。",
-      "  例えば「何か面白いの無い?」のような曖昧な文章では、ほとんど何も選ばなくてよい。",
-      "- 感情タグは最大2〜3個まで。選びすぎて絞り込みすぎないようにする。",
-      "- 年代は「80年代の」「最近の」のように時代への言及が明確な時だけ選ぶ。",
-      "- 特に重要: emotionTags・genres・countries・decadeの4つは感情タグ・ジャンル・国・",
-      "  年代専用で、「赤いドレスが出てくる」「主人公が双子」のような具体的な見た目・",
-      "  設定・ストーリーの詳細はそもそも変換先が無い。そのような部分を理由に",
-      "  近そうな感情タグ(例:赤いドレス→「美しい」)を無理やり足すと、本来",
-      "  ヒットすべき作品まで絞り込みから漏れてしまうので絶対にしないこと。",
-      "  感情タグは、文章が本当に「怖い」「感動する」「ワクワクする」等の",
-      "  気分・感情そのものを言っている時だけ選ぶ。",
-      "- 「雨の日に見たい」「寝る前に」「休日に」のような状況・シーン描写は、",
-      "  感情・気分をそのまま言っているわけではない(「雨の日」からリラックス",
-      "  したい気分なのか、しっとり悲しい気分なのか、考え事をしたい気分なのかは",
-      "  決まらない)。このような状況描写だけで特定の感情タグを1つに決め打ち",
-      "  しないこと。文章に「泣ける」「ほっこりする」等、感情・気分の言葉が",
-      "  別途はっきり添えられている場合だけ、それを感情タグに反映する。",
-      "- その代わり、具体的な見た目・設定・物の名前・ストーリーの詳細は",
-      "  searchKeywordsに短い単語・フレーズの配列として入れる。これはタイトル・",
-      "  あらすじ・キーワード欄への部分一致検索に使われる(各要素は独立にAND",
-      "  判定されるので、別々の場所に出てくる要素でも構わない)。文章に具体的な",
-      "  要素が複数あれば、省略せず全部(最大3個まで)入れること",
-      "  (例:「猫を飼っている双子が出てくる怖い映画」→",
-      "  searchKeywords:[\"双子\",\"猫\"]。片方だけ拾って残りを捨てるのは禁止)。",
-      "  該当する具体的な要素が文章に無ければ空配列のままにする。",
+      "- ここで拾った言葉は、検索欄にそのまま打ち込んだのと同じように、作品の中身への",
+      "  部分一致検索に使われる(Googleのような一般的な検索サイトの感覚に近い)。",
+      "  決まった選択肢から1つ選んでカテゴリ分けする作業ではない。",
+      "- 複数の言葉を拾った時は全部が同時に満たされる(AND)条件になるので、入れすぎると",
+      "  0件になりやすい。基本は1〜2個に絞り、3個以上は本当に別々の要素(物・設定・",
+      "  ジャンル等)が文章に複数ある時だけにする。",
+      "- 同じ意味・ニュアンスの言い換えを複数同時に入れないこと(例:「感動」で十分なのに",
+      "  「泣ける」も一緒に入れる、「ジャズ」で十分なのに「ブルース」も一緒に入れる、",
+      "  「Alternative」で十分なのに「エモい」も一緒に入れる、等)。「エモい」「尊い」",
+      "  「刺さる」のような、下記のジャンル一覧にも感情タグ一覧にも無い口語的な",
+      "  言い換えは、対応するジャンル名・感情タグに変換できた時点でそれ自体は使わない",
+      "  (口語のスラングそのままでは作品の中身に一致しないため、足しても0件になるだけ)。",
+      "  似た言葉が思い浮かんでも、最も作品の実際のジャンル名・感情タグに近い1語だけを選ぶ",
+      "  (下記の語彙一覧にある表記が使えるなら、それを優先する)。類義語を並べるとAND条件が",
+      "  無駄に厳しくなり0件になりやすい。",
+      "- 具体的な見た目・設定・物の名前(「赤いドレス」「双子」「猫」「転生」等)はもちろん、",
+      "  感情タグ・雰囲気/視覚的/聴覚的な印象を表す言葉も、同じようにsearchTermsに",
+      "  入れてよい(例:「海外ギャルっぽい曲」→[\"K-Pop\"]、「雨の日に見たい泣ける映画」→",
+      "  [\"感動\"]、「渋い感じの洋楽」→[\"Jazz\"]、「猫を飼っている双子が出てくる怖い映画」→",
+      "  [\"双子\",\"猫\",\"怖い\"])。それぞれの言葉が実際にタイトル・あらすじ・ジャンル・",
+      "  感情タグのどこかに現れそうか、という手がかりとして考える。",
+      "- ジャンル名は、下記のジャンル一覧にある表記(大文字小文字・英語表記含む)のまま",
+      "  使うこと。ただし文章に具体的な物・設定の名前が既にある時は、ジャンル名を追加で",
+      "  足さない方が安全(ジャンル欄は全作品に正確に付いているとは限らず、AND条件に",
+      "  加えるとその作品がたまたまそのジャンルを持っていない場合に0件になる。実例:",
+      "  「赤いドレスの怖い映画」は[\"赤いドレス\"]のみで十分で、\"ホラー\"まで足すと",
+      "  実際にヒットすべき唯一の作品がジャンル欄に\"ホラー\"を持っておらず0件になっていた)。",
+      "  文章が具体的な物・設定より先にジャンルそのものを前面に出している時(例:",
+      "  「K-Popっぽい曲」「ホラー映画が見たい」)だけ、ジャンル名を使う。",
+      "- 「雨の日に見たい」「寝る前に」のような状況・シーン描写だけで、特定の感情や",
+      "  ジャンルを1つに決め打ちしないこと(「雨の日」からリラックスしたいのか、しっとり",
+      "  悲しい気分なのかは決まらない)。文章にもっと具体的な手がかり(「泣ける」「ワクワクする」",
+      "  「K-Pop系」等)が別途あれば、それを拾う。",
+      "- 文章から確信を持って読み取れないものは、無理に埋めない。本当に何も手がかりが無い",
+      "  曖昧な文章(例:「何か面白いの無い?」)では、searchTermsを空配列にしてよい。",
+      "- 年代は「80年代の」「最近の」のように時代への言及が明確な時だけdecadeに入れる。",
       "",
-      `選べる感情タグ: ${emotionTags.join("、") || "(なし)"}`,
-      `選べるジャンル: ${genres.join("、") || "(なし)"}`,
-      `選べる国: ${countries.join("、") || "(なし)"}`,
       `選べる年代: ${decades.map((d) => `${d}年代`).join("、") || "(なし)"}`,
-      // 音楽モードだけの例外。映画・アニメ等と違って音楽作品には実際の
-      // あらすじ・ストーリーキーワードが存在しない(synopsisは「収録曲数:
-      // N曲」という表示用の文字列でしかなく、keywordsは常に空)。そのため
-      // 上の「具体的な見た目・設定はsearchKeywordsへ、ジャンル・感情タグは
-      // 明確な言及がある時だけ」という通常ルールのまま音楽を検索すると、
-      // 「海外ギャルっぽい」のような雰囲気・スタイルの言葉がsearchKeywords
-      // (タイトル・あらすじへの部分一致)に回されるだけで、どの音楽作品にも
-      // 絶対に一致せず毎回0件になっていた(オーナー指摘:「海外ギャルっぽい
-      // とか適当に打ってもいいようにしたいのに出てこない」「色々拾える
-      // ようにしてほしい」)。音楽モードの時だけ、ジャンル・感情タグは
-      // 「明確な言及」を要求せず、文章が醸し出す雰囲気・シーン・スタイル
-      // (例:「海外ギャルっぽい」→K-Pop/Dance/Pop等、「渋谷系っぽい」→
-      // J-Pop/Electronic等、「泣ける洋楽」→悲しい/感動+アメリカ等の国、
-      // 「パリピ」「クラブで流れてそう」→Dance/House/Electronic等)から
-      // 積極的に推測して選んでよい(他のモードの厳格さは変えない)。
+      `ジャンルの表記一覧(ジャンルを表す言葉を入れる時はこの中の表記に合わせる。無ければ自由に単語を選んでよい): ${genres.join("、") || "(なし)"}`,
+      // 音楽モードだけの補足。映画・アニメ等と違って音楽作品には実際の
+      // あらすじ・ストーリー要素が存在しない(synopsisは「収録曲数: N曲」
+      // という表示用の文字列でしかない)ため、タイトル・ジャンル・アーティスト名・
+      // 感情タグが頼りになる。雰囲気語からジャンル・感情タグを積極的に
+      // 推測しないと、音楽だけ毎回0件になりやすい(オーナー指摘:「海外
+      // ギャルっぽいとか適当に打ってもいいようにしたい」)。
       ...(mode === "music"
         ? [
           "",
-          "音楽モード専用の追加ルール(上の「明確な言及がある時だけ」ルールを上書きする):",
-          "音楽作品にはあらすじ・ストーリー要素が無く、ジャンルと感情タグだけが",
-          "手がかりなので、この時だけは「ギャル系」「渋谷系」「パリピ」「エモい」",
-          "「クラブで流れてそう」「泣ける洋楽」のような雰囲気・スタイル・シーンの",
-          "言葉からも、合いそうなジャンル・感情タグ・国を積極的に(1つに決め打ち",
-          "せず複数可)推測して選んでよい。searchKeywordsは、文章に実在の固有名詞",
-          "(具体的な曲名・アーティスト名の断片)が書かれている時だけ使う。",
-          "「ギャル」「エモい」「パリピ」のような雰囲気・スタイルを表す言葉は、",
-          "それがたまたまどこかのタイトルに含まれていそうでも、searchKeywordsに",
-          "絶対に入れないこと(ジャンル・感情タグへの変換のみに使い、部分一致",
-          "検索には回さない)。1曲だけ偶然タイトルが一致してジャンルの近い他の",
-          "作品が全部抜け落ちる事故を避けるため。",
+          "音楽モードの補足: 音楽作品にはあらすじ・ストーリー要素が無く、タイトル・",
+          "ジャンル・アーティスト名・感情タグだけが手がかり。「ギャル系」「渋谷系」",
+          "「パリピ」「エモい」「クラブで流れてそう」のような雰囲気・スタイル・シーンの",
+          "言葉からも、上のジャンル表記一覧(iTunesの英語ジャンル名)に合いそうなものや",
+          "感情タグを積極的に推測してsearchTermsに入れてよい。ただし基本1〜2個に絞る",
+          "ルールは音楽モードでも変わらない。",
         ]
         : []),
     ].join("\n");
@@ -190,7 +174,7 @@ Deno.serve(async (req: Request) => {
         system: systemPrompt,
         messages: [{ role: "user", content: query }],
         tools: [tool],
-        tool_choice: { type: "tool", name: "apply_filters" },
+        tool_choice: { type: "tool", name: "extract_search_terms" },
       }),
     });
 
@@ -203,7 +187,7 @@ Deno.serve(async (req: Request) => {
     }
 
     const data = await res.json();
-    const toolUse = (data?.content || []).find((c: any) => c.type === "tool_use" && c.name === "apply_filters");
+    const toolUse = (data?.content || []).find((c: any) => c.type === "tool_use" && c.name === "extract_search_terms");
     if (!toolUse) {
       return new Response(JSON.stringify({ error: "no_tool_use_in_response", raw: data }), {
         status: 502,
@@ -212,22 +196,16 @@ Deno.serve(async (req: Request) => {
     }
 
     const input = toolUse.input || {};
-    const resultEmotionTags = sanitizeList(input.emotionTags, emotionTags);
-    const resultGenres = sanitizeList(input.genres, genres);
-    const resultCountries = sanitizeList(input.countries, countries);
     const resultDecade = typeof input.decade === "number" && decades.includes(input.decade) ? input.decade : null;
-    const resultSearchKeywords = (Array.isArray(input.searchKeywords) ? input.searchKeywords : [])
+    const resultSearchKeywords = (Array.isArray(input.searchTerms) ? input.searchTerms : [])
       .filter((k: unknown): k is string => typeof k === "string")
       .map((k: string) => k.trim())
       .filter((k: string) => k.length > 0)
-      .slice(0, 3)
+      .slice(0, 4)
       .map((k: string) => k.slice(0, 40));
 
     return new Response(
       JSON.stringify({
-        emotionTags: resultEmotionTags,
-        genres: resultGenres,
-        countries: resultCountries,
         decade: resultDecade,
         searchKeywords: resultSearchKeywords,
       }),

@@ -5126,13 +5126,23 @@ function goPersonSearch(name){
   window.scrollTo({ top: 0, behavior: 'instant' });
 }
 
-// 検索の確定操作(検索ボタン・Enter)。入力欄の自由文を、今のカタログ
-// モードで実際に選べる感情タグ・ジャンル・国・年代だけに絞ってAIに渡し、
-// 既存の「詳しく絞り込む」のチップ選択へ変換してもらう(ai-search関数
-// 参照。新しい検索の仕組みを増やすのではなく、既存の絞り込み操作をAIが
-// 代わりにやるだけ)。以前は専用の「✨AIで絞り込む」ボタンを別出ししていたが、
-// 二度手間で分かりにくいとの指摘を受け、検索の確定操作そのものに統合した
-// (オーナー指摘: 「AI絞り込みを普通に検索の中に取り込んでボタン外していい」)。
+// 検索の確定操作(検索ボタン・Enter)。入力欄の自由文をAIに渡し、作品の
+// 実際の中身(タイトル・あらすじ・ジャンル・出演者・監督/アーティスト・
+// 制作国等、termMatchesMovie参照)に結び付きそうな短い言葉を拾ってもらい、
+// 通常の部分一致検索(queryKeywords)に反映する。
+// 以前は感情タグ・ジャンル・国を「詳しく絞り込む」の選択肢(enumで渡した
+// 語彙)の中からだけ選ばせ、既存のチップ選択(activeTags/activeGenres/
+// activeCountries)に変換していたが、この「選択肢の中からカテゴリを
+// 1つ選んで絞り込む」という操作そのものが、感覚的・曖昧な文章で検索したい
+// 時の体験と合わなかった(オーナー指摘:「感覚で検索した時に、いつも絞り
+// 込みされるんだけどそうじゃなくて、Googleとか一般的な検索サイトで
+// 見たときに使うような記事の内容とかからイメージさせてほしい」「検索の
+// 絞り込み機能やめてほしい。もっと感覚で視覚的聴覚的にみんながイメージ
+// するものを取り入れたい」)。手動でチップを押す「詳しく絞り込む」自体は
+// 据え置いた上で、AI検索はチップへの変換をやめ、実際の中身への部分一致
+// 検索だけに統一する(media種別を問わず同じ挙動。音楽のように実際の
+// あらすじが薄いmediaでは、ジャンル・アーティスト名等、中身として実在する
+// 情報の範囲でしか拾えない)。
 async function submitSearch(){
   const input = document.getElementById('search-input');
   const query = input.value.trim();
@@ -5144,44 +5154,35 @@ async function submitSearch(){
   btn.textContent = '考え中…';
 
   try{
-    const emotionTags = ALL_TAGS;
-    const genres = availableGenres();
-    const countries = availableCountries();
     const decades = availableDecades();
+    // ジャンルを表す言葉を拾う時、実際の表記(特に音楽は"Dance"等の英語表記)に
+    // 合わせてもらうための語彙ヒント。チップへの変換はしない(絞り込みチップ
+    // 自体は廃止済み)ので、enumで縛る必要は無く参考情報として渡すだけでよい。
+    const genres = availableGenres();
 
     const { data, error } = await supabase.functions.invoke('ai-search', {
-      body: { query, emotionTags, genres, countries, decades, mode: currentCatalogMode() },
+      body: { query, decades, genres, mode: currentCatalogMode() },
     });
     if(error) throw error;
     if(data?.error) throw new Error(data.error);
 
-    // 「赤いドレス」「双子」「猫」のような具体的なキーワードが拾えた時は、それを
-    // 検索欄にそのまま反映して通常の部分一致検索に任せる。感情タグ・ジャンル・
-    // 国・年代は主観的/大雑把な絞り込みで、AND条件にすると具体的な要素を
-    // 持つ当の作品まで弾いてしまうことがある(実例:「赤いドレスの怖い映画」で
-    // 実際にヒットする唯一の作品がジャンル「ホラー」を持っておらず、ジャンル
-    // 絞り込みと併用すると0件になっていた)。キーワードが取れた時は、感情タグに
-    // 限らずジャンル・国・年代も一切足さず、キーワード(複数可)の検索に任せる
-    // (オーナー指摘: 「感情タグで探させないで拾ったキーワードから作品出して」)。
-    // 複数キーワードが拾えた時は全部をAND条件にする(queryKeywords。
+    // 複数の言葉が拾えた時は全部をAND条件にする(queryKeywords。
     // termMatchesMovie参照)。以前は1つしか拾わず、文章中の残りの具体的な
     // 要素(例:「猫を飼っている双子」の「猫」)が検索に反映されず静かに
     // 失われていた。
     const keywords = Array.isArray(data.searchKeywords) ? data.searchKeywords.filter(Boolean) : [];
-    const hasKeywords = keywords.length > 0;
-    state.activeTags = new Set(hasKeywords ? [] : (data.emotionTags || []));
-    state.activeGenres = new Set(hasKeywords ? [] : (data.genres || []));
-    state.activeCountries = new Set(hasKeywords ? [] : (data.countries || []));
-    state.decadeFilter = (!hasKeywords && data.decade != null && decades.includes(data.decade)) ? data.decade : 0;
+    state.activeTags = new Set();
+    state.activeGenres = new Set();
+    state.activeCountries = new Set();
+    state.decadeFilter = (data.decade != null && decades.includes(data.decade)) ? data.decade : 0;
     state.queryKeywords = keywords;
     state.query = keywords.join(' ');
     state.crossMediaSearch = false;
     // 以前はここで検索欄の中身をAIが拾ったキーワードに書き換えていたが、
-    // 感情タグ・ジャンルだけが拾えてキーワードが無かった時は空文字列が
-    // 入り、自分で打った文章がそのまま消えて見えていた(オーナー指摘:
-    // 「ユーザーの検索のまま出してほしい」)。絞り込み自体(queryKeywords/
-    // activeTags等)はこれまで通り内部で保持しつつ、検索欄の見た目は
-    // 触らず、自分が打った文章をそのまま残す。
+    // 拾えた言葉が無かった時は空文字列が入り、自分で打った文章がそのまま
+    // 消えて見えていた(オーナー指摘:「ユーザーの検索のまま出してほしい」)。
+    // 絞り込み自体(queryKeywords)はこれまで通り内部で保持しつつ、検索欄の
+    // 見た目は触らず、自分が打った文章をそのまま残す。
     renderTagCloud();
     renderGenreCloud();
     renderCountryCloud();
@@ -5190,10 +5191,9 @@ async function submitSearch(){
 
     const appliedParts = [
       ...keywords.map(k => `「${k}」`),
-      ...state.activeTags, ...state.activeGenres, ...state.activeCountries,
       ...(state.decadeFilter ? [decadeLabel(state.decadeFilter)] : []),
     ];
-    showToast(appliedParts.length ? `${appliedParts.join('・')}で絞り込みました` : '特に絞り込める条件が見つかりませんでした');
+    showToast(appliedParts.length ? `${appliedParts.join('・')}で検索しました` : '特に手がかりが見つかりませんでした');
   }catch(err){
     // AI側が落ちていても検索そのものを止めない(今はこれが唯一の検索確定
     // 操作なので、失敗時は普通の部分一致検索にフォールバックする)。
@@ -6566,6 +6566,12 @@ function termMatchesMovie(m, term, relevantVibeKws, shortTermTitleRe){
     // 別途VIBE_QUERY_ALIASESで対応するが、"gore"や"heist"のように英単語の
     // まま探す人にもそのまま応えられるようにしておく。
     || (!noisy && m.keywordsNorm && m.keywordsNorm.some(k => k.includes(term)))
+    // AI検索が「楽しい」のような感情タグ語を言葉として拾った時、以前の
+    // ように専用のチップ(activeTags)へ変換するのではなく、他の中身と
+    // 同列の手がかりとしてここでも照合する(感情タグは少数の管理された
+    // 語彙で、ジャンルと同じく短い語の誤マッチが起きにくいのでnoisy
+    // 判定の対象から外す)。
+    || (m.tagsNorm && m.tagsNorm.includes(term))
     || matchesCountryAlias(m, term)
     || matchesVibeAlias(m, relevantVibeKws)
     || matchesMarvelAlias(m, term);
@@ -9498,6 +9504,9 @@ function buildMovieRecord(row, statsByMovie, estimatesByMovie){
     synopsisNorm: row.synopsis ? normalizeForSearch(row.synopsis) : undefined,
     keywordsNorm: keywordsArr.map(normalizeForSearch),
     keywordsLower: keywordsArr.map(k => k.toLowerCase()),
+    // AI検索が感情タグ的な言葉(「楽しい」等)を拾った時、termMatchesMovie側で
+    // 感情タグ欄とも照合できるように正規化済みで持っておく(tags参照)。
+    tagsNorm: (row.emotion_tags || []).map(normalizeForSearch),
     excludedWordHaystack: normalizeForSearch(
       [titleEsc, row.synopsis, ...(genreArr || []), ...keywordsArr].filter(Boolean).join(' ')
     ),
