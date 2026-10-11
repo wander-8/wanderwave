@@ -891,6 +891,21 @@
     cursor:pointer;
   }
   .card-remove-btn:active{ transform: scale(0.88); }
+  /* 「こんな音楽もおすすめ」棚でだけ、カードのポスターに重ねて試聴ボタンを
+     出す(1件ずつ詳細ページを開かなくても、その場で聴いて選べるように
+     という要望への対応)。card-remove-btn(右上)と被らないよう左下に置く。 */
+  .card-play-btn{
+    position:absolute; left:6px; bottom:6px; z-index:3;
+    width:28px; height:28px; border-radius:50%;
+    background: rgba(5,8,15,0.65);
+    border: 1px solid rgba(255,255,255,0.35);
+    color:#fff; font-size:11px; line-height:1; font-family: inherit;
+    display:flex; align-items:center; justify-content:center;
+    cursor:pointer;
+  }
+  .card-play-btn.is-loading{ opacity:0.6; }
+  .card-play-btn.is-playing{ background: var(--plum); border-color: var(--plum); }
+  .card-play-btn:active{ transform: scale(0.88); }
   .series-more-thumb{
     background: var(--surface);
     border: 1.5px dashed var(--line);
@@ -5248,9 +5263,14 @@ function buildCardHTML(m, opts){
   const removeBtn = (opts && opts.removableListId != null)
     ? `<button type="button" class="card-remove-btn" onclick="event.stopPropagation(); removeItemFromList('${opts.removableListId}', ${m.id})" title="リストから外す">×</button>`
     : '';
+  // opts.inlinePreview: 「こんな音楽もおすすめ」棚でだけ、カードから1件ずつ
+  // 開かなくてもその場で試聴できるボタンを出す(オーナー要望)。
+  const playBtn = (opts && opts.inlinePreview && m.isMusic)
+    ? `<button type="button" class="card-play-btn" data-movie-id="${m.id}" onclick="event.stopPropagation(); toggleCardPreview(${m.id}, this)" title="試聴する">▶</button>`
+    : '';
   return `
     <div class="result-card" onclick="${clickHandler}">
-      <div class="poster-thumb" style="background:${m.posterColor}">${posterImg}${initialOrTitle}${typeBadge}${removeBtn}</div>
+      <div class="poster-thumb" style="background:${m.posterColor}">${posterImg}${initialOrTitle}${typeBadge}${removeBtn}${playBtn}</div>
       ${overlayTitle ? '' : `<div class="result-title">${m.title}</div>`}
       <div class="result-year">${m.year}</div>
       ${m.loveCount > 0 ? `
@@ -6975,7 +6995,7 @@ function renderRecommended(currentMovie){
     const musicList = scoreAndPick(musicPool, MUSIC_REC_COUNT, 'music');
     if(musicList.length){
       musicWrap.style.display = 'block';
-      renderMovieCards(document.getElementById('d-recommended-music'), musicList, '', { forceMode: 'music' });
+      renderMovieCards(document.getElementById('d-recommended-music'), musicList, '', { forceMode: 'music', inlinePreview: true });
     } else {
       musicWrap.style.display = 'none';
     }
@@ -7932,7 +7952,57 @@ function stopTrackPreview(){
     if(prevBtn) prevBtn.textContent = '▶';
   }
   playingTrackIndex = null;
+  stopCardPreview();
   updatePosterPlayButton();
+}
+
+// 「こんな音楽もおすすめ」棚のカードから、詳細ページを開かずその場で
+// 試聴できるボタン(オーナー要望)。再生そのものは詳細ページ本体の試聴と
+// 同じpreviewAudioを使い回し、常に1つだけが鳴るようにする(stopTrackPreview
+// を必ず経由して止める)。previewUrlはカード一覧の時点では分からないため、
+// 押された時に初めてそのアルバムの収録曲を取得し、movieIdごとに憶えておく。
+let playingCardMovieId = null;
+const cardPreviewUrlCache = new Map(); // movieId -> previewUrl('' = 見つからなかった)
+
+function stopCardPreview(){
+  if(playingCardMovieId != null){
+    document.querySelectorAll(`.card-play-btn[data-movie-id="${playingCardMovieId}"]`).forEach(btn => {
+      btn.textContent = '▶';
+      btn.classList.remove('is-playing');
+    });
+  }
+  playingCardMovieId = null;
+}
+
+async function toggleCardPreview(movieId, btnEl){
+  if(playingCardMovieId === movieId){
+    stopTrackPreview();
+    return;
+  }
+  let url = cardPreviewUrlCache.get(movieId);
+  if(url === undefined){
+    btnEl.classList.add('is-loading');
+    try{
+      const { data } = await supabase.functions.invoke('itunes-album-tracks', { body: { movie_id: movieId } });
+      const found = ((data && data.tracks) || []).find(t => t.previewUrl);
+      url = found ? found.previewUrl : '';
+    }catch(err){
+      console.error('カードからの試聴取得に失敗しました', err);
+      url = '';
+    }
+    cardPreviewUrlCache.set(movieId, url);
+    btnEl.classList.remove('is-loading');
+  }
+  if(!url){ showToast('試聴できる曲が見つかりませんでした'); return; }
+  // 詳細ページ本体・別のカードのどちらが再生中でも、必ず1つだけに絞る
+  stopTrackPreview();
+  previewAudio.src = url;
+  playingCardMovieId = movieId;
+  btnEl.textContent = '⏸';
+  btnEl.classList.add('is-playing');
+  previewAudio.play().catch(() => {
+    if(playingCardMovieId === movieId) stopCardPreview();
+  });
 }
 
 function toggleTrackPreview(index, url){
