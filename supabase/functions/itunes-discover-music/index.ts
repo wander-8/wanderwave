@@ -214,6 +214,23 @@ Deno.serve(async (req: Request) => {
     }
     const list = Array.isArray(entries) ? entries : [entries];
 
+    // 新規に取り込むアーティストが、既にmusicbrainz-artist-country-backfillで
+    // 実際の出身国を確認済み(artist_country_cache)なら、チャート国やジャンル
+    // 推測より信頼できるそちらを優先する(オーナー指摘:「国別検索は、その
+    // 国ごとのアーティストが調べられるようにしたかった」)。1チャート最大
+    // 200件程度なので、対象アーティスト名を集めて1回のinクエリで引く
+    // (1件ずつ問い合わせない)。
+    const candidateArtists = [...new Set(list.map((e: any) => e?.["im:artist"]?.label).filter(Boolean))];
+    const artistCountryMap = new Map<string, string>();
+    if (candidateArtists.length) {
+      const { data: cacheRows } = await supabase
+        .from("artist_country_cache")
+        .select("artist_name, country")
+        .in("artist_name", candidateArtists)
+        .not("country", "is", null);
+      for (const r of cacheRows || []) artistCountryMap.set(r.artist_name, r.country);
+    }
+
     // RSSエントリ自身が持つim:id(Apple側のアルバムID)でLookup APIに
     // まとめて問い合わせ、実際のcollectionExplicitnessを取得する
     // (fetchExplicitness参照。タイトル文字列の"Explicit"判定は実データに
@@ -255,7 +272,13 @@ Deno.serve(async (req: Request) => {
         // 万一この先さらに新しい国コードで取り込む時のための保険。生コードを
         // そのまま入れる(今回の不具合と同じ形)よりは、「海外」とだけ分かる
         // 方がまだ安全(絞り込み・表示どちらでも破綻しない)。
-        country: (genreName && GENRE_COUNTRY_OVERRIDE[genreName]) || COUNTRY_NAME_JA[country] || "海外",
+        // artistCountryMap(MusicBrainzで確認済みの実際の出身国)が最優先。
+        // 無ければジャンル推測→チャート取得国→「海外」の順にフォールバックする
+        // (従来の「どのチャートから取り込んだか」はあくまで最後の保険)。
+        country: (artist && artistCountryMap.get(artist))
+          || (genreName && GENRE_COUNTRY_OVERRIDE[genreName])
+          || COUNTRY_NAME_JA[country]
+          || "海外",
         synopsis: trackCount ? `収録曲数: ${trackCount}曲` : null,
         poster_path: artworkUrl,
         japan_release_date: country === "jp" && releaseLabel ? releaseLabel.slice(0, 10) : null,
