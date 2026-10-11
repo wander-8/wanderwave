@@ -5569,6 +5569,44 @@ function renderHomeRows(){
     `;
   }
 
+  // 「ポケットから見えた、あなた向けの音楽」棚: 音楽モードのホームでだけ、
+  // 「今話題の新作」の直下に出す(オーナー要望:「ポケットの中身から
+  // ユーザーの好み割り出して最新の作品の下にユーザー向けの音楽一覧」)。
+  // ポケットは映画・漫画等も含む横断的な「気になる」保管庫なので、好みの
+  // 手がかりは感情タグ(全メディア共通の語彙)を軸にする。加えてポケットに
+  // 音楽そのものが入っていれば、そのジャンル・アーティスト(director列を
+  // 流用)の一致も強めの手がかりとして使う。ポケットが空(未登録・未使用)
+  // の間は手がかりが無いので棚ごと出さない。
+  if(catalogMode === 'music'){
+    const pocketMovies = getPocketMovies();
+    if(pocketMovies.length){
+      const tagWeights = {};
+      pocketMovies.forEach(m => m.tags.forEach(t => { tagWeights[t] = (tagWeights[t] || 0) + 1; }));
+      const pocketMusic = pocketMovies.filter(m => m.isMusic);
+      const genreWeights = {};
+      pocketMusic.forEach(m => (m.genre || []).forEach(g => { genreWeights[g] = (genreWeights[g] || 0) + 1; }));
+      const pocketArtists = new Set(pocketMusic.map(m => m.director).filter(Boolean));
+      const pocketIds = new Set(pocketMovies.map(m => m.id));
+      const musicPool = discoveryMovies.filter(m => m.isMusic && !pocketIds.has(m.id));
+      const scored = musicPool.map(m => {
+        const tagScore = m.tags.reduce((sum, t) => sum + (tagWeights[t] || 0), 0);
+        const genreScore = (m.genre || []).reduce((sum, g) => sum + (genreWeights[g] || 0), 0) * 2;
+        const artistScore = pocketArtists.has(m.director) ? 5 : 0;
+        return { m, score: tagScore + genreScore + artistScore };
+      })
+        .filter(x => x.score > 0)
+        .sort((a, b) => b.score - a.score || (loveAverage(b.m) - loveAverage(a.m)));
+      const widePool = scored.slice(0, 36).map(x => x.m);
+      const personalPicks = seededShuffle(widePool, 'pocket-music').slice(0, 14);
+      if(personalPicks.length){
+        html += `
+          <div class="section-label">ポケットから見えた、あなた向けの音楽</div>
+          <div class="results">${personalPicks.map(buildCardHTML).join('')}</div>
+        `;
+      }
+    }
+  }
+
   topTags.forEach(tag => {
     const tagMovies = discoveryMovies.filter(m => m.tags.includes(tag));
     // 有名な(=愛が集まっている、またはFAMOUS_*_HINTSに当たる)作品を

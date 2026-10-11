@@ -14,73 +14,44 @@ const RSS_BASE = "https://itunes.apple.com";
 
 // e?.category?.attributes?.termに入ってくる実際のジャンル名(iTunes公式の
 // 英語表記。日本ストアでも日本語化されずそのまま英語で返ってくる)を、
-// サイト共通の気分タグにマッピングする。以前はここのキーを日本語カタカナ
-// ("ロック"等)で書いていたため、実データ("Rock"等、常に英語)と一度も
-// 一致せず全アルバムがDEFAULT_TAGSの「楽しい」一色になっていた(集計で
-// 判明)。ここに無いジャンルはDEFAULT_TAGSにフォールバックする(ジャンル名
-// 自体はそのままgenreに入れるので、マッピングが無くてもチップとしては
-// 出せる)。
-const GENRE_TAG_MAP: Record<string, string[]> = {
-  "Pop": ["楽しい"],
-  "Classical": ["美しい", "リラックス"],
-  "Rock": ["ドキドキ", "ワクワク"],
-  "J-Pop": ["楽しい", "感動"],
-  "Anime": ["楽しい", "ワクワク"],
-  "R&B/Soul": ["感動"],
-  "K-Pop": ["ワクワク", "楽しい"],
-  "Jazz": ["リラックス", "美しい"],
-  "Soundtrack": ["感動", "美しい"],
-  "World": ["美しい"],
-  "Alternative": ["考えさせられる"],
-  "Christian & Gospel": ["感動"],
-  "Hip Hop/Rap": ["ワクワク"],
-  "Electronic": ["ワクワク"],
-  "New Age": ["リラックス"],
-  "Dance": ["ワクワク", "楽しい"],
-  "Vocal": ["美しい"],
-  "Country": ["感動"],
-  "Opera": ["美しい", "感動"],
-  "Singer/Songwriter": ["悲しい", "感動"],
-  "Heavy Metal": ["ドキドキ"],
-  "Pop in Spanish": ["楽しい"],
-  "Latin": ["ワクワク", "楽しい"],
-  "Arena Rock": ["ワクワク", "ドキドキ"],
-  "Classical Crossover": ["美しい"],
-  "Hard Rock": ["ドキドキ"],
-  "Salsa y Tropical": ["楽しい", "ワクワク"],
-  "House": ["ワクワク"],
-  "Musicals": ["楽しい", "感動"],
-  "Folk": ["リラックス", "考えさせられる"],
-  "Alternative & Rock in Spanish": ["考えさせられる"],
-  "Cantopop": ["楽しい"],
-  "Mandopop": ["楽しい"],
-  "French Pop": ["楽しい", "美しい"],
-  "Children's Music": ["楽しい"],
-  "Blues": ["悲しい", "感動"],
-  "Reggae": ["リラックス", "楽しい"],
-  "Indie Rock": ["考えさせられる"],
-  "Regional Mexicano": ["楽しい"],
-  "Ambient": ["リラックス"],
-  "Electronica": ["ワクワク"],
-  "Funk": ["ワクワク", "楽しい"],
-  "Bollywood": ["楽しい", "ワクワク"],
-  "Gospel": ["感動"],
-  "Spoken Word": ["考えさせられる"],
-  "Video Game": ["ワクワク"],
-  "Soul": ["感動"],
-  // 「怖い」「笑い」は物語が無い音楽には合わせづらいタグだが、実際には
-  // 該当するジャンルがある(コメディソング、デスメタル/インダストリアルの
-  // 不穏・冷たい質感等)。この2つだけ無理に対応ジャンルが無いと決めつけず、
-  // ここに実在する分だけ割り当てる(オーナー指摘)。同じ理由で「悲しい」も
-  // 以前はどのジャンルにも割り当てておらず、音楽モードで「悲しい」を選ぶと
-  // 必ず0件になっていた(オーナー指摘:「感情検索しても出しにくい」)。
-  // Blues・Singer/Songwriterは内容的に素直に当てはまるので割り当てる。
-  "Comedy": ["笑い"],
-  "Standup Comedy": ["笑い"],
-  "Death Metal/Black Metal": ["怖い"],
-  "Industrial": ["怖い"],
-};
-const DEFAULT_TAGS = ["楽しい"];
+// サイト共通の気分タグにマッピングする。
+// ジャンル1つにつき固定で1〜2個の感情タグしか割り当てない表だと、
+// 「ジャンル×国×感情」を掛け合わせた時にその感情がそもそもそのジャンルに
+// 割り当てられていない組み合わせだらけになり、ほぼ必然的に0件になって
+// しまっていた(オーナー指摘:「感情検索とジャンルや国など掛け合わせると
+// 表示されないことが多いかも」)。iTunesのジャンル名は250種類を超え、
+// 新しいジャンルも随時増えるため、1件ずつ手で表を作る(旧GENRE_TAG_MAP)の
+// ではなく、ジャンル名に含まれるキーワードで判定するルールベースの分類に
+// 作り直した。複数のルールに一致したタグは全て合算し(最大4個)、どれにも
+// 一致しなければDEFAULT_TAGSにフォールバックする。既存12,888件はこの
+// ルールと同じロジックで一括バックフィル済み。
+const GENRE_TAG_RULES: [RegExp, string[]][] = [
+  [/comedy/i, ["笑い"]],
+  [/metal|industrial/i, ["怖い", "ドキドキ"]],
+  [/rock|punk|grunge|\bemo\b|alternative/i, ["ドキドキ", "ワクワク", "考えさせられる"]],
+  [/jazz|classical|opera|orchestral|chamber|baroque|\bbop\b|swing|big band/i, ["美しい", "リラックス", "感動"]],
+  [/sound ?track|\bscore\b|video game|musical/i, ["感動", "美しい", "ドキドキ"]],
+  [/gospel|christian|worship|spiritual|devotional|islamic|praise/i, ["感動"]],
+  [/hip.?hop|\brap\b|r&b|soul|funk/i, ["ワクワク", "感動", "楽しい"]],
+  [/dance|house|techno|trance|disco|electro|\bedm\b|breakbeat|dubstep|drum.?n.?bass|jungle/i, ["ワクワク", "リラックス"]],
+  [/ambient|new age|meditation|relax|healing|\byoga\b|nature|easy listening|lounge/i, ["リラックス"]],
+  [/folk|blues|americana|singer.?songwriter|bluegrass/i, ["悲しい", "感動", "考えさせられる"]],
+  [/spoken word|stories|hörspiele|karaoke|sound effects/i, ["考えさせられる"]],
+  [/children|christmas|lullabies|holiday/i, ["楽しい"]],
+  [/pop/i, ["楽しい", "ワクワク", "感動"]],
+  [/latin|reggae|afro|world|salsa|samba|calypso|tango|flamenco|bossa|caribbean/i, ["楽しい", "美しい", "ワクワク"]],
+];
+const DEFAULT_TAGS = ["楽しい", "ワクワク"];
+function tagsForGenre(genreName: string | null): string[] {
+  if (!genreName) return DEFAULT_TAGS;
+  const matched: string[] = [];
+  for (const [re, tags] of GENRE_TAG_RULES) {
+    if (re.test(genreName)) {
+      for (const t of tags) if (!matched.includes(t)) matched.push(t);
+    }
+  }
+  return matched.length ? matched.slice(0, 4) : DEFAULT_TAGS;
+}
 // countryは元々「どの国のiTunesチャートから取り込んだか」をそのまま使って
 // いたが、チャートの中身は輸入ヒット曲だらけ(日本のPopチャートにMichael
 // JacksonやSHINee等)なので、実際のアーティストの出身国とは無関係なことが
@@ -270,7 +241,7 @@ Deno.serve(async (req: Request) => {
       const trackCount = e?.["im:itemCount"]?.label;
 
       const appleId = e?.id?.attributes?.["im:id"];
-      const tags = (genreName && GENRE_TAG_MAP[genreName]) || DEFAULT_TAGS;
+      const tags = tagsForGenre(genreName);
       const isExplicit = appleId ? !!explicitByAppleId.get(appleId) : false;
       const level = isExplicit ? 40 : BASE_TIER;
 
