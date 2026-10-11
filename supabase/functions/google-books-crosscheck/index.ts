@@ -5,10 +5,9 @@ const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const RAKUTEN_APP_ID = Deno.env.get("RAKUTEN_APP_ID")!;
 const RAKUTEN_ACCESS_KEY = Deno.env.get("RAKUTEN_ACCESS_KEY")!;
-// 無料のキー無しアクセスは呼び出し元IP単位の共有クォータ(実測で1日の
-// 上限が0枠のことがあり、本番で常時429になることを確認済み)。
-// GOOGLE_BOOKS_API_KEYが未設定でも動く(常に429で終わるだけ)が、
-// 設定すればGoogle Cloud Consoleの無料枠(1日1000リクエスト)が使える。
+// 無料のキー無しアクセスは呼び出し元IP単位の共有クォータが実質0枠で、
+// 本番で常時429になることを確認済み。GOOGLE_BOOKS_API_KEY(オーナーが
+// Google Cloud Consoleで発行、Books APIのみに制限)を設定することで動く。
 const GOOGLE_BOOKS_API_KEY = Deno.env.get("GOOGLE_BOOKS_API_KEY") || "";
 const RAKUTEN_ENDPOINT = "https://openapi.rakuten.co.jp/services/api/BooksBook/Search/20170404";
 const SITE_URL = "https://wander-8.site/";
@@ -99,13 +98,16 @@ async function recoverIsbn(supabase: any, offset: number, limit: number, write: 
 
 // ISBNが分かっている本をGoogle Books APIで照合する。キー無しの匿名アクセスは
 // 共有クォータが実質0枠で常に429になることを実機確認済みなので、
-// GOOGLE_BOOKS_API_KEYの設定が実質必須。descriptionをgoogle_books_synopsisに
-// 保存し、楽天側のsynopsisが空/極端に短い場合は本文のsynopsisそのものも
-// こちらで補強する。
+// GOOGLE_BOOKS_API_KEYの設定が実質必須。日本語ISBNでの実機確認では
+// ヒット率自体が低く(有名な現代小説でも軒並み該当無し)、書誌情報の
+// 補完はNDL Search側に任せる方針にした(オーナー方針:「NDL Searchで
+// 国内作品の情報は補完しつつ、Google Books APIは裏方連携」)。ここでは
+// 見つかった場合にdescription(あらすじ)とcover(表紙画像)だけを、
+// 既存データが無い場合に限って補完する裏方処理に専念する。
 async function crosscheckGoogleBooks(supabase: any, offset: number, limit: number, write: boolean) {
   const { data, error } = await supabase
     .from("movies")
-    .select("id, title, synopsis, isbn")
+    .select("id, title, synopsis, isbn, poster_path")
     .eq("media_type", "novel")
     .not("isbn", "is", null)
     .is("google_books_checked_at", null)
@@ -121,40 +123,67 @@ async function crosscheckGoogleBooks(supabase: any, offset: number, limit: numbe
     const chunkResults = await Promise.all(
       chunk.map(async (m: any) => {
         let description: string | null = null;
+        let coverUrl: string | null = null;
         let found = false;
-        try {
-          const keyParam = GOOGLE_BOOKS_API_KEY ? `&key=${encodeURIComponent(GOOGLE_BOOKS_API_KEY)}` : "";
-          const res = await fetch(`https://www.googleapis.com/books/v1/volumes?q=isbn:${encodeURIComponent(m.isbn)}${keyParam}`);
-          if (res.status === 429 || res.status >= 500) {
-            // クォータ超過/一時的なAPI障害。「本当に見つからなかった」と
-            // 混同するとchecked_atが立って二度と再検索されなくなるため、
-            // ここはchecked_atを立てずに次回に回す(GOOGLE_BOOKS_API_KEY未設定の
-            // 無料枠はクォータが0〜ごく少数のことがあり、実際に本番で
-            // 429が返り続けることを確認済み)。
-            return { movie_id: m.id, title: m.title, isbn: m.isbn, found: false, quotaOrServerError: true, status: res.status };
-          }
-          if (res.ok) {
-            const json = await res.json();
-            const item = (json.items || [])[0];
-            if (item) {
-              found = true;
-              description = item.volumeInfo?.description || null;
+        let lastStatus: number | null = null;
+        const keyParam = GOOGLE_BOOKS_API_KEY ? `&key=${encodeURIComponent(GOOGLE_BOOKS_API_KEY)}` : "";
+        // Google Booksのisbn:検索は実機確認で1リクエストあたり約7割の確率で
+        // 503(backendFailed)を返す、既知の不安定さがある(通常のテキスト
+        // 検索は毎回成功することを確認済みなので、ISBN検索エンドポイント
+        // 固有の問題)。429(クォータ超過)は即座に諦めて次回に回すが、
+        // 503は数回リトライすれば大半は成功するため、ここだけ短い
+        // リトライを入れる。
+        let ok = false;
+        for (let attempt = 0; attempt < 4 && !ok; attempt++) {
+          try {
+            const res = await fetch(`https://www.googleapis.com/books/v1/volumes?q=isbn:${encodeURIComponent(m.isbn)}${keyParam}`);
+            lastStatus = res.status;
+            if (res.status === 429) break; // クォータ超過は即座に諦める
+            if (res.status >= 500) { await sleep(400 * (attempt + 1)); continue; }
+            if (res.ok) {
+              const json = await res.json();
+              const item = (json.items || [])[0];
+              if (item) {
+                found = true;
+                description = item.volumeInfo?.description || null;
+                // サムネイルURLは既定でhttp://なので、index.htmlが混在コンテンツ
+                // 扱いで弾かないようhttpsへ揃える。
+                const thumb = item.volumeInfo?.imageLinks?.thumbnail || item.volumeInfo?.imageLinks?.smallThumbnail || null;
+                coverUrl = thumb ? thumb.replace(/^http:/, "https:") : null;
+              }
+              ok = true;
             }
+          } catch {
+            await sleep(400 * (attempt + 1));
           }
-        } catch {
-          return { movie_id: m.id, title: m.title, isbn: m.isbn, found: false, networkError: true };
+        }
+        if (!ok) {
+          // クォータ超過、またはリトライしても一時的な障害が続いた場合。
+          // 「本当に見つからなかった」と混同するとchecked_atが立って
+          // 二度と再検索されなくなるため、ここはchecked_atを立てずに
+          // 次回のcron実行に回す。
+          return { movie_id: m.id, title: m.title, isbn: m.isbn, found: false, quotaOrServerError: true, status: lastStatus };
         }
 
         const synopsisIsThin = !m.synopsis || m.synopsis.trim().length < 20;
+        const coverIsMissing = !m.poster_path;
         if (write) {
           const update: Record<string, unknown> = {
             google_books_synopsis: description,
             google_books_checked_at: new Date().toISOString(),
           };
           if (description && synopsisIsThin) update.synopsis = description.slice(0, 400);
+          if (coverUrl && coverIsMissing) update.poster_path = coverUrl;
           await supabase.from("movies").update(update).eq("id", m.id);
         }
-        return { movie_id: m.id, title: m.title, isbn: m.isbn, found, usedAsSynopsis: !!description && synopsisIsThin };
+        return {
+          movie_id: m.id,
+          title: m.title,
+          isbn: m.isbn,
+          found,
+          usedAsSynopsis: !!description && synopsisIsThin,
+          usedAsCover: !!coverUrl && coverIsMissing,
+        };
       }),
     );
     results.push(...chunkResults);
@@ -166,6 +195,7 @@ async function crosscheckGoogleBooks(supabase: any, offset: number, limit: numbe
 Deno.serve(async (req: Request) => {
   try {
     const { target = "verify", offset = 0, limit = 50, write = false } = await req.json().catch(() => ({}));
+
     const supabase = createClient(SUPABASE_URL, SERVICE_ROLE);
 
     const results = target === "recover_isbn"
