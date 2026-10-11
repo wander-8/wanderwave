@@ -2096,6 +2096,20 @@
     padding: 16px 5px 5px;
     font-size: 10.5px;
   }
+  /* 診断用のピッカーがまだ空の時に出す「穴」タイル。下の「今、ポケットの
+     中にあるもの」で使っているのと同じ+マークだが、こちらは正方形寄りの
+     タイルグリッドなので専用のサイズ(diagnosis-picker-itemと同じ2:3)で
+     揃える(オーナー指摘:「ポケットに何か入れるとの方に今作ってくれた
+     作品を拾いに行くの点線枠を置いて」)。 */
+  .diagnosis-picker-empty{
+    position: relative;
+    aspect-ratio: 2/3;
+    border-radius: 10px;
+    border: 1.5px dashed var(--line);
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    gap: 4px;
+    cursor: pointer;
+  }
   .diagnosis-result-movies{
     display:flex; gap:8px; margin-top:12px; flex-wrap:wrap;
   }
@@ -5300,8 +5314,14 @@ function buildCardHTML(m, opts){
   const typeBadge = typeInfo ? `<div class="result-type-badge" style="background:${typeInfo.color};">${typeInfo.label}</div>` : '';
   // マイリストの中身一覧(renderListDetail)からだけ、1件ずつ外す×ボタンを
   // 出す(オーナー要望:「リスト内の作品、削除できるボタンと機能」)。
+  // ポケットの一覧(renderPocketView)でも同じ見た目で、中身を自分で
+  // 外せるようにする(オーナー指摘:「作品の中身はユーザーが削除したり
+  // 編集できるようにして」)。システム側が勝手にポケットの中身を消すことは
+  // 無く、あくまで本人の操作でだけ外せる。
   const removeBtn = (opts && opts.removableListId != null)
     ? `<button type="button" class="card-remove-btn" onclick="event.stopPropagation(); removeItemFromList('${opts.removableListId}', ${m.id})" title="リストから外す">×</button>`
+    : (opts && opts.removableFromPocket)
+    ? `<button type="button" class="card-remove-btn" onclick="event.stopPropagation(); removeFromPocketView(${m.id})" title="ポケットから出す">×</button>`
     : '';
   // opts.inlinePreview: 「こんな音楽もおすすめ」棚でだけ、カードから1件ずつ
   // 開かなくてもその場で試聴できるボタンを出す(オーナー要望)。
@@ -12351,6 +12371,18 @@ function buildPocketEmptySlotHTML(label){
   `;
 }
 
+// ポケット一覧のカード上の×ボタン専用。togglePocketMembership自体は
+// state.myPocketを更新するだけで画面を描き直さないため、ここで
+// ポケット一覧・診断ピッカー・プロフィールのメニュー件数表示をまとめて
+// 更新する(オーナー指摘:「作品の中身はユーザーが削除したり編集
+// できるようにして」。システムが自動で消すことはなく、常に本人の
+// タップ操作だけがきっかけになる)。
+async function removeFromPocketView(movieId){
+  await togglePocketMembership(movieId);
+  renderPocketView();
+  renderProfileMenuSummaries();
+}
+
 function renderPocketView(){
   const pocketMovies = getPocketMovies();
 
@@ -12363,7 +12395,7 @@ function renderPocketView(){
   const remaining = sortedPocket.length - pocketShownCount;
 
   const itemsRoot = document.getElementById('pocket-items');
-  let html = visiblePocket.map(m => buildCardHTML(m, { overlayTitle: true })).join('');
+  let html = visiblePocket.map(m => buildCardHTML(m, { overlayTitle: true, removableFromPocket: true })).join('');
   if(remaining <= 0){
     const emptySlotCount = visiblePocket.length === 0 ? 6 : 3;
     for(let i = 0; i < emptySlotCount; i++){
@@ -12448,7 +12480,12 @@ function renderDiagnosisPicker(){
   document.getElementById('diagnosis-result').style.display = 'none';
 
   if(pocketMovies.length === 0){
-    root.innerHTML = `<div class="empty" style="grid-column: 1 / -1;">ポケットに何か入れると、ここから選んで診断できます。</div>`;
+    root.innerHTML = Array.from({length: 6}).map((_, i) => `
+      <div class="diagnosis-picker-empty" onclick="goHome()">
+        <span class="pocket-empty-plus">+</span>
+        ${i === 0 ? '<span class="pocket-empty-label">作品を拾いに行く</span>' : ''}
+      </div>
+    `).join('');
   } else {
     root.innerHTML = pocketMovies.map(m => {
       const isSelected = diagnosisSelection.includes(m.id);
