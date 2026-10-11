@@ -2811,8 +2811,21 @@
     <div class="card-tags" id="d-tags"></div>
     <div class="community-tags" id="d-community-tags"></div>
 
-    <div class="section-label" id="d-watch-label" style="display:none;">ここで観る</div>
-    <div class="watch-links" id="d-watch-links"></div>
+    <!-- 配信情報は変動するため、常時表示はせずタップで開く形にする
+         (episodes-wrap/tracks-wrapと同じ折りたたみパターン、オーナー要望:
+         「ここで観るを押すと配信先が見れるようにして、普段は表示隠してて
+         いい」)。 -->
+    <div id="watch-wrap" style="display:none;">
+      <button class="filter-disclosure-btn" id="watch-toggle-btn" onclick="toggleWatchSection()">
+        <span id="watch-toggle-label">ここで観る</span>
+        <span class="filter-disclosure-chev" id="watch-chev">⌄</span>
+      </button>
+      <div class="filter-disclosure-body" id="watch-body">
+        <div class="filter-disclosure-inner">
+          <div class="watch-links" id="d-watch-links"></div>
+        </div>
+      </div>
+    </div>
 
     <div class="section-label-row">
       <div class="section-label">レビュー</div>
@@ -9531,8 +9544,14 @@ function vodProviderLink(canonicalName, title){
 // 着ける唯一の公式リンクがこれ(オーナーに確認済み:ワンクッション挟む
 // ことを説明した上で「自動リンクがいい」)。まだバックフィル未着手の行は
 // vodWatchLinkが無いので、その場合だけ旧来の検索ページへのフォールバックを使う。
+// 「見放題」の文言は配信方式に詳しくないユーザーには不要な情報なので
+// ラベルからは外す(オーナー指摘)。中身は見放題のみという制約は変えない。
+// 普段は折りたたんでおき(episodes-wrap/tracks-wrapと同じ考え方)、
+// タップした時だけ配信先を見せる(オーナー指摘:「普段は表示隠してて
+// いい」)。
 function renderWatchLinks(m){
-  const label = document.getElementById('d-watch-label');
+  const wrap = document.getElementById('watch-wrap');
+  const toggleLabel = document.getElementById('watch-toggle-label');
   const links = document.getElementById('d-watch-links');
   const providers = m.vodFlatrate || [];
   const seen = new Set();
@@ -9546,16 +9565,28 @@ function renderWatchLinks(m){
   if(m.officialUrl){
     chips += `<a class="watch-link" href="${escapeHtml(m.officialUrl)}" target="_blank" rel="noopener"><span class="dot"></span>公式サイト・購入先</a>`;
   }
+  // 別の作品の詳細ページに移動した時、前の作品で開いていた状態を
+  // 持ち越さないようにする(resetEpisodesUI/resetTracksUIと同じ考え方)。
+  watchSectionOpen = false;
+  document.getElementById('watch-toggle-btn').classList.remove('open');
+  document.getElementById('watch-body').classList.remove('open');
   if(!chips){
-    label.style.display = 'none';
+    wrap.style.display = 'none';
     links.innerHTML = '';
     return;
   }
-  label.style.display = '';
-  label.textContent = providers.length && m.officialUrl ? 'ここで観る・買う'
-    : providers.length ? 'ここで観る(見放題)'
+  wrap.style.display = '';
+  toggleLabel.textContent = providers.length && m.officialUrl ? 'ここで観る・買う'
+    : providers.length ? 'ここで観る'
     : '購入・視聴はこちら';
   links.innerHTML = chips + (providers.length ? '<div style="font-size:11px;color:var(--ink-soft);width:100%;margin-top:6px;">※配信状況は変動する場合があります</div>' : '');
+}
+
+let watchSectionOpen = false;
+function toggleWatchSection(){
+  watchSectionOpen = !watchSectionOpen;
+  document.getElementById('watch-toggle-btn').classList.toggle('open', watchSectionOpen);
+  document.getElementById('watch-body').classList.toggle('open', watchSectionOpen);
 }
 
 const PLATFORM_INFO = {

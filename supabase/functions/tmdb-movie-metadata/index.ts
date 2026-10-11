@@ -118,16 +118,21 @@ async function fillMissingSynopsis(supabase: any, offset: number, limit: number,
 // リンクはこのTMDb自身の視聴ページ(themoviedb.org/movie/{id}/watch)になる
 // (オーナーに直接確認済み:「自動リンクがいい」。NetflixやAmazon自体へは
 // 直接飛ばず、このTMDbページ経由のワンクッションになることは説明済み)。
-// vod_checked_atを「確認済みの印」として使い、配信先が無い(空配列)作品も
-// 再取得し続けないようにする。
+// 配信状況は常に変動するため、一度確認したら終わりにはせず、
+// RECHECK_INTERVAL_DAYSより古い行は自動的に再チェック対象に戻す
+// (オーナー指摘:「常に情報は変動するから自動で削除追加できるように
+// しておいて」)。未確認(vod_checked_at IS NULL)を最優先し、その次に
+// 確認が一番古い行から順に回す。
+const RECHECK_INTERVAL_DAYS = 30;
 async function fillVodFlatrate(supabase: any, offset: number, limit: number, write: boolean) {
+  const cutoff = new Date(Date.now() - RECHECK_INTERVAL_DAYS * 24 * 60 * 60 * 1000).toISOString();
   const { data, error } = await supabase
     .from("movies")
     .select("id, title, tmdb_id")
     .eq("media_type", "movie")
     .not("tmdb_id", "is", null)
-    .is("vod_checked_at", null)
-    .order("id", { ascending: true })
+    .or(`vod_checked_at.is.null,vod_checked_at.lt.${cutoff}`)
+    .order("vod_checked_at", { ascending: true, nullsFirst: true })
     .range(offset, offset + limit - 1);
   if (error) throw error;
   const todo = data || [];
