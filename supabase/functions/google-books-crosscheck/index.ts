@@ -64,7 +64,7 @@ async function rakutenFetchByTitle(title: string): Promise<any> {
 async function recoverIsbn(supabase: any, offset: number, limit: number, write: boolean) {
   const { data, error } = await supabase
     .from("movies")
-    .select("id, title, official_url")
+    .select("id, title, amazon_url")
     .eq("media_type", "novel")
     .is("isbn", null)
     .order("id", { ascending: true })
@@ -87,9 +87,11 @@ async function recoverIsbn(supabase: any, offset: number, limit: number, write: 
         if (isbn && write) {
           // 購入先リンク(オーナー方針:「書籍はAmazonや各種元の出版社の
           // 公式サイトを設置する」)。ISBNが分かった時点で一緒に埋める
-          // (追加のAPI呼び出し不要な単純な導出のため)。
+          // (追加のAPI呼び出し不要な単純な導出のため)。official_url
+          // (出版社の本当の公式サイト)とは別の列に入れる(オーナー指摘:
+          // 「公式サイト、出版社のものにしてほしい。Amazonとは切り離して」)。
           const update: Record<string, unknown> = { isbn };
-          if (!m.official_url) update.official_url = `https://www.amazon.co.jp/s?k=${isbn}&i=stripbooks`;
+          if (!m.amazon_url) update.amazon_url = `https://www.amazon.co.jp/s?k=${isbn}&i=stripbooks`;
           await supabase.from("movies").update(update).eq("id", m.id);
         }
         return { movie_id: m.id, title: m.title, isbn, matched: !!exact };

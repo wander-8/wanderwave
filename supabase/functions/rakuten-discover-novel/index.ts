@@ -783,8 +783,10 @@ Deno.serve(async (req: Request) => {
         // 購入先リンク(オーナー方針:「書籍はAmazonや各種元の出版社の公式
         // サイトを設置する」)。出版社ごとの公式サイトURLは持っていない
         // (マッピング表が無い)ため、どのISBNでも確実に引けるAmazon検索
-        // リンクを自動生成する。
-        official_url: !isGoodsIsbn(item.isbn) && item.isbn
+        // リンクを自動生成する。official_url(出版社の本当の公式サイト)
+        // とは別の列に入れる(オーナー指摘:「公式サイト、出版社のものに
+        // してほしい。Amazonとは切り離して」)。
+        amazon_url: !isGoodsIsbn(item.isbn) && item.isbn
           ? `https://www.amazon.co.jp/s?k=${item.isbn}&i=stripbooks`
           : null,
         media_type: "novel",
