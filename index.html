@@ -4152,16 +4152,28 @@ let RECENT_REVIEWS = [];
 // 保存)を双方向のMapとして読み込み、人物名クリックでのクロスメディア
 // 検索(goPersonSearch)で表記ゆれを吸収するのに使う。
 let PERSON_ALIASES = new Map();
+// 上のPERSON_ALIASES(生の表記のまま)とは別に、通常の文字検索欄でも
+// 「マリリンマンソン」で検索したら director="Marilyn Manson"の作品も
+// 見つかってほしいとの要望(オーナー指摘:「マリリンマンソンって検索して
+// も出ない」)に対応するため、normalizeForSearchを通した正規化済みキーの
+// Mapも別途持つ(検索欄の照合はdirectorNorm等、正規化済みの値同士でしか
+// 比べないため)。
+let PERSON_ALIAS_NORMS = new Map();
 async function loadPersonAliases(){
   try{
     const { data, error } = await supabase.from('person_aliases').select('name_a, name_b');
     if(error) throw error;
     const map = new Map();
+    const normMap = new Map();
     (data || []).forEach(({ name_a, name_b }) => {
       if(!map.has(name_a)) map.set(name_a, new Set());
       map.get(name_a).add(name_b);
+      const na = normalizeForSearch(name_a), nb = normalizeForSearch(name_b);
+      if(!normMap.has(na)) normMap.set(na, new Set());
+      normMap.get(na).add(nb);
     });
     PERSON_ALIASES = map;
+    PERSON_ALIAS_NORMS = normMap;
   }catch(err){
     console.error('人物名の別表記の読み込みに失敗しました', err);
   }
@@ -6617,6 +6629,10 @@ function renderResults(){
   const personAliasNorms = (state.crossMediaSearch && state.personSearchNames)
     ? state.personSearchNames.map(normalizeForSearch).filter(n => n !== q)
     : [];
+  // 通常の文字検索でも、確認済みの人物名別表記(PERSON_ALIAS_NORMS)があれば
+  // 合わせて照合する(例:「マリリンマンソン」と打っても、directorが英語
+  // 表記"Marilyn Manson"のまま登録されている音楽作品を見つけられるように)。
+  const queryAliasNorms = [...(PERSON_ALIAS_NORMS.get(q) || [])];
   resultsFiltered = MOVIES.filter(m => {
     // ここは検索1文字打つたびに全作品(数万件)に対して走る一番ホットな
     // 経路なので、m.titleNorm等の「読み込み時に一度だけ正規化しておいた
@@ -6630,6 +6646,9 @@ function renderResults(){
           ? !!(m.genre && m.genre.includes(exactGenreQuery))
           : termMatchesMovie(m, q, relevantVibeKws, qShortTermTitleRe)
             || personAliasNorms.some(alias =>
+              (m.castNorm && m.castNorm.some(a => a.includes(alias)))
+              || (m.directorNorm && m.directorNorm.includes(alias)))
+            || queryAliasNorms.some(alias =>
               (m.castNorm && m.castNorm.some(a => a.includes(alias)))
               || (m.directorNorm && m.directorNorm.includes(alias))));
     const matchTags = state.activeTags.size === 0 || [...state.activeTags].every(t => m.tags.includes(t));
