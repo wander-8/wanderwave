@@ -27,6 +27,7 @@ type RequestBody = {
   genres?: string[];
   countries?: string[];
   decades?: number[];
+  mode?: string;
 };
 
 function sanitizeList(values: unknown, allowed: string[]): string[] {
@@ -52,6 +53,7 @@ Deno.serve(async (req: Request) => {
     const genres = Array.isArray(body.genres) ? body.genres.filter((g) => typeof g === "string") : [];
     const countries = Array.isArray(body.countries) ? body.countries.filter((c) => typeof c === "string") : [];
     const decades = Array.isArray(body.decades) ? body.decades.filter((d) => typeof d === "number") : [];
+    const mode = typeof body.mode === "string" ? body.mode : "";
 
     if (!query) {
       return new Response(JSON.stringify({ error: "query is required" }), {
@@ -141,6 +143,38 @@ Deno.serve(async (req: Request) => {
       `選べるジャンル: ${genres.join("、") || "(なし)"}`,
       `選べる国: ${countries.join("、") || "(なし)"}`,
       `選べる年代: ${decades.map((d) => `${d}年代`).join("、") || "(なし)"}`,
+      // 音楽モードだけの例外。映画・アニメ等と違って音楽作品には実際の
+      // あらすじ・ストーリーキーワードが存在しない(synopsisは「収録曲数:
+      // N曲」という表示用の文字列でしかなく、keywordsは常に空)。そのため
+      // 上の「具体的な見た目・設定はsearchKeywordsへ、ジャンル・感情タグは
+      // 明確な言及がある時だけ」という通常ルールのまま音楽を検索すると、
+      // 「海外ギャルっぽい」のような雰囲気・スタイルの言葉がsearchKeywords
+      // (タイトル・あらすじへの部分一致)に回されるだけで、どの音楽作品にも
+      // 絶対に一致せず毎回0件になっていた(オーナー指摘:「海外ギャルっぽい
+      // とか適当に打ってもいいようにしたいのに出てこない」「色々拾える
+      // ようにしてほしい」)。音楽モードの時だけ、ジャンル・感情タグは
+      // 「明確な言及」を要求せず、文章が醸し出す雰囲気・シーン・スタイル
+      // (例:「海外ギャルっぽい」→K-Pop/Dance/Pop等、「渋谷系っぽい」→
+      // J-Pop/Electronic等、「泣ける洋楽」→悲しい/感動+アメリカ等の国、
+      // 「パリピ」「クラブで流れてそう」→Dance/House/Electronic等)から
+      // 積極的に推測して選んでよい(他のモードの厳格さは変えない)。
+      ...(mode === "music"
+        ? [
+          "",
+          "音楽モード専用の追加ルール(上の「明確な言及がある時だけ」ルールを上書きする):",
+          "音楽作品にはあらすじ・ストーリー要素が無く、ジャンルと感情タグだけが",
+          "手がかりなので、この時だけは「ギャル系」「渋谷系」「パリピ」「エモい」",
+          "「クラブで流れてそう」「泣ける洋楽」のような雰囲気・スタイル・シーンの",
+          "言葉からも、合いそうなジャンル・感情タグ・国を積極的に(1つに決め打ち",
+          "せず複数可)推測して選んでよい。searchKeywordsは、文章に実在の固有名詞",
+          "(具体的な曲名・アーティスト名の断片)が書かれている時だけ使う。",
+          "「ギャル」「エモい」「パリピ」のような雰囲気・スタイルを表す言葉は、",
+          "それがたまたまどこかのタイトルに含まれていそうでも、searchKeywordsに",
+          "絶対に入れないこと(ジャンル・感情タグへの変換のみに使い、部分一致",
+          "検索には回さない)。1曲だけ偶然タイトルが一致してジャンルの近い他の",
+          "作品が全部抜け落ちる事故を避けるため。",
+        ]
+        : []),
     ].join("\n");
 
     const res = await fetch(ANTHROPIC_ENDPOINT, {

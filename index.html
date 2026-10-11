@@ -5140,7 +5140,7 @@ async function submitSearch(){
     const decades = availableDecades();
 
     const { data, error } = await supabase.functions.invoke('ai-search', {
-      body: { query, emotionTags, genres, countries, decades },
+      body: { query, emotionTags, genres, countries, decades, mode: currentCatalogMode() },
     });
     if(error) throw error;
     if(data?.error) throw new Error(data.error);
