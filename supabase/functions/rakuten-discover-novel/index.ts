@@ -780,6 +780,13 @@ Deno.serve(async (req: Request) => {
         // 本物のISBNではない)」場合にtrueを返す関数なので、ここでは逆に
         // !isGoodsIsbnの時だけ(=本物のISBNの時だけ)保存する。
         isbn: !isGoodsIsbn(item.isbn) ? item.isbn : null,
+        // 購入先リンク(オーナー方針:「書籍はAmazonや各種元の出版社の公式
+        // サイトを設置する」)。出版社ごとの公式サイトURLは持っていない
+        // (マッピング表が無い)ため、どのISBNでも確実に引けるAmazon検索
+        // リンクを自動生成する。
+        official_url: !isGoodsIsbn(item.isbn) && item.isbn
+          ? `https://www.amazon.co.jp/s?k=${item.isbn}&i=stripbooks`
+          : null,
         media_type: "novel",
         is_anime: false,
         is_drama: false,
