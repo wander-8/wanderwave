@@ -7075,7 +7075,19 @@ function renderRecommended(currentMovie){
   // 「音楽の関連作品間違うこと多い」)。実データで確認した唯一の実害ある
   // 汎用接頭辞をブロックリストで除外する(音楽タイトルの大半がこの命名
   // 規則に従うため、音楽が原因・被害の両方になりやすい)。
-  const GENERIC_CORE_BLOCKLIST = new Set(['tvアニメ']);
+  // 「原作・関連作品が全体を通してよく間違う」との指摘を受けたカタログ
+  // 全件の再監査(adaptationSiblings参照)で、英数字オンリーの核は別途
+  // 対策したが、ブランド名・偉人名・一般名詞(特定の作品名ではないもの)
+  // がたまたま4文字以上あるために紛れ込むケースも見つかった。実データで
+  // 確認した具体的な誤爆だけをここに追加する(ディズニー=ブランド名で
+  // 無関係なディズニー関連商品同士が、ハロウィン=行事名で全く無関係な
+  // ホラー映画とBGM・絵本が、モーツァルト=作曲家名で無関係な演奏者違いの
+  // クラシック録音同士が、café/céline=アクセント付きのため英数字判定を
+  // 素通りする一般的な単語/人名が、mrs./sgt.=末尾のピリオドのため同じく
+  // 素通りする敬称が、それぞれ結び付いていた)。
+  const GENERIC_CORE_BLOCKLIST = new Set([
+    'tvアニメ', 'ディズニー', 'ハロウィン', 'モーツァルト', 'café', 'céline', 'mrs.', 'sgt.', 'love,',
+  ]);
   function coreSeriesKey(title){
     const t = (title || '').trim();
     // 「鬼滅の刃」竈門炭治郎 立志編 オリジナルサウンドトラックのような、
@@ -7197,11 +7209,35 @@ function renderRecommended(currentMovie){
   const MERCH_GOODS_TITLE_PATTERN = /(ドリル|パズル|心理テスト|ことわざ|慣用句|四字熟語|英会話|シールいっぱいブック|ハンドメイドBOOK|あいうえお)/;
   const isMerchGoodsTitle = (m) => (m.genre || []).includes('児童書') || MERCH_GOODS_TITLE_PATTERN.test(m.title);
   const currentIsMerchGoods = isMerchGoodsTitle(currentMovie);
+  // 「原作・関連作品」が全体を通してよく間違う、という指摘を受けてカタログ
+  // 全件(9万件超)で実際にこの関数が結び付ける組み合わせを洗い出したところ、
+  // 2つの別々の原因が見つかった。
+  // ① ここだけcoreSeriesMinLen()を呼ばず固定の4文字しきい値を使っていた
+  // (isSameTitleSeriesは既に正しく呼んでいる、単純な実装漏れ)。アポスト
+  // ロフィ除去後に英数字のみになる核("it's"→its等)は本来10文字要求の
+  // はずが4文字のまま通ってしまい、"It's"(36件)・"Don't"(36件)・"Let's"
+  // (20件)・"You're"(13件)・"What's"・"There's"・"I'll"・"Can't"・
+  // "Who's"・"L'amour"・"L'uomo"・"C'est"のような全く無関係な作品群が
+  // 大量に誤って結び付いていた。
+  const currentAdaptationCoreMinLen = coreSeriesMinLen(currentAdaptationCore);
+  // ② ①を直した後も、10文字以上の英数字オンリーの核(apocalypse/
+  // reincarnated/witchcraft/generation/extraordinary/summertime/
+  // metropolitan/everlasting等)は「10文字あれば偶然の一致は考えにくい」
+  // という前提自体が誤りだった。実データで該当76グループを全件目視した
+  // ところ、文字数は無関係(正しい一致も誤った一致も同じ10〜13文字の
+  // 範囲に分布)で、大半(約8割)がありふれた英単語・言い回しの偶然の
+  // 一致だった(例: "Reincarnated as an Unruly Heir"と無関係な
+  // "Reincarnated Murim Lord"が"Reincarnated"だけで結び付く)。英数字
+  // オンリーの核は、この「先頭だけの一致」では一切信頼せず、タイトル
+  // 全体が一致する場合(seriesTitleKey、上のcurrentAdaptationKey分岐)
+  // だけを信頼する。
+  const ALNUM_ONLY_CORE = /^[a-z0-9]+$/;
   const adaptationSiblings = dedupeByNormalizedTitleYear(others.filter(m => {
     if(nativeModeOf(m) === currentNativeMode) return false;
     if(!currentIsMerchGoods && isMerchGoodsTitle(m)) return false;
     if(currentAdaptationKey.length >= 6 && seriesTitleKey(m.title) === currentAdaptationKey) return true;
-    return currentAdaptationCore.length >= 4 && !/^[0-9]+$/.test(currentAdaptationCore)
+    if(ALNUM_ONLY_CORE.test(currentAdaptationCore)) return false;
+    return currentAdaptationCore.length >= currentAdaptationCoreMinLen && !/^[0-9]+$/.test(currentAdaptationCore)
       && currentAdaptationCore === coreSeriesKey(m.title);
   })).sort((a, b) => a.year - b.year);
 
