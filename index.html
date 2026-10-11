@@ -2546,9 +2546,19 @@
            取り込んで今ついてるボタン外していい」)。入力中のライブ絞り込み
            (oninput)は今まで通り無料・即時のローカル部分一致のままにして、
            実際に検索を確定させた時(検索ボタン・Enter)だけAIを呼ぶ
-           (毎回のキー入力では呼ばない、コスト・速度の両面で論外なのは変わらない)。 -->
+           (毎回のキー入力では呼ばない、コスト・速度の両面で論外なのは変わらない)。
+           日本語入力中は、変換候補を確定するためのEnterでもこのkeydownが
+           先に発火してしまい、変換途中の文字でsubmitSearch()が走った直後に
+           compositionend側のonSearchInput()でも検索が走り、結果的に
+           「確定前後で2回検索される」ように見えていた(オーナー指摘:
+           「エンターを押すと検索した内容が重複して検索されてしまう」)。
+           oninput側は以前から同じ理由のため(IME変換中の二重確定バグ)
+           searchComposing一時変数で止めていたが、このEnterのkeydown側だけ
+           ガードが漏れていた。event.isComposingに加え、対応が薄い一部の
+           旧ブラウザ向けにevent.keyCode===229(IME変換中を示す値)も
+           合わせて見ることで、変換確定のEnterでは検索を実行しないようにする。 -->
       <div class="search-box">
-        <input type="text" id="search-input" placeholder="作品名・ジャンル・雰囲気で探す" oninput="onSearchInput()" oncompositionstart="searchComposing=true" oncompositionend="searchComposing=false; onSearchInput();" onkeydown="if(event.key==='Enter'){ event.preventDefault(); this.blur(); submitSearch(); }">
+        <input type="text" id="search-input" placeholder="作品名・ジャンル・雰囲気で探す" oninput="onSearchInput()" oncompositionstart="searchComposing=true" oncompositionend="searchComposing=false; onSearchInput();" onkeydown="if(event.key==='Enter' && !event.isComposing && event.keyCode !== 229){ event.preventDefault(); this.blur(); submitSearch(); }">
         <button class="search-clear-btn" id="search-clear-btn" onclick="clearSearch()" style="display:none;">×</button>
         <button class="ai-search-btn" id="ai-search-btn" onclick="submitSearch()">検索</button>
       </div>
