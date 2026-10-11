@@ -6743,7 +6743,17 @@ function renderRecommended(currentMovie){
   // 規則に従うため、音楽が原因・被害の両方になりやすい)。
   const GENERIC_CORE_BLOCKLIST = new Set(['tvアニメ']);
   function coreSeriesKey(title){
-    const m = (title || '').trim().match(/^([^\s　「『（(\-−~〜:：]+)/u);
+    const t = (title || '').trim();
+    // 「鬼滅の刃」竈門炭治郎 立志編 オリジナルサウンドトラックのような、
+    // サントラ・主題歌アルバムの定番の命名規則(先頭がいきなり「」『』で
+    // 始まり、括弧の中身が原作の作品名そのもの)は、以前は先頭の開き括弧が
+    // 区切り文字扱いで核が空文字になり、原作のアニメ・映画と一切結び付け
+    // られなかった(オーナー指摘:「アニメや映画で使われてるサントラとして
+    // 検索する人もいるかも」「作品からイメージして作品検索する人」)。
+    // タイトルの先頭が開き括弧の場合だけ、括弧の中身を核として使う。
+    const leadingBracket = t.match(/^[「『（(]([^」』）)]+)[」』）)]/u);
+    if(leadingBracket) return leadingBracket[1].toLowerCase();
+    const m = t.match(/^([^\s　「『（(\-−~〜:：]+)/u);
     const core = m ? m[1].toLowerCase() : '';
     return GENERIC_CORE_BLOCKLIST.has(core) ? '' : core;
   }
