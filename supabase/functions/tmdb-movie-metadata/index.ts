@@ -111,9 +111,15 @@ async function fillMissingSynopsis(supabase: any, offset: number, limit: number,
   return results;
 }
 
-// 見放題(flatrate)の配信先だけをJP向けに取得して保存する。vod_checked_at
-// を「確認済みの印」として使い、配信先が無い(空配列)作品も再取得し続け
-// ないようにする(オーナー要望:まず見放題だけ先に再表示したい)。
+// 見放題(flatrate)の配信先と、その「視聴ページリンク」(watch/providersの
+// results.JP.link)をJP向けに取得して保存する。TMDbの無料APIは各配信
+// サービス(Netflix/Amazon等)への直接ディープリンクを提供しない(JustWatchの
+// 有料/提携APIのみ)ため、実際にユーザーが配信先へ辿り着ける唯一の公式
+// リンクはこのTMDb自身の視聴ページ(themoviedb.org/movie/{id}/watch)になる
+// (オーナーに直接確認済み:「自動リンクがいい」。NetflixやAmazon自体へは
+// 直接飛ばず、このTMDbページ経由のワンクッションになることは説明済み)。
+// vod_checked_atを「確認済みの印」として使い、配信先が無い(空配列)作品も
+// 再取得し続けないようにする。
 async function fillVodFlatrate(supabase: any, offset: number, limit: number, write: boolean) {
   const { data, error } = await supabase
     .from("movies")
@@ -134,13 +140,15 @@ async function fillVodFlatrate(supabase: any, offset: number, limit: number, wri
       chunk.map(async (m: any) => {
         const wp = await tmdbFetch(`/movie/${m.tmdb_id}/watch/providers`, {});
         const flatrate = (wp?.results?.JP?.flatrate || []).map((p: any) => p.provider_name);
+        const watchLink = wp?.results?.JP?.link || null;
         if (write) {
           await supabase.from("movies").update({
             vod_flatrate: flatrate,
+            vod_watch_link: watchLink,
             vod_checked_at: new Date().toISOString(),
           }).eq("id", m.id);
         }
-        return { movie_id: m.id, title: m.title, tmdb_id: m.tmdb_id, flatrate };
+        return { movie_id: m.id, title: m.title, tmdb_id: m.tmdb_id, flatrate, watchLink };
       }),
     );
     results.push(...chunkResults);

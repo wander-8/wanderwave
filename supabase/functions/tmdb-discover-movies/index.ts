@@ -298,6 +298,7 @@ Deno.serve(async (req: Request) => {
           const keywords = (keywordsRes?.keywords || []).slice(0, 15).map((k: any) => k.name);
           const series = details.belongs_to_collection?.name ? cleanSeriesName(details.belongs_to_collection.name) : null;
           const vodFlatrate = (watchProviders?.results?.JP?.flatrate || []).map((p: any) => p.provider_name);
+          const vodWatchLink = watchProviders?.results?.JP?.link || null;
 
           return {
             title: details.title || c.title,
@@ -316,6 +317,7 @@ Deno.serve(async (req: Request) => {
             series,
             series_checked_at: new Date().toISOString(),
             vod_flatrate: vodFlatrate,
+            vod_watch_link: vodWatchLink,
             vod_checked_at: new Date().toISOString(),
             tmdb_id: c.id,
             tmdb_vote_count: c.vote_count,

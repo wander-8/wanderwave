@@ -9525,6 +9525,12 @@ function vodProviderLink(canonicalName, title){
 // 反映にはズレが出うるため、注記を添える。official_url(公式サイト・
 // 購入先。本のAmazon/出版社公式リンクやインディーズ作品の手入力リンク等)
 // があれば、配信チップと同じ見た目でまとめて出す。
+// チップのリンク先はTMDb自身の視聴ページ(vodWatchLink、watch/providersの
+// results.JP.link)を使う。TMDbの無料APIはNetflix/Amazon等への直接リンクを
+// 提供しない(JustWatchの有料/提携APIのみ)ため、「本当の配信先」に辿り
+// 着ける唯一の公式リンクがこれ(オーナーに確認済み:ワンクッション挟む
+// ことを説明した上で「自動リンクがいい」)。まだバックフィル未着手の行は
+// vodWatchLinkが無いので、その場合だけ旧来の検索ページへのフォールバックを使う。
 function renderWatchLinks(m){
   const label = document.getElementById('d-watch-label');
   const links = document.getElementById('d-watch-links');
@@ -9534,7 +9540,7 @@ function renderWatchLinks(m){
     const canonical = canonicalVodProviderName(p);
     if(seen.has(canonical)) return '';
     seen.add(canonical);
-    const href = vodProviderLink(canonical, m.title);
+    const href = m.vodWatchLink || vodProviderLink(canonical, m.title);
     return `<a class="watch-link" href="${href}" target="_blank" rel="noopener"><span class="dot"></span>${escapeHtml(canonical)}</a>`;
   }).join('');
   if(m.officialUrl){
@@ -9732,11 +9738,11 @@ async function selectAllRows(table, columns, applyFilterFn, orderColumn = 'id', 
 // 存在意義に関わるため)初回取得に残したまま、この2つだけ後から
 // バックグラウンドで取得する(loadMovieBigFieldsInBackground参照)。
 const MOVIE_LIGHT_COLUMNS = 'id, title, release_year, emotion_tags, genre, director, country, poster_path, japan_release_date, keywords, series, trailer_key, media_type, is_anime, is_drama, is_manga, is_novel, is_music, volume_count';
-const MOVIE_BIG_COLUMNS = 'id, synopsis, cast_members, vod_flatrate, official_url';
+const MOVIE_BIG_COLUMNS = 'id, synopsis, cast_members, vod_flatrate, vod_watch_link, official_url';
 // アニメ・ドラマ・漫画・小説側(オーナー限定プレビュー)は、今のところ
 // 軽量/追加取得の二段構えにはせず、従来通り一括取得する(この取得自体が
 // 既にバックグラウンド化済みで、スプラッシュをブロックしないため)。
-const MOVIE_FULL_COLUMNS = MOVIE_LIGHT_COLUMNS + ', synopsis, cast_members, vod_flatrate, official_url';
+const MOVIE_FULL_COLUMNS = MOVIE_LIGHT_COLUMNS + ', synopsis, cast_members, vod_flatrate, vod_watch_link, official_url';
 
 // moviesの1行(DBのrow)+集計データから、アプリ内部で使う表示用オブジェクトを
 // 組み立てる。loadMovies()の初回取得と、オーナーのプレビュー用バックグラウンド
@@ -9798,6 +9804,7 @@ function buildMovieRecord(row, statsByMovie, estimatesByMovie){
     series: row.series || null,
     trailerKey: row.trailer_key || null,
     vodFlatrate: row.vod_flatrate || undefined,
+    vodWatchLink: row.vod_watch_link || undefined,
     officialUrl: row.official_url || undefined,
     mediaType: row.media_type || 'movie',
     isAnime: !!row.is_anime,
@@ -9854,6 +9861,7 @@ function applyBigFieldsPatch(movie, row){
     [titleEsc, row.synopsis, ...(genreArr || []), ...keywordsArr].filter(Boolean).join(' ')
   );
   movie.vodFlatrate = row.vod_flatrate || undefined;
+  movie.vodWatchLink = row.vod_watch_link || undefined;
   movie.officialUrl = row.official_url || undefined;
   movie.hasFullData = true;
 }
