@@ -1675,6 +1675,34 @@
   .r-header .avatar{ width:26px; height:26px; font-size:11px; flex-shrink:0; }
   .review-card .r-name{ font-size:13.5px; font-weight:600; color:var(--plum-deep); margin-bottom:0; }
   .review-card .r-body{ font-size:15px; line-height:1.7; color: var(--ink); }
+  /* ネタバレ申告レビューの「ぼかして隠す→タップで解除」演出。本文自体は
+     常にDOMにある(ぼかすだけ)ので、プレースホルダーをフェードアウトしつつ
+     ぼかしを同時に晴らすことで、1つの「霧が晴れる」ようなモーションになる
+     (オーナー指摘:「モーション付きで」)。 */
+  .r-body-wrap{ position:relative; }
+  .review-card .r-body.spoiler-hidden{
+    filter: blur(7px);
+    opacity: .6;
+    user-select: none;
+    pointer-events: none;
+    transition: filter .4s cubic-bezier(.22,.8,.32,1), opacity .4s ease;
+  }
+  .review-card .r-body.spoiler-revealed{
+    filter: blur(0);
+    opacity: 1;
+  }
+  .r-spoiler-placeholder{
+    position:absolute; inset:0;
+    display:flex; align-items:center; justify-content:center; gap:6px;
+    text-align:center; padding:10px;
+    background: color-mix(in srgb, var(--surface) 85%, transparent);
+    border:1px dashed var(--line); border-radius:10px;
+    font-size: 13px; color: var(--ink-soft); font-weight:600;
+    cursor:pointer;
+    transition: opacity .35s ease, transform .35s ease;
+  }
+  .r-spoiler-placeholder:active{ transform: scale(0.97); }
+  .r-spoiler-placeholder.spoiler-gone{ opacity:0; pointer-events:none; transform: scale(1.02); }
   .r-actions{ display:flex; gap:12px; margin-top:8px; }
   .r-action-btn{
     background:none; border:none; padding:0;
@@ -2857,6 +2885,12 @@
           <div class="post-block-label">ひとこと感想(任意)</div>
           <textarea id="review-text" rows="3" placeholder="文字数の制限はありません・感情タグや表現度だけでもOK(例: 泣けるけど元気が出る話でした)"></textarea>
           <div class="slider-value" id="review-count">0 / 200</div>
+          <!-- 書いた本人が「ネタバレを含む」と申告するためのトグル。
+               オーナー指摘:「レビューにネタバレする人はユーザーが見たいと
+               思ったら開けるようにしてほしい」。一覧側ではこのフラグが
+               立っているレビューをぼかして隠し、タップした人だけに見せる
+               (renderVisibleReviews参照)。 -->
+          <div class="tagchip" id="spoiler-toggle-btn" onclick="toggleSpoilerFlag()" style="margin-top:8px; width:fit-content;">⚠️ ネタバレを含む</div>
         </div>
 
         <div class="post-divider"></div>
@@ -7667,6 +7701,13 @@ function renderIntensityGauge(m){
 let pendingIntensityTouched = false;
 let pendingReasonTags = new Set();
 let pendingMoodTags = new Set();
+// レビュー本文を「ネタバレを含む」と申告するためのトグル状態。他のpending系と
+// 同じく、投稿するを押すまではローカルに保持するだけ。
+let pendingSpoilerFlag = false;
+function toggleSpoilerFlag(){
+  pendingSpoilerFlag = !pendingSpoilerFlag;
+  document.getElementById('spoiler-toggle-btn').classList.toggle('active', pendingSpoilerFlag);
+}
 
 function updateIntensityDisplay(value){
   const color = riskCategoryColor(value);
@@ -8890,6 +8931,10 @@ async function goDetail(id){
   pendingIntensityTouched = myPrevVote !== undefined;
   pendingReasonTags = new Set(state.myReason[m.id] || []);
   pendingMoodTags = new Set(state.myTagVotes[m.id] || []);
+  // ネタバレトグルの実際の値(編集対象レビューがあれば既存のhas_spoiler)は
+  // loadMovieReviews側で判明するので、ここでは一旦falseに戻すだけにする。
+  pendingSpoilerFlag = false;
+  document.getElementById('spoiler-toggle-btn').classList.remove('active');
 
   renderIntensityGauge(m);
   renderReasonChips(m);
@@ -9062,7 +9107,7 @@ async function loadMovieReviews(m){
     const userId = await currentUserId();
     const { data, error } = await supabase
       .from('movie_reviews')
-      .select('user_id, review_text, created_at, profiles(user_name, avatar_color, avatar_photo_url)')
+      .select('user_id, review_text, has_spoiler, created_at, profiles(user_name, avatar_color, avatar_photo_url)')
       .eq('movie_id', m.id)
       .not('review_text', 'is', null)
       .order('created_at', { ascending: false });
@@ -9080,14 +9125,17 @@ async function loadMovieReviews(m){
     if(myReview){
       editingMovieId = m.id;
       textBox.value = myReview.review_text;
+      pendingSpoilerFlag = !!myReview.has_spoiler;
       document.getElementById('review-submit-btn').textContent = '更新する';
       document.getElementById('review-delete-btn').style.display = 'inline-block';
     } else {
       editingMovieId = null;
       textBox.value = "";
+      pendingSpoilerFlag = false;
       document.getElementById('review-submit-btn').textContent = '投稿する';
       document.getElementById('review-delete-btn').style.display = 'none';
     }
+    document.getElementById('spoiler-toggle-btn').classList.toggle('active', pendingSpoilerFlag);
     updateReviewCount();
   }catch(err){
     console.error('レビューの読み込みに失敗しました', err);
@@ -9118,13 +9166,17 @@ function renderVisibleReviews(){
     const name = (r.profiles && r.profiles.user_name) || 'ゲスト';
     const hasPhoto = !!(r.profiles && r.profiles.avatar_photo_url);
     const avatarColor = (r.profiles && r.profiles.avatar_color) || '#3a3a40';
+    const isSpoiler = !!r.has_spoiler;
     return `
     <div class="review-card">
       <div class="r-header">
         <div class="avatar" id="r-avatar-${start + i}" style="background:${hasPhoto ? 'transparent' : avatarColor};">${hasPhoto ? '' : escapeHtml(name.charAt(0))}</div>
         <div class="r-name">${escapeHtml(name)}</div>
       </div>
-      <div class="r-body" id="${bodyId}" data-full="${escapeHtml(text)}" data-preview="${escapeHtml(text.slice(0, REVIEW_PREVIEW_LEN))}" data-expanded="0">${escapeHtml(isLong ? text.slice(0, REVIEW_PREVIEW_LEN) + '…' : text)}</div>
+      <div class="r-body-wrap">
+        <div class="r-body${isSpoiler ? ' spoiler-hidden' : ''}" id="${bodyId}" data-full="${escapeHtml(text)}" data-preview="${escapeHtml(text.slice(0, REVIEW_PREVIEW_LEN))}" data-expanded="0">${escapeHtml(isLong ? text.slice(0, REVIEW_PREVIEW_LEN) + '…' : text)}</div>
+        ${isSpoiler ? `<div class="r-spoiler-placeholder" id="${bodyId}-ph" onclick="revealSpoilerReview('${bodyId}')">⚠️ ネタバレを含むレビューです<br>タップして表示</div>` : ''}
+      </div>
       ${isLong ? `<button class="link-btn" onclick="toggleReviewBodyExpand('${bodyId}')" id="${bodyId}-btn">続きを読む</button>` : ''}
     </div>
   `;
@@ -9167,6 +9219,19 @@ function toggleReviewBodyExpand(bodyId){
     btn.textContent = '閉じる';
     el.dataset.expanded = '1';
   }
+}
+
+// ネタバレ申告レビューの「ぼかし解除」。プレースホルダーをフェードアウト
+// させつつ本文のぼかしを同時に晴らし、1つの連動したモーションに見せる
+// (オーナー指摘:「モーション付きで」)。本文は最初からDOMに存在して
+// いた(ぼかされていただけ)ので、ここで取得し直す必要はない。
+function revealSpoilerReview(bodyId){
+  const body = document.getElementById(bodyId);
+  const placeholder = document.getElementById(bodyId + '-ph');
+  if(!body) return;
+  body.classList.remove('spoiler-hidden');
+  body.classList.add('spoiler-revealed');
+  if(placeholder) placeholder.classList.add('spoiler-gone');
 }
 
 function goToReviewsPage(delta){
@@ -9301,7 +9366,7 @@ async function submitReview(force){
     if(text){
       const { data: { session } } = await withTimeout(supabase.auth.getSession(), 6000);
       const { data, error } = await withTimeout(supabase.functions.invoke('submit-review', {
-        body: { movie_id: m.id, review_text: text, captcha_token: reviewTurnstileToken },
+        body: { movie_id: m.id, review_text: text, captcha_token: reviewTurnstileToken, has_spoiler: pendingSpoilerFlag },
         headers: session ? { Authorization: `Bearer ${session.access_token}` } : undefined
       }), 15000);
       if(error){
