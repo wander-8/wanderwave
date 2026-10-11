@@ -776,6 +776,10 @@ Deno.serve(async (req: Request) => {
         keywords_checked_at: new Date().toISOString(),
         series: null,
         series_checked_at: null,
+        // isGoodsIsbn()は「978/979で始まらない(=特典グッズ等のJANコードで、
+        // 本物のISBNではない)」場合にtrueを返す関数なので、ここでは逆に
+        // !isGoodsIsbnの時だけ(=本物のISBNの時だけ)保存する。
+        isbn: !isGoodsIsbn(item.isbn) ? item.isbn : null,
         media_type: "novel",
         is_anime: false,
         is_drama: false,
