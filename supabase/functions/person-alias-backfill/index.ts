@@ -91,6 +91,15 @@ async function callClaudeTransliterate(names: string[]): Promise<Record<string, 
       required: ["results"],
     },
   };
+  // 毎回まったく同じ指示文(呼び出しごとに変わるのはuser側のmessagesだけ)
+  // なので、そのままcache_controlを付けられる(ai-search/index.tsのように
+  // 動的な末尾を切り分ける必要が無い)。この関数はoffsetを進めながら手動で
+  // 繰り返し叩くバッチ処理なので、同じセッション内の2回目以降の呼び出しから
+  // 効いてくる。ただしこの指示文自体は4行と短く、Anthropic側の
+  // キャッシュ対象になる最低トークン数(モデルによるが概ね1024〜2048
+  // トークン)に満たない可能性があり、その場合cache_controlを付けても
+  // エラーにはならずキャッシュされないだけ(実際に効いているかは
+  // レスポンスのusage.cache_read_input_tokensで確認できる)。
   const systemPrompt = [
     "あなたは音楽アーティスト名の日本語表記に詳しいアシスタントです。",
     "与えられた各アーティスト名について、日本語メディア(Wikipedia日本語版、CDショップ等)で",
@@ -112,7 +121,9 @@ async function callClaudeTransliterate(names: string[]): Promise<Record<string, 
     body: JSON.stringify({
       model: MODEL,
       max_tokens: 2048,
-      system: systemPrompt,
+      system: [
+        { type: "text", text: systemPrompt, cache_control: { type: "ephemeral" } },
+      ],
       messages: [{ role: "user", content: names.join("\n") }],
       tools: [tool],
       tool_choice: { type: "tool", name: "transliterate" },
@@ -123,6 +134,9 @@ async function callClaudeTransliterate(names: string[]): Promise<Record<string, 
     throw new Error(`anthropic_api_error ${res.status}: ${body}`);
   }
   const data = await res.json();
+  if (data?.usage) {
+    console.log("anthropic_usage", JSON.stringify(data.usage));
+  }
   const toolUse = (data?.content || []).find((c: any) => c.type === "tool_use" && c.name === "transliterate");
   if (!toolUse) throw new Error("no_tool_use_in_response");
   const results = toolUse.input?.results || [];

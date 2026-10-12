@@ -96,7 +96,17 @@ Deno.serve(async (req: Request) => {
       },
     };
 
-    const systemPrompt = [
+    // プロンプトキャッシング対応: このブロック(指示文の本体)は毎回まったく
+    // 同じ文字列で、呼び出しごとに変わるのは年代・ジャンル一覧・音楽モード
+    // 補足(decades/genres/modeはクライアントの状態次第で変わる)だけ。
+    // 全部を1本の文字列に連結してcache_controlを付けると、末尾が1文字でも
+    // 違うだけでキャッシュが丸ごと無効になり、毎回ゼロから書き込み扱いに
+    // なってしまう。そのため、system配列を「常に同一の指示文(キャッシュ対象)」
+    // と「呼び出しごとに変わる末尾(キャッシュ非対象)」の2ブロックに分け、
+    // 前者だけにcache_control: { type: "ephemeral" } を付ける(AI検索は
+    // ユーザーが打つたびに呼ばれる高頻度エンドポイントなので、ここを
+    // キャッシュできるかどうかでコストの影響が大きい)。
+    const systemPromptStatic = [
       "あなたは映画・アニメ・ドラマ・漫画・小説・音楽の発見サイト「Wander」の検索アシスタントです。",
       "ユーザーが入力した自由な文章から、作品の実際の中身(タイトル・あらすじ・ジャンル・出演者・",
       "監督/アーティスト・制作国・感情タグ)に結び付きそうな短い言葉を抜き出し、",
@@ -146,6 +156,10 @@ Deno.serve(async (req: Request) => {
       "  にする方がよい(無理に文字通り検索しても0件になるだけで、スラングを足している",
       "  のと同じ失敗になる)。",
       "- 年代は「80年代の」「最近の」のように時代への言及が明確な時だけdecadeに入れる。",
+    ].join("\n");
+
+    // ここから下は呼び出しごとに内容が変わる(=キャッシュ対象にしない)部分。
+    const systemPromptDynamic = [
       "",
       `選べる年代: ${decades.map((d) => `${d}年代`).join("、") || "(なし)"}`,
       `ジャンルの表記一覧(ジャンルを表す言葉を入れる時はこの中の表記に合わせる。無ければ自由に単語を選んでよい): ${genres.join("、") || "(なし)"}`,
@@ -184,7 +198,10 @@ Deno.serve(async (req: Request) => {
       body: JSON.stringify({
         model: MODEL,
         max_tokens: 512,
-        system: systemPrompt,
+        system: [
+          { type: "text", text: systemPromptStatic, cache_control: { type: "ephemeral" } },
+          { type: "text", text: systemPromptDynamic },
+        ],
         messages: [{ role: "user", content: query }],
         tools: [tool],
         tool_choice: { type: "tool", name: "extract_search_terms" },
@@ -200,6 +217,13 @@ Deno.serve(async (req: Request) => {
     }
 
     const data = await res.json();
+    // プロンプトキャッシングが実際に効いているか(cache_read_input_tokensが
+    // 積み上がっているか)を後から確認できるよう、Supabaseのedge function
+    // ログに残しておく。本番で2回目以降の呼び出しからcache_read_input_tokensが
+    // 0より大きくなっていればキャッシュヒットしている。
+    if (data?.usage) {
+      console.log("anthropic_usage", JSON.stringify(data.usage));
+    }
     const toolUse = (data?.content || []).find((c: any) => c.type === "tool_use" && c.name === "extract_search_terms");
     if (!toolUse) {
       return new Response(JSON.stringify({ error: "no_tool_use_in_response", raw: data }), {
