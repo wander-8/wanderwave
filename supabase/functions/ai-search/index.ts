@@ -1,8 +1,23 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
+import { createClient } from "jsr:@supabase/supabase-js@2";
 
+const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
+const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const ANTHROPIC_API_KEY = Deno.env.get("ANTHROPIC_API_KEY");
 const ANTHROPIC_ENDPOINT = "https://api.anthropic.com/v1/messages";
 const MODEL = "claude-haiku-4-5-20251001";
+
+// 同じ検索文を何度も打つ人は多い(人気の言い回し・よくある気分の表現)ため、
+// 正規化したクエリ+モードの組み合わせをai_search_cacheに保存し、同じ組み合わせ
+// には二度とClaude APIを叩かずキャッシュから返す(オーナー要望:「一度生成した
+// 結果は必ずSupabaseに保存し、キャッシュが無い時だけAPIを呼ぶ」)。年代・
+// ジャンルの選択肢一覧(decades/genres)はモードごとにカタログの実データから
+// 動的に決まるが、リクエストのたびに大きく変わるものではないため、キャッシュ
+// キーには含めない(含めると正規化クエリが一致していてもキャッシュキーが
+// ずれてヒット率が落ちる)。
+function normalizeQueryForCache(q: string): string {
+  return q.trim().toLowerCase().replace(/\s+/g, " ");
+}
 
 // ブラウザから直接叩くため、他のクライアント向け関数(submit-contact等)と
 // 同じCORSヘッダーが無いとOPTIONSプリフライトで弾かれる。
@@ -44,13 +59,6 @@ Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   const jsonHeaders = { "Content-Type": "application/json", ...corsHeaders };
   try {
-    if (!ANTHROPIC_API_KEY) {
-      return new Response(
-        JSON.stringify({ error: "ANTHROPIC_API_KEY is not configured on this project" }),
-        { status: 500, headers: jsonHeaders },
-      );
-    }
-
     const body: RequestBody = await req.json().catch(() => ({}));
     const query = (body.query || "").trim();
     const decades = Array.isArray(body.decades) ? body.decades.filter((d) => typeof d === "number") : [];
@@ -62,6 +70,44 @@ Deno.serve(async (req: Request) => {
         status: 400,
         headers: jsonHeaders,
       });
+    }
+
+    const supabase = createClient(SUPABASE_URL, SERVICE_ROLE);
+    const queryNorm = normalizeQueryForCache(query);
+    const cacheMode = mode || "movie";
+
+    // キャッシュ優先: 同じ正規化クエリ+モードが過去に処理済みなら、Claude API
+    // を一切呼ばずそのままキャッシュの結果を返す。
+    const { data: cached } = await supabase
+      .from("ai_search_cache")
+      .select("search_keywords, decade, hit_count")
+      .eq("query_norm", queryNorm)
+      .eq("mode", cacheMode)
+      .maybeSingle();
+
+    if (cached) {
+      // ヒット数の更新はレスポンスを遅らせない程度に素朴にawaitする
+      // (キャッシュヒット自体がClaude API往復を丸ごと省く大きな短縮なので、
+      // この1回のDB更新のオーバーヘッドは誤差でしかない)。
+      await supabase
+        .from("ai_search_cache")
+        .update({ hit_count: (cached.hit_count || 0) + 1 })
+        .eq("query_norm", queryNorm)
+        .eq("mode", cacheMode);
+
+      const cachedDecade = typeof cached.decade === "number" && decades.includes(cached.decade) ? cached.decade : null;
+      const cachedKeywords = Array.isArray(cached.search_keywords) ? cached.search_keywords : [];
+      return new Response(
+        JSON.stringify({ decade: cachedDecade, searchKeywords: cachedKeywords, cached: true }),
+        { headers: jsonHeaders },
+      );
+    }
+
+    if (!ANTHROPIC_API_KEY) {
+      return new Response(
+        JSON.stringify({ error: "ANTHROPIC_API_KEY is not configured on this project" }),
+        { status: 500, headers: jsonHeaders },
+      );
     }
 
     const decadeProperty: Record<string, unknown> = decades.length
@@ -240,6 +286,19 @@ Deno.serve(async (req: Request) => {
       .filter((k: string) => k.length > 0)
       .slice(0, 4)
       .map((k: string) => k.slice(0, 40));
+
+    // Claude API呼び出しが成功した結果だけをキャッシュへ保存する(エラー・
+    // ツール未使用の失敗レスポンスは保存しない)。次回以降、同じ正規化クエリ+
+    // モードはファイル冒頭のキャッシュ参照で拾われ、APIを二度と叩かない。
+    await supabase.from("ai_search_cache").upsert(
+      {
+        query_norm: queryNorm,
+        mode: cacheMode,
+        search_keywords: resultSearchKeywords,
+        decade: resultDecade,
+      },
+      { onConflict: "query_norm,mode" },
+    );
 
     return new Response(
       JSON.stringify({
