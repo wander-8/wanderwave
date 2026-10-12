@@ -1584,6 +1584,41 @@
     border: 2px solid var(--ink);
     box-shadow: 0 1px 3px rgba(0,0,0,0.25);
   }
+  /* 新規登録の年齢入力用。表現度(risk-slider)は刺激の強さを4段階の色で
+     示す専用の見た目だが、年齢に「危険度」のような意味合いは無いので、
+     同じ操作感(つまみ・太さ)だけ揃えて、トラックは単色にする。 */
+  .age-slider{
+    width: 100%;
+    height: 20px;
+    -webkit-appearance: none;
+    appearance: none;
+    background: transparent;
+    cursor: pointer;
+  }
+  .age-slider::-webkit-slider-runnable-track{
+    height: 8px; border-radius: 6px;
+    background: var(--plum);
+  }
+  .age-slider::-moz-range-track{
+    height: 8px; border-radius: 6px;
+    background: var(--plum);
+  }
+  .age-slider::-webkit-slider-thumb{
+    -webkit-appearance: none;
+    width: 20px; height: 20px;
+    margin-top: -6px;
+    border-radius: 50%;
+    background: #fff;
+    border: 2px solid var(--ink);
+    box-shadow: 0 1px 3px rgba(0,0,0,0.25);
+  }
+  .age-slider::-moz-range-thumb{
+    width: 20px; height: 20px;
+    border-radius: 50%;
+    background: #fff;
+    border: 2px solid var(--ink);
+    box-shadow: 0 1px 3px rgba(0,0,0,0.25);
+  }
   .risk-vote-hint{
     font-size: 10.5px; color: var(--ink-soft);
     margin-top: 8px;
@@ -3123,6 +3158,15 @@
         <div class="field">
           <label>ニックネーム(12文字まで)</label>
           <input class="field-input" id="p-nickname" maxlength="12" placeholder="例: えいがすき" oninput="updateProfilePreview()">
+        </div>
+
+        <div class="field">
+          <label>年齢</label>
+          <div class="risk-vote-label-row">
+            <div class="risk-vote-label">カーソルを動かして教えてください: <span id="p-age-live-label">20歳</span></div>
+          </div>
+          <input type="range" id="p-age" class="age-slider" min="10" max="99" value="20" oninput="onAgeInput(this.value)">
+          <div class="note" style="margin-top:6px;">他のユーザーには表示されません。年代ごとにどんな作品が人気かを調べる参考にするだけに使います。</div>
         </div>
 
         <div class="field">
@@ -10506,6 +10550,7 @@ async function loadDiagnosisHistory(){
 const AVATAR_COLORS = ['#a084f2', '#e2647f', '#b98aa6', '#4f9d89', '#d9836a'];
 let pendingAvatarColor = AVATAR_COLORS[0];
 let pendingAvatarPhoto = null;
+let pendingAge = 20;
 
 // プロフィールはSupabaseの profiles テーブルに保存する。
 // ニックネーム登録が済んでいるかどうか(=オンボーディング完了フラグ)だけは
@@ -10523,7 +10568,8 @@ async function saveProfile(){
       .update({
         user_name: state.profile.nickname,
         avatar_color: state.profile.avatarPhoto ? null : state.profile.avatarColor,
-        avatar_photo_url: state.profile.avatarPhoto || null
+        avatar_photo_url: state.profile.avatarPhoto || null,
+        age: state.profile.age
       })
       .eq('id', userId);
     if(error) throw error;
@@ -10552,7 +10598,7 @@ async function loadProfile(){
 
     const { data, error } = await supabase
       .from('profiles')
-      .select('user_name, avatar_color, avatar_photo_url, review_count, lists_share_token')
+      .select('user_name, avatar_color, avatar_photo_url, review_count, lists_share_token, age')
       .eq('id', user.id)
       .single();
     if(error) throw error;
@@ -10591,6 +10637,7 @@ async function loadProfile(){
       avatarPhotoPosX: crop.x,
       avatarPhotoPosY: crop.y,
       avatarPhotoZoom: crop.zoom,
+      age: data.age || null,
       reviewCount: data.review_count || 0,
       listsShareToken: data.lists_share_token,
       excludedWords: (prefs && prefs.excluded_words) || [],
@@ -10949,6 +10996,11 @@ function onAvatarZoomInput(val){
   updateProfilePreview();
 }
 
+function onAgeInput(val){
+  pendingAge = Number(val);
+  document.getElementById('p-age-live-label').textContent = `${pendingAge}歳`;
+}
+
 function clearProfilePhoto(){
   pendingAvatarPhoto = null;
   pendingAvatarPosX = 50; pendingAvatarPosY = 50; pendingAvatarZoom = 100;
@@ -10992,6 +11044,9 @@ function goProfile(){
   pendingAvatarPosX = existing && existing.avatarPhotoPosX != null ? existing.avatarPhotoPosX : 50;
   pendingAvatarPosY = existing && existing.avatarPhotoPosY != null ? existing.avatarPhotoPosY : 50;
   pendingAvatarZoom = existing && existing.avatarPhotoZoom != null ? existing.avatarPhotoZoom : 100;
+  pendingAge = existing && existing.age != null ? existing.age : 20;
+  document.getElementById('p-age').value = pendingAge;
+  document.getElementById('p-age-live-label').textContent = `${pendingAge}歳`;
   document.getElementById('p-nickname').value = hasNickname ? existing.nickname : "";
   document.getElementById('profile-heading').textContent = hasNickname ? "プロフィール編集" : "ニックネーム登録";
   document.getElementById('profile-submit-btn').textContent = hasNickname ? "保存する" : "登録する";
@@ -11104,7 +11159,7 @@ async function submitProfile(){
   const previousReviewCount = state.profile ? (state.profile.reviewCount || 0) : 0;
   const previousEmailVerified = state.profile ? !!state.profile.emailVerified : false;
   const previousListsShareToken = state.profile ? state.profile.listsShareToken : undefined;
-  state.profile = { nickname, avatarColor: pendingAvatarColor, avatarPhoto: pendingAvatarPhoto, avatarPhotoPosX: pendingAvatarPosX, avatarPhotoPosY: pendingAvatarPosY, avatarPhotoZoom: pendingAvatarZoom, reviewCount: previousReviewCount, emailVerified: previousEmailVerified, listsShareToken: previousListsShareToken };
+  state.profile = { nickname, avatarColor: pendingAvatarColor, avatarPhoto: pendingAvatarPhoto, avatarPhotoPosX: pendingAvatarPosX, avatarPhotoPosY: pendingAvatarPosY, avatarPhotoZoom: pendingAvatarZoom, age: pendingAge, reviewCount: previousReviewCount, emailVerified: previousEmailVerified, listsShareToken: previousListsShareToken };
   await saveProfile();
   updateHeader();
   showToast(isFirstRegistration ? '登録しました' : 'プロフィールを保存しました');
