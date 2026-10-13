@@ -76,12 +76,26 @@ async function searchMovie(title: string, year: number | null): Promise<{ result
 // 確定済みなので検索をやり直さず、/movie/{tmdb_id}をja-JP→(空なら)en-USで
 // 取得してsynopsisだけ埋める。director/cast/countryは既に正しく入って
 // いる行が対象なので触らない。
+// 過去のバグ(2件): (1) media_typeで絞っていなかったため、novel/manga/music
+// 側に紛れ込んだ誤ったtmdb_id(例:小説「極北」にtmdb_id=453755が入っていた
+// 実例を確認済み)にも構わずTMDBのmovieデータを取得・書き込みしてしまう
+// 事故リスクがあった。movie/tvのみに対象を絞る。
+// (2) media_typeを見ず常に/movieエンドポイントを叩いていたため、tv行は
+// 絶対に正しいデータを取れない(TVは/tv/{id}という別エンドポイント・別
+// IDネームスペース)。media_typeごとに正しいエンドポイントを選ぶ。
+// (3) google-books-crosscheckのrecoverIsbnで発覚したのと同じ「見つから
+// なかった行に何も書き込まないと、offset=0の自己完結型バックフィルが
+// 同じ行を永遠に再試行し続けて先に進めなくなる」バグのクラスを踏まないよう、
+// TMDB側に本当にoverviewが無かった場合(一時的な障害ではない)もsynopsis_
+// checked_atを立てて窓を進める。
 async function fillMissingSynopsis(supabase: any, offset: number, limit: number, write: boolean) {
   const { data, error } = await supabase
     .from("movies")
-    .select("id, title, tmdb_id")
+    .select("id, title, tmdb_id, media_type")
+    .in("media_type", ["movie", "tv"])
     .not("tmdb_id", "is", null)
     .or("synopsis.is.null,synopsis.eq.")
+    .is("synopsis_checked_at", null)
     .order("id", { ascending: true })
     .range(offset, offset + limit - 1);
   if (error) throw error;
@@ -93,16 +107,19 @@ async function fillMissingSynopsis(supabase: any, offset: number, limit: number,
     const chunk = todo.slice(i, i + CONCURRENCY);
     const chunkResults = await Promise.all(
       chunk.map(async (m: any) => {
-        let details = await tmdbFetch(`/movie/${m.tmdb_id}`, { language: "ja-JP" });
+        const endpoint = m.media_type === "tv" ? "/tv" : "/movie";
+        let details = await tmdbFetch(`${endpoint}/${m.tmdb_id}`, { language: "ja-JP" });
         let overview = details?.overview || null;
         if (!overview) {
-          const enDetails = await tmdbFetch(`/movie/${m.tmdb_id}`, { language: "en-US" });
+          const enDetails = await tmdbFetch(`${endpoint}/${m.tmdb_id}`, { language: "en-US" });
           overview = enDetails?.overview || null;
         }
-        if (overview && write) {
-          await supabase.from("movies").update({ synopsis: overview }).eq("id", m.id);
+        if (write) {
+          const update: Record<string, unknown> = { synopsis_checked_at: new Date().toISOString() };
+          if (overview) update.synopsis = overview;
+          await supabase.from("movies").update(update).eq("id", m.id);
         }
-        return { movie_id: m.id, title: m.title, tmdb_id: m.tmdb_id, synopsis: overview, found: !!details };
+        return { movie_id: m.id, title: m.title, tmdb_id: m.tmdb_id, media_type: m.media_type, synopsis: overview, found: !!details };
       }),
     );
     results.push(...chunkResults);
