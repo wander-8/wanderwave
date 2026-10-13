@@ -9813,12 +9813,36 @@ function canonicalVodProviderName(name){
     .replace(/^FOD Channel Amazon Channel$/, 'FOD');
 }
 
-// 実際のアフィリエイトリンクに差し替える前提の仮リンク(今は各サービスの検索ページに飛ぶだけ)。
+// Amazonアソシエイト(アフィリエイト)のトラッキングID。審査に通って発行された
+// 後にこの値を書き換えるだけで、書籍のAmazon購入リンク・Prime Videoの
+// 検索リンクなど全てのAmazon誘導リンクに自動で反映される(オーナー:
+// 「アフィリエイトの仕組みちゃんと作って」。2026年時点ではまだ未取得のため
+// 空文字のままにしておく。登録: https://affiliate.amazon.co.jp/ 。審査には
+// 180日以内に3件以上の売上実績が必要なため、取得までは非アフィリエイトの
+// ままでリンク自体は出し続ける)。
+const AMAZON_ASSOCIATE_TAG = '';
+function withAmazonAffiliateTag(url){
+  if(!AMAZON_ASSOCIATE_TAG) return url;
+  const sep = url.includes('?') ? '&' : '?';
+  return `${url}${sep}tag=${encodeURIComponent(AMAZON_ASSOCIATE_TAG)}`;
+}
+
+// 以前はTMDb自身の視聴ページ(vodWatchLink)を全サービス共通のリンク先に
+// していたが、オーナー指摘:「見れる先がTMDBに行っちゃうから直接サイトに
+// 飛ばしてほしい」を受けて、各サービス自身の検索ページへ直接飛ばす方式に
+// 変更した。TMDbの無料APIは個別タイトルへのディープリンクを提供しない
+// (JustWatchの有料/提携APIのみ)ため、ここでの「直接」は各サービスの
+// タイトル検索結果ページへの遷移になる(作品詳細ページそのものではない)。
 // マップに無いサービスはGoogle検索へのフォールバックにする(配信先は
 // 今後も増えていくため、未対応サービスでもリンク自体は必ず出せるように)。
+// Amazon Prime Videoのみ、AMAZON_ASSOCIATE_TAGが設定されていれば自動で
+// アフィリエイトタグを付与する。他サービス(Netflix/Hulu/U-NEXT/Disney+/FOD)は
+// 個別にASP(A8.net等)への登録・審査が必要なため、ユーザー本人がその
+// 契約を済ませるまでは非アフィリエイトの直接リンクのままにする(オーナー
+// 確認済み:「まずは直接リンクだけにする」)。
 const VOD_PROVIDER_LINKS = {
   "Netflix": (title) => `https://www.netflix.com/search?q=${encodeURIComponent(title)}`,
-  "Amazon Prime Video": (title) => `https://www.amazon.co.jp/s?k=${encodeURIComponent(title)}&i=instant-video`,
+  "Amazon Prime Video": (title) => withAmazonAffiliateTag(`https://www.amazon.co.jp/s?k=${encodeURIComponent(title)}&i=instant-video`),
   "U-NEXT": (title) => `https://video.unext.jp/freeword?query=${encodeURIComponent(title)}`,
   "U-NEXT(HBO Max)": (title) => `https://video.unext.jp/freeword?query=${encodeURIComponent(title)}`,
   "Hulu": (title) => `https://www.hulu.jp/search?q=${encodeURIComponent(title)}`,
@@ -9842,12 +9866,11 @@ function vodProviderLink(canonicalName, title){
 // (Amazon購入リンク専用)とofficial_url(出版社の本当の公式サイトが
 // 分かった時だけ入れる・インディーズ作品の手入力等)を別の列・別のチップに
 // 分離する。
-// チップのリンク先はTMDb自身の視聴ページ(vodWatchLink、watch/providersの
-// results.JP.link)を使う。TMDbの無料APIはNetflix/Amazon等への直接リンクを
-// 提供しない(JustWatchの有料/提携APIのみ)ため、「本当の配信先」に辿り
-// 着ける唯一の公式リンクがこれ(オーナーに確認済み:ワンクッション挟む
-// ことを説明した上で「自動リンクがいい」)。まだバックフィル未着手の行は
-// vodWatchLinkが無いので、その場合だけ旧来の検索ページへのフォールバックを使う。
+// チップのリンク先は各サービス自身の検索ページ(VOD_PROVIDER_LINKS)を使う。
+// 以前はTMDb自身の視聴ページ(vodWatchLink)を経由させていたが、オーナー
+// 指摘:「見れる先がTMDBに行っちゃうから直接サイトに飛ばしてほしい」を
+// 受けて直接リンクに変更した(vodWatchLink自体はdirector等と一緒にDBには
+// 残るが、ここでは使わない)。
 // 「見放題」の文言は配信方式に詳しくないユーザーには不要な情報なので
 // ラベルからは外す(オーナー指摘)。中身は見放題のみという制約は変えない。
 // 普段は折りたたんでおき(episodes-wrap/tracks-wrapと同じ考え方)、
@@ -9863,14 +9886,14 @@ function renderWatchLinks(m){
     const canonical = canonicalVodProviderName(p);
     if(seen.has(canonical)) return '';
     seen.add(canonical);
-    const href = m.vodWatchLink || vodProviderLink(canonical, m.title);
+    const href = vodProviderLink(canonical, m.title);
     return `<a class="watch-link" href="${href}" target="_blank" rel="noopener"><span class="dot"></span>${escapeHtml(canonical)}</a>`;
   }).join('');
   if(m.officialUrl){
     chips += `<a class="watch-link" href="${escapeHtml(m.officialUrl)}" target="_blank" rel="noopener"><span class="dot"></span>公式サイト</a>`;
   }
   if(m.amazonUrl){
-    chips += `<a class="watch-link" href="${escapeHtml(m.amazonUrl)}" target="_blank" rel="noopener"><span class="dot"></span>Amazonで購入</a>`;
+    chips += `<a class="watch-link" href="${escapeHtml(withAmazonAffiliateTag(m.amazonUrl))}" target="_blank" rel="noopener"><span class="dot"></span>Amazonで購入</a>`;
   }
   const hasBuyLink = !!(m.officialUrl || m.amazonUrl);
   // 別の作品の詳細ページに移動した時、前の作品で開いていた状態を
