@@ -1886,6 +1886,36 @@
 
   .form-actions{ display:flex; gap:10px; margin-top: 8px; }
 
+  /* ---- 新規登録を1ページに全部並べるのではなく、1項目ずつのウィザード
+     形式にする(オーナー指摘:「最初のプロフィール設計が1ページにそのまま
+     置かれるのがデザイン的にダサい」)。既存プロフィールの編集(編集アイコン
+     から開く方)は今まで通り全項目を一度に出す、別モード。 ---- */
+  .onboarding-progress{ display:flex; gap:6px; margin: 2px 0 20px; }
+  .onboarding-progress-dot{
+    flex:1; height:4px; border-radius:2px; background:var(--line);
+    transition: background .25s ease;
+  }
+  .onboarding-progress-dot.active, .onboarding-progress-dot.done{ background: var(--plum); }
+
+  .onboarding-step{ display: block; }
+  #profile-edit-form.wizard-mode .onboarding-step{ display: none; }
+  #profile-edit-form.wizard-mode .onboarding-step.active{
+    display: block;
+    animation: onboardingStepIn .3s cubic-bezier(.22,.8,.32,1);
+  }
+  @keyframes onboardingStepIn{
+    from{ opacity:0; transform: translateX(14px); }
+    to{ opacity:1; transform: translateX(0); }
+  }
+  .onboarding-step-title{
+    font-family:'M PLUS Rounded 1c', sans-serif; font-weight:700;
+    font-size: 16.5px; color: var(--ink); margin-bottom: 14px;
+  }
+  .onboarding-nav{ display:none; gap:10px; margin-top: 4px; }
+  #profile-edit-form.wizard-mode .onboarding-nav{ display:flex; }
+  .onboarding-nav .ghost-btn{ flex: 0 0 auto; padding-left:22px; padding-right:22px; }
+  .onboarding-nav .primary-btn{ flex:1; }
+
   /* ---- profile / registration ---- */
   #profile-edit-form{
     overflow: hidden;
@@ -3173,50 +3203,69 @@
         <div class="sub" id="profile-sub">ニックネームとアイコンの色で、あなたを識別します(あとから変更できます)</div>
       </div>
 
+      <div class="onboarding-progress" id="onboarding-progress">
+        <div class="onboarding-progress-dot" data-step="1"></div>
+        <div class="onboarding-progress-dot" data-step="2"></div>
+        <div class="onboarding-progress-dot" data-step="3"></div>
+      </div>
+
       <div class="form-grid">
-        <div class="field">
-          <label>ニックネーム(12文字まで)</label>
-          <input class="field-input" id="p-nickname" maxlength="12" placeholder="例: えいがすき" oninput="updateProfilePreview()">
+        <div class="onboarding-step" data-step="1">
+          <div class="onboarding-step-title">お名前を教えてください</div>
+          <div class="field">
+            <label>ニックネーム(12文字まで)</label>
+            <input class="field-input" id="p-nickname" maxlength="12" placeholder="例: えいがすき" oninput="updateProfilePreview()">
+          </div>
         </div>
 
-        <div class="field">
-          <label>年齢</label>
-          <div class="risk-vote-label-row">
-            <div class="risk-vote-label">カーソルを動かして教えてください: <span id="p-age-live-label">20歳</span></div>
-          </div>
-          <input type="range" id="p-age" class="age-slider" min="10" max="99" value="20" oninput="onAgeInput(this.value)">
-          <div class="note" style="margin-top:6px;">他のユーザーには表示されません。年代ごとにどんな作品が人気かを調べる参考にするだけに使います。</div>
-        </div>
-
-        <div class="field">
-          <label>アイコン</label>
-          <div class="avatar-color-select" id="p-color-select"></div>
-          <div class="avatar-photo-row">
-            <button class="ghost-btn small-btn" type="button" onclick="document.getElementById('p-photo-input').click()">写真を選ぶ</button>
-            <button class="ghost-btn small-btn" type="button" id="p-photo-clear" onclick="clearProfilePhoto()" style="display:none;">色に戻す</button>
-            <input type="file" id="p-photo-input" accept="image/*" style="display:none;" onchange="onProfilePhotoSelected(event)">
-          </div>
-          <div id="p-photo-editor" style="display:none; margin-top:12px;">
-            <div class="note" style="margin-bottom:8px;">ドラッグして自由に位置を調整できます(そのまま反映されます)。最初は写真全体が見える大きさです。</div>
-            <div id="p-photo-crop-area" class="photo-crop-area">
-              <div id="p-photo-crop-img" class="photo-crop-img"></div>
+        <div class="onboarding-step" data-step="2">
+          <div class="onboarding-step-title">年齢を教えてください</div>
+          <div class="field">
+            <div class="risk-vote-label-row">
+              <div class="risk-vote-label">カーソルを動かして教えてください: <span id="p-age-live-label">20歳</span></div>
             </div>
-            <div class="photo-zoom-row">
-              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3M8 11h6"/></svg>
-              <input type="range" id="p-photo-zoom" class="photo-zoom-slider" min="100" max="250" value="100" oninput="onAvatarZoomInput(this.value)">
-              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3M11 8v6M8 11h6"/></svg>
+            <input type="range" id="p-age" class="age-slider" min="10" max="99" value="20" oninput="onAgeInput(this.value)">
+            <div class="note" style="margin-top:6px;">他のユーザーには表示されません。年代ごとにどんな作品が人気かを調べる参考にするだけに使います。</div>
+          </div>
+        </div>
+
+        <div class="onboarding-step" data-step="3">
+          <div class="onboarding-step-title">最後に、アイコンを選んでください</div>
+          <div class="field">
+            <label>アイコン</label>
+            <div class="avatar-color-select" id="p-color-select"></div>
+            <div class="avatar-photo-row">
+              <button class="ghost-btn small-btn" type="button" onclick="document.getElementById('p-photo-input').click()">写真を選ぶ</button>
+              <button class="ghost-btn small-btn" type="button" id="p-photo-clear" onclick="clearProfilePhoto()" style="display:none;">色に戻す</button>
+              <input type="file" id="p-photo-input" accept="image/*" style="display:none;" onchange="onProfilePhotoSelected(event)">
+            </div>
+            <div id="p-photo-editor" style="display:none; margin-top:12px;">
+              <div class="note" style="margin-bottom:8px;">ドラッグして自由に位置を調整できます(そのまま反映されます)。最初は写真全体が見える大きさです。</div>
+              <div id="p-photo-crop-area" class="photo-crop-area">
+                <div id="p-photo-crop-img" class="photo-crop-img"></div>
+              </div>
+              <div class="photo-zoom-row">
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3M8 11h6"/></svg>
+                <input type="range" id="p-photo-zoom" class="photo-zoom-slider" min="100" max="250" value="100" oninput="onAvatarZoomInput(this.value)">
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3M11 8v6M8 11h6"/></svg>
+              </div>
+            </div>
+          </div>
+
+          <div class="field">
+            <label>プレビュー</label>
+            <div class="avatar-preview">
+              <div class="avatar" id="p-avatar-preview" style="width:52px;height:52px;font-size:20px;">?</div>
             </div>
           </div>
         </div>
 
-        <div class="field">
-          <label>プレビュー</label>
-          <div class="avatar-preview">
-            <div class="avatar" id="p-avatar-preview" style="width:52px;height:52px;font-size:20px;">?</div>
-          </div>
+        <div class="onboarding-nav" id="onboarding-nav">
+          <button class="ghost-btn" id="onboarding-back-btn" type="button" onclick="onboardingGoBack()" style="display:none;">戻る</button>
+          <button class="primary-btn" id="onboarding-next-btn" type="button" onclick="onboardingGoNext()">次へ</button>
         </div>
 
-        <div class="form-actions">
+        <div class="form-actions" id="profile-submit-row">
           <button class="primary-btn" id="profile-submit-btn" onclick="submitProfile()">登録する</button>
         </div>
       </div>
@@ -11240,6 +11289,61 @@ function goOnboarding(){
 
 let profileEditOpen = false;
 
+// 新規登録(ニックネーム未設定の初回)だけ、1項目ずつ進むウィザード形式にする
+// (オーナー指摘:「最初のプロフィール設計が1ページにそのまま置かれるのが
+// デザイン的にダサい」)。既存プロフィールの編集(編集アイコンから開く方)は
+// 今まで通り全項目を一度に出す(編集は既に知っている自分の情報を素早く
+// 直すための画面なので、毎回ウィザードを強制する必要は無いと判断)。
+const ONBOARDING_TOTAL_STEPS = 3;
+let onboardingStep = 1;
+let onboardingWizardActive = false;
+
+function startOnboardingWizard(){
+  onboardingWizardActive = true;
+  onboardingStep = 1;
+  document.getElementById('profile-edit-form').classList.add('wizard-mode');
+  renderOnboardingStep();
+}
+
+function endOnboardingWizard(){
+  onboardingWizardActive = false;
+  document.getElementById('profile-edit-form').classList.remove('wizard-mode');
+  renderOnboardingStep();
+}
+
+function renderOnboardingStep(){
+  document.querySelectorAll('.onboarding-step').forEach(el => {
+    el.classList.toggle('active', parseInt(el.dataset.step, 10) === onboardingStep);
+  });
+  document.querySelectorAll('.onboarding-progress-dot').forEach(dot => {
+    const s = parseInt(dot.dataset.step, 10);
+    dot.classList.toggle('active', s === onboardingStep);
+    dot.classList.toggle('done', s < onboardingStep);
+  });
+  document.getElementById('onboarding-progress').style.display = onboardingWizardActive ? '' : 'none';
+  document.getElementById('onboarding-back-btn').style.display = (onboardingWizardActive && onboardingStep > 1) ? '' : 'none';
+  document.getElementById('onboarding-next-btn').style.display = (onboardingWizardActive && onboardingStep < ONBOARDING_TOTAL_STEPS) ? '' : 'none';
+  document.getElementById('profile-submit-row').style.display = (!onboardingWizardActive || onboardingStep === ONBOARDING_TOTAL_STEPS) ? '' : 'none';
+}
+
+function onboardingGoNext(){
+  if(onboardingStep === 1 && !document.getElementById('p-nickname').value.trim()){
+    showToast('ニックネームを入力してください');
+    return;
+  }
+  if(onboardingStep < ONBOARDING_TOTAL_STEPS){
+    onboardingStep++;
+    renderOnboardingStep();
+  }
+}
+
+function onboardingGoBack(){
+  if(onboardingStep > 1){
+    onboardingStep--;
+    renderOnboardingStep();
+  }
+}
+
 // goProfile()はメール登録済みユーザーだけがたどり着く前提(未登録ゲストは
 // requireVerifiedUser()/goMagicLogin()で先に止められる)。ただし、登録直後は
 // まだニックネームが未設定(DBトリガーが作った空のプロフィール行のみ)の
@@ -11284,6 +11388,7 @@ function goProfile(){
     summaryEl.style.display = 'block';
     profileEditOpen = false;
     editFormEl.style.display = 'none';
+    endOnboardingWizard();
     pocketSectionEl.style.display = 'block';
     document.getElementById('logout-btn').style.display = 'block';
 
@@ -11318,6 +11423,7 @@ function goProfile(){
   } else {
     summaryEl.style.display = 'none';
     editFormEl.style.display = 'block';
+    startOnboardingWizard();
     pocketSectionEl.style.display = 'none';
     document.getElementById('logout-btn').style.display = existing ? 'block' : 'none';
   }
