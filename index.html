@@ -1194,34 +1194,6 @@
   .vote-sub{ font-size: 13px; color: var(--ink-soft); margin-top:2px; }
   .love-label-tag{ color: var(--love); font-weight:700; }
 
-  /* TMDBの評価バッジ。Wander独自の「愛度」ハート(.vote-pct、--love色)とは
-     見た目をはっきり変え、別の出どころの数字だと一目で分かるようにする
-     (オーナー:「本物のWanderのハート数はそのまま残し、TMDBの評価は横に
-     明確に分けたバッジとして表示してください」)。TMDBのロゴ色(参考程度の
-     文字色のみで、ロゴ画像は使わない)を文字ラベルに使い、中身は中立的な
-     ピル型バッジにする。*/
-  .tmdb-rating-badge{
-    display:inline-flex; align-items:center; gap:6px;
-    margin-top:8px; padding:4px 11px; border-radius:999px;
-    font-size:12.5px; font-weight:700; color: var(--ink-soft);
-    background: rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.14);
-  }
-  .tmdb-rating-badge .tmdb-badge-logo{
-    font-size:10px; font-weight:800; letter-spacing:0.4px;
-    color: #01b4e4; padding:1px 4px; border-radius:4px;
-    background: rgba(1,180,228,0.14);
-  }
-  .tmdb-rating-badge .tmdb-badge-score{ color: var(--ink); }
-  .card-tmdb-badge{
-    display:inline-flex; align-items:center; gap:4px;
-    font-size:11px; font-weight:700; color: var(--ink-soft);
-    margin-top:4px;
-  }
-  .card-tmdb-badge .tmdb-badge-logo{
-    font-size:9px; font-weight:800; color: #01b4e4;
-    padding:1px 3px; border-radius:3px; background: rgba(1,180,228,0.14);
-  }
-
   .card-tags{ display:flex; gap:6px; flex-wrap:wrap; }
   .community-tags{
     display:flex; gap:6px; flex-wrap:wrap;
@@ -2835,10 +2807,6 @@
       <div class="vote-summary">
         <span class="vote-pct" id="d-vote-pct"></span>
         <div class="vote-sub" id="d-vote-sub"></div>
-        <div class="tmdb-rating-badge" id="d-tmdb-badge" style="display:none;">
-          <span class="tmdb-badge-logo">TMDB</span>
-          <span class="tmdb-badge-score" id="d-tmdb-score"></span>
-        </div>
       </div>
       <div class="heart-single-wrap" id="heart-single-wrap">
         <button class="heart-single-btn" id="heart-single-btn" onclick="cycleLove(event)">
@@ -3578,6 +3546,9 @@
 
       <p><strong>匿名の利用傾向データについて</strong><br>
       当サイトでは、サービスの向上および統計的分析を目的として、個人を特定しない形(匿名化されたアクセスログ・検索傾向)のデータを収集・利用する場合があります。</p>
+
+      <p><strong>外部データの利用について</strong><br>
+      本サービスの作品情報・画像の一部は、The Movie Database (TMDB) のAPIを利用して取得しています。本サービスはTMDBによる承認・認定を受けたものではありません(This product uses the TMDB API but is not endorsed or certified by TMDB)。「みんなの愛度」の初期値には、まだ投票が少ない作品について参考情報としてTMDBの評価を一部反映している場合があります。</p>
 
       <p class="terms-note">これは簡易版の掲載です。詳しい内容や最新の状態については、随時見直しを行っています。</p>
     </div>
@@ -4546,8 +4517,28 @@ function burstGiftSparks(container, count){
   }
 }
 
+// TMDBの評価をハートの初期値として直接反映する(オーナー:「TMDBをそのまま
+// ハートに直接反映させていいよ。その後来た他の人の意見(ハートを押して
+// くれた)は最初にTMDBから入れた時点のものから反映させて」)。TMDBの票数を
+// そのまま信頼度として使うと、TMDB側の桁違いの票数(時に数万件)に埋もれて
+// 実際のWanderユーザーのタップが数字上ほぼ無意味になってしまうため、
+// 「仮想の票数」としてTMDB_SEED_WEIGHT件分とみなすベイズ平均(IMDbの加重
+// 評価と同じ考え方)で混ぜる。票数が増えるほど実際のハートの影響が強くなり、
+// 最終的には実際の評価に収束する。この重みは実データに基づくものではなく
+// 運用上の判断値(現在5)。値が大きいほどTMDBの初期値がしばらく強く残り、
+// 小さいほど実際のハートが早く数字に反映される。
+const TMDB_SEED_WEIGHT = 5;
+function tmdbSeedOnLoveScale(m){
+  // TMDBは0〜10、Wander内部の愛度は0〜3段階(タップ)のスケールなので揃える。
+  return m.tmdbVoteAverage != null ? (m.tmdbVoteAverage / 10) * 3 : null;
+}
+function hasLoveBasis(m){
+  return m.loveCount > 0 || tmdbSeedOnLoveScale(m) != null;
+}
 function loveAverage(m){
-  return m.loveCount === 0 ? 0 : m.loveSum / m.loveCount;
+  const seed = tmdbSeedOnLoveScale(m);
+  if(seed == null) return m.loveCount === 0 ? 0 : m.loveSum / m.loveCount;
+  return (seed * TMDB_SEED_WEIGHT + m.loveSum) / (TMDB_SEED_WEIGHT + m.loveCount);
 }
 
 // ホームの棚(気分の棚・プラットフォーム棚・今愛されている作品)が「有名な
@@ -4606,14 +4597,21 @@ function loveDisplayValue(m){
   return loveAverage(m) * (5 / 3);
 }
 
-function loveLabel(avg, count){
-  if(count === 0) return "まだ評価なし";
+// countは「評価の根拠があるか」の判定に使う。TMDBの評価を初期値として
+// 混ぜるようになったため、Wanderでのタップが0件でもTMDB由来の根拠があれば
+// 「まだ評価なし」ではなく通常のラベルを出す(hasLoveBasis参照)。
+function loveLabel(avg, hasBasis){
+  if(!hasBasis) return "まだ評価なし";
   if(avg < 1.5) return "反応少なめ";
   if(avg < 3.0) return "じわじわ人気";
   if(avg < 4.0) return "みんな大好き";
   return "殿堂入り級の愛";
 }
 
+// 「N人が愛を送っています」は実際にWanderでタップした人数だけを指す
+// (TMDBの票数で水増ししない。スコアはTMDBを初期値として混ぜるが、
+// 「人が愛を送っています」という文言は実在のタップを表すため、ここだけは
+// 常にm.loveCount=実数のまま扱う)。
 // 「0人が愛を送っています」とそのまま出すと、その作品(というよりサイト全体)が
 // 閑散として見えてしまう。空白を「まだ誰も来ていない寂しい場所」ではなく
 // 「一番乗りできる場所」として見せることで、実際の人数を偽らずに前向きな
@@ -4633,10 +4631,11 @@ function loveCountTextForCard(m){
   return m.loveCount >= 50 ? loveCountText(m) : '';
 }
 
-// 数字の「0.0」も「0人」と同じくらい寂しく見えるので、実際に1人以上の
-// データがある時だけ数値を出す(無い場合はハートマークだけ、または「-」)。
+// 数字の「0.0」も「0人」と同じくらい寂しく見えるので、評価の根拠(実際の
+// タップ、またはTMDB由来の初期値)が何かしらある時だけ数値を出す
+// (無い場合はハートマークだけ、または「-」)。
 function loveScoreText(m){
-  return m.loveCount > 0 ? loveDisplayValue(m).toFixed(1) : '-';
+  return hasLoveBasis(m) ? loveDisplayValue(m).toFixed(1) : '-';
 }
 
 const REASON_INFO = {
@@ -5496,15 +5495,12 @@ function buildCardHTML(m, opts){
       <div class="poster-thumb" style="background:${m.posterColor}">${posterImg}${initialOrTitle}${typeBadge}${removeBtn}${playBtn}</div>
       ${overlayTitle ? '' : `<div class="result-title">${m.title}</div>`}
       <div class="result-year">${m.year}</div>
-      ${m.loveCount > 0 ? `
+      ${hasLoveBasis(m) ? `
       <div class="interest-row">
         <div class="interest-bar-track"><div class="interest-bar-fill" style="width:${(avg/5)*100}%"></div></div>
         <span class="interest-pct">${HEART_ICON} ${loveScoreText(m)}</span>
       </div>
       <div class="interest-count">${loveCountTextForCard(m)}</div>
-      ` : ''}
-      ${m.tmdbVoteAverage != null && m.tmdbVoteCount ? `
-      <div class="card-tmdb-badge"><span class="tmdb-badge-logo">TMDB</span> ${m.tmdbVoteAverage.toFixed(1)}</div>
       ` : ''}
     </div>
   `;
@@ -6050,7 +6046,7 @@ function renderFeaturedBanner(){
   const FEATURED_POOL_MIN = 20;
   const catalogMode = currentCatalogMode();
   const eligibleMovies = MOVIES.filter(m => !matchesExcludedWord(m) && isInCatalogMode(m, catalogMode));
-  const lovedPool = eligibleMovies.filter(m => m.loveCount > 0)
+  const lovedPool = eligibleMovies.filter(m => hasLoveBasis(m))
     .sort((a, b) => loveAverage(b) - loveAverage(a))
     .slice(0, 30);
   let pool = lovedPool;
@@ -6157,7 +6153,7 @@ function applyFeaturedContent(){
   // 他のテンプレート同様innerHTMLで差し込んでデコードさせる。
   document.getElementById('featured-title-text').innerHTML = featured.title;
   document.getElementById('featured-love-text').innerHTML =
-    `${HEART_ICON} ${avg.toFixed(1)} ・ ${loveLabel(avg, featured.loveCount)}`;
+    `${HEART_ICON} ${avg.toFixed(1)} ・ ${loveLabel(avg, hasLoveBasis(featured))}`;
   document.getElementById('featured-card').onclick = () => goDetail(featured.id);
 
   const dotsEl = document.getElementById('featured-dots');
@@ -8039,22 +8035,7 @@ function updateLoveUI(m){
   const avg = loveDisplayValue(m);
   document.getElementById('d-vote-pct').innerHTML = HEART_ICON + ' ' + loveScoreText(m);
   document.getElementById('d-vote-sub').innerHTML =
-    `<span class="love-label-tag">${loveLabel(avg, m.loveCount)}</span>${loveCountText(m) ? ` ・ ${loveCountText(m)}` : ''}`;
-
-  // TMDBの評価は、Wander独自の愛度(上のd-vote-pct/d-vote-sub)とは完全に
-  // 別の出どころの数字なので、混同されないよう別バッジとして横に出す
-  // (オーナー:「本物のWanderのハート数はそのまま残し、TMDBの評価は横に
-  // 明確に分けたバッジとして表示してください」)。票数が無い/未取得の
-  // 作品(音楽・小説・漫画や、まだバックフィルが及んでいない行)では
-  // バッジ自体を出さない。
-  const tmdbBadge = document.getElementById('d-tmdb-badge');
-  if(m.tmdbVoteAverage != null && m.tmdbVoteCount){
-    document.getElementById('d-tmdb-score').textContent =
-      `${m.tmdbVoteAverage.toFixed(1)} ・ ${m.tmdbVoteCount.toLocaleString('ja-JP')}件の評価`;
-    tmdbBadge.style.display = 'inline-flex';
-  } else {
-    tmdbBadge.style.display = 'none';
-  }
+    `<span class="love-label-tag">${loveLabel(avg, hasLoveBasis(m))}</span>${loveCountText(m) ? ` ・ ${loveCountText(m)}` : ''}`;
 
   const myLevel = state.myLove[m.id] || 0;
   // #heart-single-btn(メインのハート)に加えて、話数カードごとのミニハート
