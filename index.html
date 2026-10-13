@@ -1683,6 +1683,15 @@
   .r-header{ display:flex; align-items:center; gap:8px; margin-bottom:6px; }
   .r-header .avatar{ width:26px; height:26px; font-size:11px; flex-shrink:0; }
   .review-card .r-name{ font-size:13.5px; font-weight:600; color:var(--plum-deep); margin-bottom:0; }
+  /* 目立たせすぎると「通報し合う場」に見えてしまうので、控えめなリンク
+     文字にする(他のmeta系ボタンと同じ考え方)。右端に寄せるだけでよいので
+     margin-leftだけで済ませ、.r-headerのflex構成自体は変えない。 */
+  .r-report-btn{
+    margin-left:auto; flex-shrink:0; background:none; border:none;
+    color:var(--ink-soft); font-size:11px; opacity:.6; cursor:pointer;
+    font-family:inherit; padding:2px 4px;
+  }
+  .r-report-btn:hover{ opacity:1; color:var(--love); }
   .review-card .r-body{ font-size:15px; line-height:1.7; color: var(--ink); }
   /* ネタバレ申告レビューの「ぼかして隠す→タップで解除」演出。本文自体は
      常にDOMにある(ぼかすだけ)ので、プレースホルダーをフェードアウトしつつ
@@ -2770,6 +2779,29 @@
         <div id="add-to-list-options"></div>
         <button class="ghost-btn" style="width:100%; margin-top:8px;" onclick="createListFromModal()">+ 新しいリストを作って追加</button>
         <div id="new-list-from-detail-form" style="margin-top:8px;"></div>
+      </div>
+    </div>
+
+    <!-- レビューの通報モーダル。レビューカードごとに毎回Turnstileを描画する
+         負担を避けるため、1個だけ共有で用意し、どのレビューを報告するかは
+         pendingReportReviewIdで覚える(openReportModal参照)。 -->
+    <div class="diagnosis-history-overlay" id="report-review-modal" style="display:none;" onclick="if(event.target===this) closeReportModal()">
+      <div class="diagnosis-history-drawer">
+        <div class="diagnosis-history-header">
+          <div class="diagnosis-history-title">レビューを報告</div>
+          <button class="diagnosis-history-close" onclick="closeReportModal()">×</button>
+        </div>
+        <div class="sub" style="margin-bottom:10px;">理由を選んでください</div>
+        <div class="tag-select" id="report-reason-select">
+          <div class="tagchip" data-reason="スパム・宣伝">スパム・宣伝</div>
+          <div class="tagchip" data-reason="誹謗中傷・嫌がらせ">誹謗中傷・嫌がらせ</div>
+          <div class="tagchip" data-reason="ネタバレ申告なし">ネタバレ申告なし</div>
+          <div class="tagchip" data-reason="作品と関係ない内容">作品と関係ない内容</div>
+          <div class="tagchip" data-reason="その他">その他</div>
+        </div>
+        <div id="report-turnstile-widget" style="margin:12px 0;"></div>
+        <div class="note" id="report-error" style="display:none; color:#e2647f; margin-bottom:8px;"></div>
+        <button class="primary-btn" style="width:100%;" id="report-submit-btn" onclick="submitReviewReport()">報告する</button>
       </div>
     </div>
 
@@ -9206,7 +9238,7 @@ async function loadMovieReviews(m){
     const userId = await currentUserId();
     const { data, error } = await supabase
       .from('movie_reviews')
-      .select('user_id, review_text, has_spoiler, created_at, profiles(user_name, avatar_color, avatar_photo_url)')
+      .select('id, user_id, review_text, has_spoiler, created_at, is_hidden, profiles(user_name, avatar_color, avatar_photo_url)')
       .eq('movie_id', m.id)
       .not('review_text', 'is', null)
       .order('created_at', { ascending: false });
@@ -9215,7 +9247,11 @@ async function loadMovieReviews(m){
     const reviews = data || [];
     if(state.currentMovieId !== m.id) return; // 別の映画に移動していたら反映しない
 
-    wanderReviewRows = reviews;
+    // 通報が一定数集まって非表示(is_hidden)になったレビューは、一覧からは
+    // 除外する(オーナー:「一定数の報告で非表示にして」)。ただし投稿者
+    // 本人が「自分の投稿」として編集・削除できる必要があるため、その判定
+    // (下のmyReview)は非表示分も含めた全件(reviews)から探す。
+    wanderReviewRows = reviews.filter(r => !r.is_hidden);
     rebuildReviewsList();
 
     const myReview = userId ? reviews.find(r => r.user_id === userId) : null;
@@ -9270,6 +9306,7 @@ function renderVisibleReviews(){
       <div class="r-header">
         <div class="avatar" id="r-avatar-${start + i}" style="background:${hasPhoto ? 'transparent' : avatarColor};">${hasPhoto ? '' : escapeHtml(name.charAt(0))}</div>
         <div class="r-name">${escapeHtml(name)}</div>
+        ${r.id != null ? `<button type="button" class="r-report-btn" onclick="event.stopPropagation(); openReportModal(${r.id})" title="このレビューを報告する">⚑ 報告</button>` : ''}
       </div>
       <div class="r-body-wrap">
         <div class="r-body${isSpoiler ? ' spoiler-hidden' : ''}" id="${bodyId}" data-full="${escapeHtml(text)}" data-preview="${escapeHtml(text.slice(0, REVIEW_PREVIEW_LEN))}" data-expanded="0">${escapeHtml(isLong ? text.slice(0, REVIEW_PREVIEW_LEN) + '…' : text)}</div>
@@ -9336,6 +9373,105 @@ function goToReviewsPage(delta){
   reviewsPage += delta;
   renderVisibleReviews();
   document.getElementById('d-reviews').scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+// レビュー通報モーダル。カードごとにTurnstileを個別に用意するとウィジェットが
+// 何個も並んでしまうため、共有の1個だけを使い回し、どのレビューを報告するかは
+// pendingReportReviewIdで覚える。
+let pendingReportReviewId = null;
+let reportReason = "スパム・宣伝";
+let reportTurnstileWidgetId = null;
+let reportTurnstileToken = null;
+
+function openReportModal(reviewId){
+  pendingReportReviewId = reviewId;
+  reportReason = "スパム・宣伝";
+  document.querySelectorAll('#report-reason-select .tagchip').forEach(chip => {
+    chip.classList.toggle('active', chip.dataset.reason === reportReason);
+  });
+  document.getElementById('report-error').style.display = 'none';
+  document.getElementById('report-review-modal').style.display = 'flex';
+  renderReportTurnstile();
+}
+
+function closeReportModal(){
+  document.getElementById('report-review-modal').style.display = 'none';
+  pendingReportReviewId = null;
+}
+
+function renderReportTurnstile(retriesLeft){
+  if(retriesLeft === undefined) retriesLeft = 25;
+  reportTurnstileToken = null;
+
+  if(typeof turnstile === 'undefined'){
+    if(retriesLeft <= 0){
+      console.error('Turnstileの読み込みに失敗しました');
+      return;
+    }
+    setTimeout(() => renderReportTurnstile(retriesLeft - 1), 200);
+    return;
+  }
+
+  const container = document.getElementById('report-turnstile-widget');
+  if(!container) return;
+
+  if(reportTurnstileWidgetId !== null){
+    turnstile.reset(reportTurnstileWidgetId);
+    return;
+  }
+
+  reportTurnstileWidgetId = turnstile.render(container, {
+    sitekey: TURNSTILE_SITE_KEY,
+    callback: (token) => { reportTurnstileToken = token; },
+    'expired-callback': () => { reportTurnstileToken = null; },
+    'error-callback': () => { reportTurnstileToken = null; }
+  });
+}
+
+const reportReasonEl = document.getElementById('report-reason-select');
+if(reportReasonEl){
+  reportReasonEl.querySelectorAll('.tagchip').forEach(chip => {
+    chip.addEventListener('click', () => {
+      reportReason = chip.dataset.reason;
+      reportReasonEl.querySelectorAll('.tagchip').forEach(c => c.classList.remove('active'));
+      chip.classList.add('active');
+    });
+  });
+}
+
+async function submitReviewReport(){
+  const errorNote = document.getElementById('report-error');
+  errorNote.style.display = 'none';
+
+  if(pendingReportReviewId == null) return;
+  if(!reportTurnstileToken){ showToast('CAPTCHA認証を完了してください'); return; }
+
+  const btn = document.getElementById('report-submit-btn');
+  btn.disabled = true;
+  const originalLabel = btn.textContent;
+  btn.textContent = '送信中…';
+
+  try{
+    const { data, error } = await supabase.functions.invoke('report-review', {
+      body: {
+        review_id: pendingReportReviewId,
+        reason: reportReason,
+        captcha_token: reportTurnstileToken
+      }
+    });
+    if(error) throw error;
+    if(data && data.error) throw new Error(data.error);
+
+    showToast('報告しました。ありがとうございます');
+    closeReportModal();
+  }catch(err){
+    errorNote.textContent = err.message || '報告に失敗しました。もう一度お試しください';
+    errorNote.style.display = 'block';
+    renderReportTurnstile();
+  }finally{
+    btn.disabled = false;
+    btn.textContent = originalLabel;
+  }
 }
 
 function updateReviewCount(){
