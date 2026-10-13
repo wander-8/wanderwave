@@ -2864,15 +2864,30 @@
       </div>
     </div>
 
-    <div class="section-label-row">
-      <div class="section-label">レビュー</div>
-      <span class="review-count-badge" id="d-reviews-count"></span>
-    </div>
-    <div id="d-reviews"></div>
-    <div class="results-pagination" id="reviews-pagination" style="display:none;">
-      <button class="ghost-btn results-pagination-btn" id="reviews-page-prev" onclick="goToReviewsPage(-1)">‹ 前へ</button>
-      <span class="results-pagination-status" id="reviews-pagination-status"></span>
-      <button class="ghost-btn results-pagination-btn" id="reviews-page-next" onclick="goToReviewsPage(1)">次へ ›</button>
+    <!-- Wander本体のレビューとTMDB由来のレビューを統一して1本の一覧に
+         表示するようになった分、件数が多い作品だと縦に際限なく伸びてしまう
+         (オーナー指摘:「レビュー長くなりすぎなのでサッと閉じられる仕様に
+         してほしい」)。話数一覧・収録曲一覧と同じ折りたたみ(普段は閉じておき
+         タップで開く・内部スクロール+sticky閉じるボタンでどこまで読んでも
+         ワンタップで戻れる)にする。 -->
+    <div id="reviews-wrap">
+      <button class="filter-disclosure-btn" id="reviews-toggle-btn" onclick="toggleReviewsSection()">
+        <span>レビュー <span class="review-count-badge" id="d-reviews-count"></span></span>
+        <span class="filter-disclosure-chev" id="reviews-chev">⌄</span>
+      </button>
+      <div class="filter-disclosure-body episodes-disclosure-body" id="reviews-body">
+        <div class="filter-disclosure-inner">
+          <div class="episodes-sticky-bar">
+            <button class="episodes-close-btn" onclick="toggleReviewsSection()">▲ 閉じる</button>
+          </div>
+          <div id="d-reviews"></div>
+          <div class="results-pagination" id="reviews-pagination" style="display:none;">
+            <button class="ghost-btn results-pagination-btn" id="reviews-page-prev" onclick="goToReviewsPage(-1)">‹ 前へ</button>
+            <span class="results-pagination-status" id="reviews-pagination-status"></span>
+            <button class="ghost-btn results-pagination-btn" id="reviews-page-next" onclick="goToReviewsPage(1)">次へ ›</button>
+          </div>
+        </div>
+      </div>
     </div>
 
     <div class="post-panel">
@@ -8166,6 +8181,23 @@ async function cycleLove(evt){
   }
 }
 
+// レビュー欄(Wander本体+TMDB統合後)。普段は折りたたんで隠し、タップで
+// 展開する。件数が多い作品では箱の中が長くなるため、話数一覧と同じく
+// 内部スクロール+sticky閉じるボタン(.episodes-disclosure-body/
+// .episodes-sticky-bar/.episodes-close-btnを流用)で、どれだけ読んでも
+// ワンタップで閉じられるようにする。
+let reviewsOpen = false;
+function toggleReviewsSection(){
+  reviewsOpen = !reviewsOpen;
+  document.getElementById('reviews-toggle-btn').classList.toggle('open', reviewsOpen);
+  document.getElementById('reviews-body').classList.toggle('open', reviewsOpen);
+}
+function resetReviewsUI(){
+  reviewsOpen = false;
+  document.getElementById('reviews-toggle-btn').classList.remove('open');
+  document.getElementById('reviews-body').classList.remove('open');
+}
+
 // TVアニメの「話数を見る」欄。普段は折りたたんで隠し、タップで展開する。
 // シーズン一覧はtmdb-tv-episodes関数(movie_idだけ渡す呼び出し)で取得し、
 // シーズンを選ぶたびにそのシーズンの話一覧を取りに行く(取得済みシーズンは
@@ -9038,6 +9070,7 @@ async function goDetail(id){
   resetTrailerUI(m);
   resetEpisodesUI(m);
   resetTracksUI(m);
+  resetReviewsUI();
   autoPlayAlbumPreview(m);
 
   tagVoteOpen = false;
