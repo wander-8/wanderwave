@@ -722,32 +722,6 @@
     font-size: 13px; color: var(--ink-soft); flex: 1; text-align:center;
   }
 
-  /* TMDBの海外レビュー(日本語訳)。Wander本体のレビュー(上のd-reviews)とは
-     出どころが違う付加情報なので、彩度を抑えて主役の邪魔をしないトーンにする。
-     自動で流れるマーキーだと自分のペースで読めないので、静かに縦に並べ、
-     「もっと見る」で自分のタイミングで開いてもらう形にする。 */
-  #tmdb-reviews-section{ margin-top: 22px; }
-  .tmdb-reviews-label{
-    font-size: 11px; color: var(--ink-soft); font-weight:600;
-    letter-spacing:.03em; margin-bottom:8px; opacity:.75;
-  }
-  .tmdb-review-list{ display:flex; flex-direction:column; gap:10px; }
-  .tmdb-review-card{
-    border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px;
-    background: rgba(255,255,255,0.02);
-  }
-  .tmdb-review-head{
-    display:flex; justify-content:space-between; align-items:center; margin-bottom:6px; gap:8px;
-  }
-  .tmdb-review-author{
-    font-size:11.5px; color:var(--ink-soft); font-weight:600;
-    overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
-  }
-  .tmdb-review-rating{ font-size:11px; color:var(--ink-soft); opacity:.7; flex-shrink:0; }
-  .tmdb-review-body{
-    font-size:12px; line-height:1.6; color: var(--ink-soft);
-    white-space: pre-line;
-  }
   .results{
     margin-top: 22px;
     display:flex; gap: 16px;
@@ -2901,13 +2875,6 @@
       <button class="ghost-btn results-pagination-btn" id="reviews-page-next" onclick="goToReviewsPage(1)">次へ ›</button>
     </div>
 
-    <!-- Wander本体のレビューとは別物とわかるよう、控えめなトーンで分けて表示する -->
-    <div id="tmdb-reviews-section" style="display:none;">
-      <div class="tmdb-reviews-label" id="tmdb-reviews-label">TMDBの声(海外レビュー・日本語訳)</div>
-      <div class="tmdb-review-list" id="tmdb-review-list"></div>
-      <button class="link-btn" id="tmdb-review-more-btn" style="display:none;" onclick="toggleTmdbReviewsExpand()"></button>
-    </div>
-
     <div class="post-panel">
       <button class="post-panel-title post-panel-toggle" onclick="togglePostPanel()">
         投稿する
@@ -3533,6 +3500,9 @@
 
       <p><strong>第6条(規約の変更)</strong><br>
       運営者は、必要と判断した場合、ユーザーへの通知なく本規約を変更することがあります。</p>
+
+      <p><strong>第7条(外部サービスのデータ利用)</strong><br>
+      本サービスはThe Movie Database (TMDB) のAPIを利用しています。本サービスはTMDBによる承認・認定を受けたものではありません(This product uses the TMDB API but is not endorsed or certified by TMDB)。作品情報・画像・レビューの一部はTMDBから取得したものを含み、「みんなの愛度」の数値やレビュー一覧には、Wanderユーザーによる投稿とTMDB由来の評価・レビューを区別なく反映している場合があります。</p>
 
       <h3>プライバシーポリシー</h3>
       <p><strong>収集する情報</strong><br>
@@ -9110,16 +9080,31 @@ async function goDetail(id){
 // 作品と関係のない政治的な主張などを含むレビューの除外も関数側で済ませて
 // から返ってくる。TMDb映画IDをまだ知らない作品は関数側が検索して
 // movies.tmdb_idに書き戻すので、2回目以降のこの作品の表示では検索なしですぐ返る)。
-// 自動で流れるマーキーだと自分のペースで読めないため、静かに縦へ並べ、
-// 最初の1件だけ見せて残りは「もっと見る」で自分のタイミングで開けるようにする。
-let tmdbReviews = [];
-const TMDB_REVIEW_PREVIEW_COUNT = 1;
-let tmdbReviewsExpanded = false;
+// 以前は「TMDBの声」として別枠・別の見た目で分けていたが、Wander本体の
+// レビューと見分けが付かない1本の一覧に統一する(オーナー:「TMDBのレビューも
+// 伏せて今書かれてるレビューと統一したい。できればwanderのレビューを
+// 一番上に出して欲しい」)。rebuildReviewsList()でWander本体のレビュー
+// (wanderReviewRows)の後ろにTMDB分(tmdbReviewRows)を連結し、既存の
+// renderVisibleReviews()(カードの見た目・文字数で畳む・ページングの
+// 仕組み)にそのまま渡すことで、同じ.review-cardとして描画させる。
+let tmdbReviewRows = [];
+
+// Wander本体のレビュー行(movie_reviews由来)と同じ形に変換し、
+// renderVisibleReviewsがどちらの出どころかを気にせず同じ見た目で
+// 描画できるようにする(評点バッジ等のTMDB固有の表示は、統一のため
+// あえて持たせない)。
+function tmdbReviewToRowShape(r){
+  return {
+    user_id: null,
+    review_text: r.content,
+    has_spoiler: false,
+    created_at: r.created_at || new Date(0).toISOString(),
+    profiles: { user_name: r.author || 'ゲスト', avatar_color: null, avatar_photo_url: null },
+  };
+}
 
 async function loadTmdbReviews(movieId){
-  const section = document.getElementById('tmdb-reviews-section');
-  section.style.display = 'none';
-  tmdbReviews = [];
+  tmdbReviewRows = [];
   try{
     const { data, error } = await supabase.functions.invoke('tmdb-movie-reviews', {
       body: { movie_id: movieId }
@@ -9129,69 +9114,10 @@ async function loadTmdbReviews(movieId){
     if(state.currentMovieId !== movieId) return;
     if(error || !data || !data.reviews || !data.reviews.length) return;
 
-    tmdbReviews = data.reviews;
-    tmdbReviewsExpanded = false;
-    document.getElementById('tmdb-reviews-label').textContent = `TMDBの声(海外レビュー・日本語訳)(${tmdbReviews.length}件)`;
-    renderTmdbReviewList();
-    section.style.display = 'block';
+    tmdbReviewRows = data.reviews.map(tmdbReviewToRowShape);
+    rebuildReviewsList();
   }catch(err){
     console.error('TMDBレビューの取得に失敗しました', err);
-  }
-}
-
-// 1件ごとの本文も、長いレビューは200字で畳んでおき「続きを読む」で
-// タップしたときだけ全文を開く(Wander本体のレビュー一覧と同じ考え方)。
-const TMDB_REVIEW_BODY_PREVIEW_LEN = 200;
-
-function renderTmdbReviewList(){
-  const listEl = document.getElementById('tmdb-review-list');
-  const visible = tmdbReviewsExpanded ? tmdbReviews : tmdbReviews.slice(0, TMDB_REVIEW_PREVIEW_COUNT);
-  listEl.innerHTML = visible.map((r, i) => {
-    const text = r.content;
-    const isLong = text.length > TMDB_REVIEW_BODY_PREVIEW_LEN;
-    const bodyId = `tmdb-r-body-${i}`;
-    return `
-    <div class="tmdb-review-card">
-      <div class="tmdb-review-head">
-        <span class="tmdb-review-author">${escapeHtml(r.author)}</span>
-        <span class="tmdb-review-rating">${r.rating ? `★ ${escapeHtml(String(r.rating))}/10` : ''}</span>
-      </div>
-      <div class="tmdb-review-body" id="${bodyId}" data-full="${escapeHtml(text)}" data-preview="${escapeHtml(text.slice(0, TMDB_REVIEW_BODY_PREVIEW_LEN))}" data-expanded="0">${escapeHtml(isLong ? text.slice(0, TMDB_REVIEW_BODY_PREVIEW_LEN) + '…' : text)}</div>
-      ${isLong ? `<button class="link-btn" onclick="toggleTmdbReviewBodyExpand('${bodyId}')" id="${bodyId}-btn">続きを読む</button>` : ''}
-    </div>
-  `;
-  }).join('');
-
-  const moreBtn = document.getElementById('tmdb-review-more-btn');
-  const remaining = tmdbReviews.length - visible.length;
-  if(remaining > 0){
-    moreBtn.style.display = 'inline-block';
-    moreBtn.textContent = `もっと見る(あと${remaining}件)`;
-  } else if(tmdbReviewsExpanded && tmdbReviews.length > TMDB_REVIEW_PREVIEW_COUNT){
-    moreBtn.style.display = 'inline-block';
-    moreBtn.textContent = '閉じる';
-  } else {
-    moreBtn.style.display = 'none';
-  }
-}
-
-function toggleTmdbReviewsExpand(){
-  tmdbReviewsExpanded = !tmdbReviewsExpanded;
-  renderTmdbReviewList();
-}
-
-function toggleTmdbReviewBodyExpand(bodyId){
-  const el = document.getElementById(bodyId);
-  const btn = document.getElementById(bodyId + '-btn');
-  const expanded = el.dataset.expanded === '1';
-  if(expanded){
-    el.innerHTML = escapeHtml(el.dataset.preview) + '…';
-    btn.textContent = '続きを読む';
-    el.dataset.expanded = '0';
-  } else {
-    el.innerHTML = escapeHtml(el.dataset.full);
-    btn.textContent = '閉じる';
-    el.dataset.expanded = '1';
   }
 }
 
@@ -9221,6 +9147,23 @@ async function loadMovieTagVotes(m){
 const REVIEWS_PAGE_SIZE = 10;
 let reviewsList = [];
 let reviewsPage = 0;
+// Wander本体のレビュー(movie_reviews由来)だけを保持する配列。TMDB分
+// (tmdbReviewRows、上のloadTmdbReviews参照)と合わせてreviewsListを
+// 組み立てる土台で、「自分の投稿を探す」判定にもこちらだけを使う
+// (TMDBの外部レビューを誤って自分の投稿として編集扱いしないため)。
+let wanderReviewRows = [];
+
+// Wander本体のレビューを常に先頭に、TMDB分をその後ろに連結する(オーナー:
+// 「wanderのレビューを一番上に出して欲しい」)。見た目を完全に統一した
+// ことで元の出どころを示す手がかりが無くなった分、せめて並び順だけは
+// Wander発のレビューが必ず最初に来るようにする(日付で混ぜて並べ直すと、
+// 古いTMDBレビューが新しいWanderレビューより上に来てしまいうるため、
+// 単純な連結であって日付ソートの再マージはしない)。
+function rebuildReviewsList(){
+  reviewsList = [...wanderReviewRows, ...tmdbReviewRows];
+  reviewsPage = 0;
+  renderVisibleReviews();
+}
 
 async function loadMovieReviews(m){
   const reviewsEl = document.getElementById('d-reviews');
@@ -9240,9 +9183,8 @@ async function loadMovieReviews(m){
     const reviews = data || [];
     if(state.currentMovieId !== m.id) return; // 別の映画に移動していたら反映しない
 
-    reviewsList = reviews;
-    reviewsPage = 0;
-    renderVisibleReviews();
+    wanderReviewRows = reviews;
+    rebuildReviewsList();
 
     const myReview = userId ? reviews.find(r => r.user_id === userId) : null;
     const textBox = document.getElementById('review-text');
