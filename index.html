@@ -1545,6 +1545,12 @@
     font-size: 13px; color: var(--ink); font-weight:600; margin-bottom: 10px;
   }
   .risk-vote-label span{ font-weight:700; }
+  /* オーナー指摘:「年齢カーソルの年齢の文字サイズ他の文字より大きく少し
+     目立たせてほしい」。表現度側(#intensity-live-label)は対象外なので、
+     共有クラスのrisk-vote-label spanではなくID指定で年齢の数字だけ拡大する。 */
+  #p-age-live-label{
+    font-size: 19px; font-weight: 700; color: var(--terracotta);
+  }
   .risk-slider{
     width: 100%;
     height: 20px;
