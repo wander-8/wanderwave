@@ -7762,21 +7762,13 @@ function randomThanks(){
   return THANKS_MESSAGES[Math.floor(Math.random() * THANKS_MESSAGES.length)];
 }
 
-const MIN_RELIABLE_VOTES = 5;
-
 function renderIntensityGauge(m){
   const root = document.getElementById('expr-gauges');
   const avg = intensityAverage(m);
   const pct = reasonPercentages(m);
-  const isLowConfidence = m.intensityCount > 0 && m.intensityCount < MIN_RELIABLE_VOTES;
   const showBreakdown = m.intensityCount > 0 || m.expressionEstimated;
 
   root.innerHTML = `
-    ${isLowConfidence ? `
-      <div class="low-confidence-warning">
-        評価がまだ${m.intensityCount}人分しかありません。1人の投票の影響が大きいため、参考程度にしてください。
-      </div>
-    ` : ''}
     ${m.expressionEstimated ? `
       <div class="low-confidence-warning">
         これは公式レーティング等をもとにしたAIによる推定値です。投票が集まると更新されます。
