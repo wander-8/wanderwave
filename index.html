@@ -2153,9 +2153,17 @@
   .pocket-diagnosis-note{
     font-size: 12px; color: var(--ink-soft); margin-top: 6px;
   }
+  /* オーナー指摘:「十作品分は一列にまとめて欲しい」。折り返して何段にも
+     なっていたのを、.resultsと同じ横スクロールの1列に変更する。 */
   .diagnosis-result-movies{
-    display:flex; gap:8px; margin-top:12px; flex-wrap:wrap;
+    display:flex; gap:8px; margin-top:12px;
+    flex-wrap: nowrap; overflow-x: auto;
+    padding: 2px 2px 10px;
+    scroll-snap-type: x proximity;
+    -webkit-overflow-scrolling: touch;
   }
+  .diagnosis-result-movies::-webkit-scrollbar{ height: 5px; }
+  .diagnosis-result-movies::-webkit-scrollbar-thumb{ background: var(--line); border-radius: 3px; }
   /* オーナー仕様:「入れた作品のポスター(ラベルは切らない)」。以前は
      56px幅・2行クランプで、タイトルが短い位置で「ミス・ペレグリンと…」
      のように切れてしまっていた。幅を広げて行クランプも増やし、実用上
@@ -2164,6 +2172,7 @@
      クランプのまま変更しない)。 */
   .diagnosis-result-movies .poster-thumb{
     width: 84px; height: 126px; border-radius: 8px;
+    flex-shrink: 0;
   }
   .diagnosis-result-movies .poster-thumb-title{
     padding: 26px 5px 6px;
@@ -12102,12 +12111,22 @@ function topTagFromWeightedMovies(movies){
   return sorted[0];
 }
 
+function secondTagFromMovies(movies, excludeTag){
+  const counts = {};
+  movies.forEach(m => m.tags.forEach(t => { if(t !== excludeTag) counts[t] = (counts[t] || 0) + 1; }));
+  const sorted = Object.keys(counts).sort((a, b) => counts[b] - counts[a]);
+  return sorted[0];
+}
+
 // 月の節目(3/5/10)で呼ぶ、新しい診断結果の生成。事実ベース・判断なし・
 // 専門用語なしの2段構成(今月の傾向/いつもの傾向)にする(オーナー仕様の
-// 「結果の構成」セクション)。
+// 「結果の構成」セクション)。オーナー指摘:「診断結果の方が長い方がいい」
+// を受けて、各段を1行の要約だけでなく、実際に選んだ作品名や累計件数などの
+// 具体的な事実を添えて2〜3行ずつに増やしている。
 function generateMonthlyDiagnosis(monthMovies, allPocketMovies, milestone){
   const monthTopTag = topTagFromMovies(monthMovies) || "楽しい";
   const usualTopTag = topTagFromWeightedMovies(allPocketMovies) || monthTopTag;
+  const monthSecondTag = secondTagFromMovies(monthMovies, monthTopTag);
 
   const themeTitle = pickThemeName(monthTopTag);
   const name = generateDiagnosisName(themeTitle);
@@ -12116,12 +12135,19 @@ function generateMonthlyDiagnosis(monthMovies, allPocketMovies, milestone){
   const monthPhrase = TAG_FACT_PHRASE[monthTopTag] || "気になる作品";
   const usualPhrase = TAG_FACT_PHRASE[usualTopTag] || monthPhrase;
 
-  const monthLine = `今月は、${monthPhrase}を多く入れていました。`;
-  const usualLine = usualTopTag === monthTopTag
+  const monthTitles = monthMovies.slice(0, 3).map(m => `「${unescapeHtml(m.title)}」`).join('・');
+  const monthLine1 = `今月は、${monthPhrase}を多く入れていました。`;
+  const monthLine2 = monthTitles ? `${monthTitles}などを選んでいます。` : '';
+  const monthLine3 = (monthSecondTag && TAG_FACT_PHRASE[monthSecondTag])
+    ? `${TAG_FACT_PHRASE[monthSecondTag]}も交ざっていました。`
+    : '';
+
+  const usualLine1 = usualTopTag === monthTopTag
     ? `いつもも同じように、${usualPhrase}を好んで選んでいる傾向があります。`
     : `いつもは、${usualPhrase}を好んで選んでいる傾向があります。`;
+  const usualLine2 = `これまでにポケットへ入れた作品は、合わせて${allPocketMovies.length}件になりました。`;
 
-  const body = [monthLine, usualLine].join('\n');
+  const body = [monthLine1, monthLine2, monthLine3, usualLine1, usualLine2].filter(Boolean).join('\n');
   const pickedIds = allPocketMovies.map(m => m.id);
 
   return {
@@ -13263,14 +13289,17 @@ function renderPocketProgress(){
   const todayInstant = jstDateToUtc(now.year, now.month, now.day);
   const daysLeft = Math.max(1, Math.round((end - todayInstant) / 86400000));
 
-  let html = '';
+  // オーナー指摘:完成後は「今月のポケットが完成しました」の1行だけでいい
+  // (「あと30日です」「今週は11件入りました」と3行重ねて出す必要は無い)。
   if(hasMilestoneRecordForMonth(monthKey, 10)){
-    html += `<div class="pocket-progress-line pocket-progress-done">今月のポケットが完成しました</div>`;
-  } else {
-    const next = POCKET_MILESTONES.find(n => n > monthCount);
-    if(next != null){
-      html += `<div class="pocket-progress-line">次の節目まで、あと${next - monthCount}つ</div>`;
-    }
+    el.innerHTML = `<div class="pocket-progress-line pocket-progress-done">今月のポケットが完成しました</div>`;
+    return;
+  }
+
+  let html = '';
+  const next = POCKET_MILESTONES.find(n => n > monthCount);
+  if(next != null){
+    html += `<div class="pocket-progress-line">次の節目まで、あと${next - monthCount}つ</div>`;
   }
   html += `<div class="pocket-progress-sub">今月はあと${daysLeft}日です</div>`;
   if(weekCount > 0){
