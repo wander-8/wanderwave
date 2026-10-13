@@ -286,6 +286,61 @@ function trimToSentenceBoundaryJa(text: string, maxLen: number): string {
   return lastPunct > maxLen * 0.5 ? cut.slice(0, lastPunct + 1) : cut;
 }
 
+// 既存の漫画行のうち、取り込み時点でitemCaptionが空だった(=synopsisが
+// 無い)ものを、タイトルで楽天を再検索して埋め直す。シリーズ代表として
+// 保存済みのtitleは既にstripVolumeSuffix済みの「素のシリーズ名」なので、
+// 再検索で返ってきた各巻の候補もstripVolumeSuffixしてから正規化比較する
+// (そうしないと「ONE PIECE」を検索して「ONE PIECE 105」しか一致候補が
+// 無い場合に一致判定できない)。
+// google-books-crosscheckのrecoverIsbnと同じ理由で、一時的な通信障害
+// (rakutenFetchがエラーオブジェクトを返す)の場合だけはsynopsis_checked_at
+// を立てず次回に回す。「本当に見つからなかった/あらすじが空だった」場合も
+// 含め、それ以外は必ずchecked_atを立てて自己完結型バックフィルの窓を進める
+// (立てないと同じ行をoffset=0で永遠に再試行し続けるバグになる。ISBN
+// 回復パイプラインで実際に踏んだバグと同じクラス)。
+async function recoverMangaSynopsis(supabase: any, offset: number, limit: number, write: boolean) {
+  const { data, error } = await supabase
+    .from("movies")
+    .select("id, title")
+    .eq("media_type", "manga")
+    .or("synopsis.is.null,synopsis.eq.")
+    .is("synopsis_checked_at", null)
+    .order("id", { ascending: true })
+    .range(offset, offset + limit - 1);
+  if (error) throw error;
+  const todo = data || [];
+
+  const results = [];
+  const CONCURRENCY = 3;
+  for (let i = 0; i < todo.length; i += CONCURRENCY) {
+    const chunk = todo.slice(i, i + CONCURRENCY);
+    const chunkResults = await Promise.all(
+      chunk.map(async (m: any) => {
+        const data = await rakutenFetch({ title: m.title, hits: "5" });
+        if (data === null || data?.error) {
+          return { movie_id: m.id, title: m.title, found: false, transientError: true };
+        }
+        const items = (data?.Items || []).map((w: any) => w.Item);
+        const targetTitle = normalizeTitle(m.title);
+        const match =
+          items.find((it: any) => normalizeTitle(stripVolumeSuffix(it.title)) === targetTitle) ||
+          items.find((it: any) => normalizeTitle(it.title) === targetTitle);
+        const caption = match?.itemCaption ? String(match.itemCaption).trim() : "";
+        const synopsis = caption ? trimToSentenceBoundaryJa(caption, SYNOPSIS_MAX_LEN) : null;
+        if (write) {
+          const update: Record<string, unknown> = { synopsis_checked_at: new Date().toISOString() };
+          if (synopsis) update.synopsis = synopsis;
+          await supabase.from("movies").update(update).eq("id", m.id);
+        }
+        return { movie_id: m.id, title: m.title, found: !!synopsis, synopsis };
+      }),
+    );
+    results.push(...chunkResults);
+    await sleep(300);
+  }
+  return results;
+}
+
 Deno.serve(async (req: Request) => {
   try {
     const {
@@ -298,9 +353,19 @@ Deno.serve(async (req: Request) => {
       // オーナー要望)ため、新規候補が見つかった順に先頭N件だけを挿入する。
       // nullなら従来通り無制限。
       limit = null,
+      target = "discover",
+      offset = 0,
+      write = false,
     } = await req.json().catch(() => ({}));
 
     const supabase = createClient(SUPABASE_URL, SERVICE_ROLE);
+
+    if (target === "recover_synopsis") {
+      const results = await recoverMangaSynopsis(supabase, offset, limit ?? 30, write);
+      return new Response(JSON.stringify({ offset, limit, write, processed: results.length, results }), {
+        headers: { "Content-Type": "application/json" },
+      });
+    }
 
     const existingRows = await selectAllRows(supabase, "movies", "title, release_year");
     // 既存タイトルは、以前このstripVolumeSuffix修正が入る前に「（第9巻）」の
