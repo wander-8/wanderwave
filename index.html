@@ -8872,8 +8872,15 @@ function updateCatalogModeToggleUI(){
       if(Math.abs(dx) < 12 || Math.abs(dx) < Math.abs(dy) * 1.5) return;
       dragging = true;
     }
-    // 指にそのまま追従させつつ、動かしすぎても暴れないよう軽く頭打ちにする。
-    const damped = Math.sign(dx) * Math.min(Math.abs(dx) * 0.6, 120);
+    // 指にそのまま追従させる。以前は0.6倍+120px頭打ちと控えめすぎて、
+    // 普通の長さのスワイプ(指の移動量200px前後)でも後半は指を動かして
+    // いるのに画面側が完全に止まって見える「引っかかる」感触になっていた
+    // (オーナー指摘:「項目を左右に移動する時のモーションが自然に流れる
+    // ように」)。ほぼ1:1に近い追従にしつつ、画面幅に応じた上限だけ設けて
+    // 行き過ぎを防ぐ(固定120pxだと画面の広いiPad等では尚更早く頭打ちに
+    // なるため、画面幅基準にする)。
+    const dragCap = Math.min(window.innerWidth * 0.45, 200);
+    const damped = Math.sign(dx) * Math.min(Math.abs(dx) * 0.9, dragCap);
     homeView.style.transform = `translateX(${damped}px)`;
     homeView.style.opacity = String(1 - Math.min(Math.abs(damped) / 300, 0.3));
   }, { passive: true });
