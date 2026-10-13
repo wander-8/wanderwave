@@ -61,12 +61,24 @@ async function rakutenFetchByTitle(title: string): Promise<any> {
 // タイトルで楽天を再検索して取り戻す。新規ソース(Google Books/NDL)との
 // 突き合わせキーがISBNである以上、ここを埋めないと既存カタログの大半は
 // クロスチェックの対象にすらならない。
+//
+// 過去のバグ: 楽天タイトル検索で一致しなかった行には何も書き込んでいな
+// かったため、isbn IS NULLのままいつまでもその行がoffset=0の「先頭
+// limit件」に居座り続け、2分おきのcronが同じ数十件を何度も再試行する
+// だけでその先の行に一切進めなくなっていた(実データで確認: 同じ
+// movie_id群がoffset=0への2回の呼び出しで完全に一致して返ってきた)。
+// 他のbackfill(tmdb-vote-backfill等)と同じ「試した行は成否に関わらず
+// checked_atを立てて窓を進める」パターンに揃える。一時的なネットワーク
+// 障害(rakutenFetchByTitleがnullを返す = リトライし尽くして失敗)の
+// 場合だけはchecked_atを立てず次回に回す(「本当に見つからなかった」と
+// 混同すると二度と再検索されなくなるため)。
 async function recoverIsbn(supabase: any, offset: number, limit: number, write: boolean) {
   const { data, error } = await supabase
     .from("movies")
     .select("id, title, amazon_url")
     .eq("media_type", "novel")
     .is("isbn", null)
+    .is("isbn_recovery_checked_at", null)
     .order("id", { ascending: true })
     .range(offset, offset + limit - 1);
   if (error) throw error;
@@ -79,19 +91,28 @@ async function recoverIsbn(supabase: any, offset: number, limit: number, write: 
     const chunkResults = await Promise.all(
       chunk.map(async (m: any) => {
         const data = await rakutenFetchByTitle(m.title);
+        if (data === null) {
+          // リトライし尽くしても応答が取れなかった(一時的な障害)。
+          // 「見つからなかった」と混同しないよう、checked_atを立てずに
+          // 次回のcron実行に回す。
+          return { movie_id: m.id, title: m.title, isbn: null, matched: false, transientError: true };
+        }
         const items = (data?.Items || []).map((w: any) => w.Item);
         // タイトル完全一致(正規化後)を優先。無ければ最有力候補(先頭)を使う。
         const exact = items.find((it: any) => normalizeTitle(it.title) === normalizeTitle(m.title));
         const chosen = exact || items[0];
         const isbn = chosen && isRealIsbn(chosen.isbn) ? chosen.isbn : null;
-        if (isbn && write) {
-          // 購入先リンク(オーナー方針:「書籍はAmazonや各種元の出版社の
-          // 公式サイトを設置する」)。ISBNが分かった時点で一緒に埋める
-          // (追加のAPI呼び出し不要な単純な導出のため)。official_url
-          // (出版社の本当の公式サイト)とは別の列に入れる(オーナー指摘:
-          // 「公式サイト、出版社のものにしてほしい。Amazonとは切り離して」)。
-          const update: Record<string, unknown> = { isbn };
-          if (!m.amazon_url) update.amazon_url = `https://www.amazon.co.jp/s?k=${isbn}&i=stripbooks`;
+        if (write) {
+          const update: Record<string, unknown> = { isbn_recovery_checked_at: new Date().toISOString() };
+          if (isbn) {
+            update.isbn = isbn;
+            // 購入先リンク(オーナー方針:「書籍はAmazonや各種元の出版社の
+            // 公式サイトを設置する」)。ISBNが分かった時点で一緒に埋める
+            // (追加のAPI呼び出し不要な単純な導出のため)。official_url
+            // (出版社の本当の公式サイト)とは別の列に入れる(オーナー指摘:
+            // 「公式サイト、出版社のものにしてほしい。Amazonとは切り離して」)。
+            if (!m.amazon_url) update.amazon_url = `https://www.amazon.co.jp/s?k=${isbn}&i=stripbooks`;
+          }
           await supabase.from("movies").update(update).eq("id", m.id);
         }
         return { movie_id: m.id, title: m.title, isbn, matched: !!exact };
