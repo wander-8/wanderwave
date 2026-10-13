@@ -1579,7 +1579,25 @@
   }
   /* 新規登録の年齢入力用。表現度(risk-slider)は刺激の強さを4段階の色で
      示す専用の見た目だが、年齢に「危険度」のような意味合いは無いので、
-     同じ操作感(つまみ・太さ)だけ揃えて、トラックは単色にする。 */
+     段階を表すハードな色分けではなく、紫→桃→テラコッタへ境目なく溶け合う
+     グラデーションにする(オーナー指摘:「色がシンプルすぎるからグラデーション
+     つけて色同士の間にはぼかし入れたい」。見せた5案からE案を選択)。
+     トラックの後ろに同じ配色をフィルターblurでぼかしたレイヤーを敷き、
+     トラック自体がほんのり発光して見えるようにする。 */
+  .age-slider-wrap{ position: relative; }
+  .age-slider-wrap::before{
+    content: '';
+    position: absolute;
+    left: 0; right: 0; top: 50%;
+    height: 8px;
+    transform: translateY(-50%);
+    background: linear-gradient(90deg, var(--plum) 0%, var(--love) 50%, var(--terracotta) 100%);
+    filter: blur(10px);
+    opacity: .75;
+    border-radius: 8px;
+    z-index: 0;
+    pointer-events: none;
+  }
   .age-slider{
     width: 100%;
     height: 20px;
@@ -1587,14 +1605,16 @@
     appearance: none;
     background: transparent;
     cursor: pointer;
+    position: relative;
+    z-index: 1;
   }
   .age-slider::-webkit-slider-runnable-track{
     height: 8px; border-radius: 6px;
-    background: var(--plum);
+    background: linear-gradient(90deg, var(--plum) 0%, var(--love) 50%, var(--terracotta) 100%);
   }
   .age-slider::-moz-range-track{
     height: 8px; border-radius: 6px;
-    background: var(--plum);
+    background: linear-gradient(90deg, var(--plum) 0%, var(--love) 50%, var(--terracotta) 100%);
   }
   .age-slider::-webkit-slider-thumb{
     -webkit-appearance: none;
@@ -3224,7 +3244,9 @@
             <div class="risk-vote-label-row">
               <div class="risk-vote-label">カーソルを動かして教えてください: <span id="p-age-live-label">20歳</span></div>
             </div>
-            <input type="range" id="p-age" class="age-slider" min="10" max="99" value="20" oninput="onAgeInput(this.value)">
+            <div class="age-slider-wrap">
+              <input type="range" id="p-age" class="age-slider" min="10" max="99" value="20" oninput="onAgeInput(this.value)">
+            </div>
             <div class="note" style="margin-top:6px;">他のユーザーには表示されません。年代ごとにどんな作品が人気かを調べる参考にするだけに使います。</div>
           </div>
         </div>
