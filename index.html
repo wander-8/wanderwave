@@ -1194,6 +1194,34 @@
   .vote-sub{ font-size: 13px; color: var(--ink-soft); margin-top:2px; }
   .love-label-tag{ color: var(--love); font-weight:700; }
 
+  /* TMDBの評価バッジ。Wander独自の「愛度」ハート(.vote-pct、--love色)とは
+     見た目をはっきり変え、別の出どころの数字だと一目で分かるようにする
+     (オーナー:「本物のWanderのハート数はそのまま残し、TMDBの評価は横に
+     明確に分けたバッジとして表示してください」)。TMDBのロゴ色(参考程度の
+     文字色のみで、ロゴ画像は使わない)を文字ラベルに使い、中身は中立的な
+     ピル型バッジにする。*/
+  .tmdb-rating-badge{
+    display:inline-flex; align-items:center; gap:6px;
+    margin-top:8px; padding:4px 11px; border-radius:999px;
+    font-size:12.5px; font-weight:700; color: var(--ink-soft);
+    background: rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.14);
+  }
+  .tmdb-rating-badge .tmdb-badge-logo{
+    font-size:10px; font-weight:800; letter-spacing:0.4px;
+    color: #01b4e4; padding:1px 4px; border-radius:4px;
+    background: rgba(1,180,228,0.14);
+  }
+  .tmdb-rating-badge .tmdb-badge-score{ color: var(--ink); }
+  .card-tmdb-badge{
+    display:inline-flex; align-items:center; gap:4px;
+    font-size:11px; font-weight:700; color: var(--ink-soft);
+    margin-top:4px;
+  }
+  .card-tmdb-badge .tmdb-badge-logo{
+    font-size:9px; font-weight:800; color: #01b4e4;
+    padding:1px 3px; border-radius:3px; background: rgba(1,180,228,0.14);
+  }
+
   .card-tags{ display:flex; gap:6px; flex-wrap:wrap; }
   .community-tags{
     display:flex; gap:6px; flex-wrap:wrap;
@@ -2807,6 +2835,10 @@
       <div class="vote-summary">
         <span class="vote-pct" id="d-vote-pct"></span>
         <div class="vote-sub" id="d-vote-sub"></div>
+        <div class="tmdb-rating-badge" id="d-tmdb-badge" style="display:none;">
+          <span class="tmdb-badge-logo">TMDB</span>
+          <span class="tmdb-badge-score" id="d-tmdb-score"></span>
+        </div>
       </div>
       <div class="heart-single-wrap" id="heart-single-wrap">
         <button class="heart-single-btn" id="heart-single-btn" onclick="cycleLove(event)">
@@ -5471,6 +5503,9 @@ function buildCardHTML(m, opts){
       </div>
       <div class="interest-count">${loveCountTextForCard(m)}</div>
       ` : ''}
+      ${m.tmdbVoteAverage != null && m.tmdbVoteCount ? `
+      <div class="card-tmdb-badge"><span class="tmdb-badge-logo">TMDB</span> ${m.tmdbVoteAverage.toFixed(1)}</div>
+      ` : ''}
     </div>
   `;
 }
@@ -8006,6 +8041,21 @@ function updateLoveUI(m){
   document.getElementById('d-vote-sub').innerHTML =
     `<span class="love-label-tag">${loveLabel(avg, m.loveCount)}</span>${loveCountText(m) ? ` ・ ${loveCountText(m)}` : ''}`;
 
+  // TMDBの評価は、Wander独自の愛度(上のd-vote-pct/d-vote-sub)とは完全に
+  // 別の出どころの数字なので、混同されないよう別バッジとして横に出す
+  // (オーナー:「本物のWanderのハート数はそのまま残し、TMDBの評価は横に
+  // 明確に分けたバッジとして表示してください」)。票数が無い/未取得の
+  // 作品(音楽・小説・漫画や、まだバックフィルが及んでいない行)では
+  // バッジ自体を出さない。
+  const tmdbBadge = document.getElementById('d-tmdb-badge');
+  if(m.tmdbVoteAverage != null && m.tmdbVoteCount){
+    document.getElementById('d-tmdb-score').textContent =
+      `${m.tmdbVoteAverage.toFixed(1)} ・ ${m.tmdbVoteCount.toLocaleString('ja-JP')}件の評価`;
+    tmdbBadge.style.display = 'inline-flex';
+  } else {
+    tmdbBadge.style.display = 'none';
+  }
+
   const myLevel = state.myLove[m.id] || 0;
   // #heart-single-btn(メインのハート)に加えて、話数カードごとのミニハート
   // (.heart-single-btn.mini)もここで同じ状態に同期する。どちらも同じ
@@ -9935,7 +9985,7 @@ async function selectAllRows(table, columns, applyFilterFn, orderColumn = 'id', 
 // 遅くしている最大の要因だった。検索の根幹であるkeywordsは(サイトの
 // 存在意義に関わるため)初回取得に残したまま、この2つだけ後から
 // バックグラウンドで取得する(loadMovieBigFieldsInBackground参照)。
-const MOVIE_LIGHT_COLUMNS = 'id, title, release_year, emotion_tags, genre, director, country, poster_path, japan_release_date, keywords, series, trailer_key, media_type, is_anime, is_drama, is_manga, is_novel, is_music, volume_count';
+const MOVIE_LIGHT_COLUMNS = 'id, title, release_year, emotion_tags, genre, director, country, poster_path, japan_release_date, keywords, series, trailer_key, media_type, is_anime, is_drama, is_manga, is_novel, is_music, volume_count, tmdb_vote_average, tmdb_vote_count';
 const MOVIE_BIG_COLUMNS = 'id, synopsis, cast_members, vod_flatrate, vod_watch_link, official_url, amazon_url';
 // アニメ・ドラマ・漫画・小説側(オーナー限定プレビュー)は、今のところ
 // 軽量/追加取得の二段構えにはせず、従来通り一括取得する(この取得自体が
@@ -10001,6 +10051,11 @@ function buildMovieRecord(row, statsByMovie, estimatesByMovie){
     volumeCount: volumeCount,
     series: row.series || null,
     trailerKey: row.trailer_key || null,
+    // TMDBの評価(Wander独自の「愛度」ハートとは完全に別物の、横に分けた
+    // バッジ用。tmdb_vote_countが無い/0件の行はバックフィル側でnullのまま
+    // 保存されるので、ここでは単純にrowの値をそのまま使えばよい)。
+    tmdbVoteAverage: row.tmdb_vote_average != null ? Number(row.tmdb_vote_average) : undefined,
+    tmdbVoteCount: row.tmdb_vote_count || undefined,
     vodFlatrate: row.vod_flatrate || undefined,
     vodWatchLink: row.vod_watch_link || undefined,
     officialUrl: row.official_url || undefined,
