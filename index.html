@@ -1261,7 +1261,7 @@
     margin-bottom: 4px;
   }
   .add-list-text-link-row{
-    display:flex; justify-content:flex-end;
+    display:flex; justify-content:space-between; align-items:center;
     margin: 10px 0 0;
   }
   .add-list-text-link{
@@ -1272,6 +1272,25 @@
     transition: transform .15s cubic-bezier(.22,.8,.32,1), border-color .2s ease, color .2s ease;
   }
   .add-list-text-link:active{ color: var(--ink); border-color: var(--ink-soft); transform: scale(0.94); }
+  /* 愛度のハート(heart-single-btn、--love)とは別物と分かるよう、色は
+     ポケットの既存アクセント(--plum)を使う。 */
+  .pocket-heart-btn{
+    display:flex; align-items:center; gap:7px;
+    background:none; border: 1px solid var(--line); border-radius: 999px;
+    cursor:pointer;
+    font-size: 13px; color: var(--ink-soft);
+    padding: 9px 16px;
+    transition: transform .15s cubic-bezier(.22,.8,.32,1), border-color .2s ease, color .2s ease, background .2s ease;
+  }
+  .pocket-heart-btn:active{ transform: scale(0.94); }
+  .pocket-heart-btn .pocket-heart-icon{
+    width: 14px; height: 13px; color: var(--ink-soft);
+    transition: color .2s ease, transform .2s cubic-bezier(.34,1.56,.64,1);
+  }
+  .pocket-heart-btn.active{
+    border-color: var(--plum); color: var(--plum); background: rgba(125,95,214,0.12);
+  }
+  .pocket-heart-btn.active .pocket-heart-icon{ color: var(--plum); transform: scale(1.08); }
   .poster-info-btn{
     position: absolute; top: 12px; right: 12px;
     z-index: 6;
@@ -2121,66 +2140,35 @@
     border-radius: 14px; padding: 18px; margin-bottom: 18px;
   }
 
-  .diagnosis-picker{
-    display:grid; grid-template-columns: repeat(auto-fill, minmax(80px, 1fr));
-    gap: 8px;
+  /* 手動ピッカー(5本選んで診断)は廃止し、節目までの進捗だけを表示する
+     方式に変更。進捗表示そのものはシンプルなテキスト行で十分なため、
+     専用のグリッド/カードは持たない。 */
+  .pocket-progress{ margin: 10px 0 14px; }
+  .pocket-progress-line{
+    font-family:'M PLUS Rounded 1c', sans-serif; font-weight:600;
+    font-size: 15px; color: var(--ink); margin-bottom: 4px;
   }
-  .diagnosis-picker-item{
-    position: relative;
-    aspect-ratio: 2/3;
-    border-radius: 10px;
-    cursor: pointer;
-    overflow: hidden;
-    border: 2px solid transparent;
-    transition: border-color .25s cubic-bezier(.22,.8,.32,1), transform .25s cubic-bezier(.22,.8,.32,1), box-shadow .25s ease;
-  }
-  .diagnosis-picker-item:active{
-    transform: scale(0.93);
-  }
-  .diagnosis-picker-item.selected{
-    border-color: var(--gold);
-    transform: scale(1.03);
-    box-shadow: 0 0 10px rgba(240,230,207,0.4);
-  }
-  .diagnosis-picker-item .diag-pick-check{
-    position: absolute; top: 4px; right: 4px;
-    width: 18px; height: 18px; border-radius: 50%;
-    background: var(--gold); color: #0a0e16;
-    display:flex; align-items:center; justify-content:center;
-    font-size: 11px; font-weight: 700;
-    opacity: 0; transform: scale(0.5);
-    transition: opacity .25s ease, transform .3s cubic-bezier(.34,1.56,.64,1);
-  }
-  .diagnosis-picker-item.selected .diag-pick-check{
-    opacity: 1; transform: scale(1);
-  }
-  .diagnosis-picker-item .poster-thumb-title{
-    padding: 16px 5px 5px;
-    font-size: 10.5px;
-  }
-  /* 診断用のピッカーがまだ空の時に出す「穴」タイル。下の「今、ポケットの
-     中にあるもの」で使っているのと同じ+マークだが、こちらは正方形寄りの
-     タイルグリッドなので専用のサイズ(diagnosis-picker-itemと同じ2:3)で
-     揃える(オーナー指摘:「ポケットに何か入れるとの方に今作ってくれた
-     作品を拾いに行くの点線枠を置いて」)。 */
-  .diagnosis-picker-empty{
-    position: relative;
-    aspect-ratio: 2/3;
-    border-radius: 10px;
-    border: 1.5px dashed var(--line);
-    display:flex; flex-direction:column; align-items:center; justify-content:center;
-    gap: 4px;
-    cursor: pointer;
+  .pocket-progress-done{ color: var(--gold); }
+  .pocket-progress-sub{ font-size: 12px; color: var(--ink-soft); margin-bottom: 2px; }
+  .pocket-diagnosis-note{
+    font-size: 12px; color: var(--ink-soft); margin-top: 6px;
   }
   .diagnosis-result-movies{
     display:flex; gap:8px; margin-top:12px; flex-wrap:wrap;
   }
+  /* オーナー仕様:「入れた作品のポスター(ラベルは切らない)」。以前は
+     56px幅・2行クランプで、タイトルが短い位置で「ミス・ペレグリンと…」
+     のように切れてしまっていた。幅を広げて行クランプも増やし、実用上
+     ほぼ全てのタイトルが切れずに収まるようにする(他のポスター格子
+     (検索結果・通常のカタログ一覧等)は密度を保つため今まで通り2行
+     クランプのまま変更しない)。 */
   .diagnosis-result-movies .poster-thumb{
-    width: 56px; height: 84px; border-radius: 8px;
+    width: 84px; height: 126px; border-radius: 8px;
   }
   .diagnosis-result-movies .poster-thumb-title{
-    padding: 12px 4px 4px;
-    font-size: 9px;
+    padding: 26px 5px 6px;
+    font-size: 10.5px;
+    -webkit-line-clamp: 4;
   }
   #diagnosis-result.reveal{
     animation: diagnosisReveal 1.6s ease forwards;
@@ -2767,6 +2755,14 @@
     </div>
 
     <div class="add-list-text-link-row">
+      <!-- ポケット専用のワンタップ・ハートボタン(オーナー仕様:「配置:
+           作品詳細ページのリンクの左。今あるリンクで作ってたポケットに
+           入れるを消す」)。愛度のハート(heart-single-btn)とは別物で、
+           ページ遷移せずその場で追加/取り消しが完了する。未登録でも使える。 -->
+      <button class="pocket-heart-btn" id="pocket-heart-btn" onclick="onPocketHeartTap(event)">
+        <svg class="pocket-heart-icon" viewBox="0 0 32 30" fill="currentColor"><path d="M16 27 C6 20 2 13 2 8.5 C2 4 5.5 1 9.5 1 C12.5 1 15 2.8 16 5.5 C17 2.8 19.5 1 22.5 1 C26.5 1 30 4 30 8.5 C30 13 26 20 16 27 Z"/></svg>
+        <span id="pocket-heart-label">ポケットに入れる</span>
+      </button>
       <button class="add-list-text-link" onclick="openAddToListModal()">+ リストに追加</button>
     </div>
 
@@ -2807,7 +2803,7 @@
 
     <div class="section-label-row" style="margin-top:0;">
       <div class="section-label love-label">みんなの愛度</div>
-      <button class="info-icon" onclick="showInfo('愛度とは', 'ハートをタップして、この作品への愛を表現できます。タップするたびに1〜3段階で育っていきます。最大まで行った後、もう一度タップすると0に戻せます。みんなの評価は0〜5のスケールで表示されます。\n\nハート自体は診断には使われません。自分を振り返る材料にしたい作品は、「リストに追加」から「ポケットに入れる」を選んでください。')">ⓘ</button>
+      <button class="info-icon" onclick="showInfo('愛度とは', 'ハートをタップして、この作品への愛を表現できます。タップするたびに1〜3段階で育っていきます。最大まで行った後、もう一度タップすると0に戻せます。みんなの評価は0〜5のスケールで表示されます。\n\nこの愛度のハートは診断には使われません。自分を振り返る材料にしたい作品は、ページ上部の「ポケットに入れる」ボタンを使ってください。')">ⓘ</button>
     </div>
     <div class="vote-widget">
       <div class="vote-summary">
@@ -3278,11 +3274,12 @@
       <div class="sub">気になる作品をためて、今のあなたを見てみましょう</div>
     </div>
 
-    <div id="diagnosis-picker" class="diagnosis-picker"></div>
-
-    <div id="diagnosis-cooldown-note" class="sub" style="display:none; margin-top:8px;"></div>
-
-    <button class="primary-btn diagnosis-run-btn-prominent" id="diagnosis-run-btn" style="width:100%; margin-top:14px;" onclick="runNewDiagnosis()" disabled>診断する</button>
+    <!-- 手動で5本選んで実行する旧ピッカーは廃止。ポケットに入れた数が
+         月内で3/5/10の節目に達した瞬間に自動で診断が更新される方式に
+         変更したため、ここには進捗だけを表示する(オーナー仕様:
+         「診断は『結果を見る場所』ではなく、『次の節目に戻る場所』として
+         扱う」)。 -->
+    <div id="pocket-progress" class="pocket-progress"></div>
 
     <div id="diagnosis-result" class="pocket-diagnosis" style="display:none;">
       <div class="pocket-diagnosis-title">今のあなたのテーマ</div>
@@ -3303,6 +3300,9 @@
         </div>
       </div>
       <div class="pocket-diagnosis-text" id="new-diagnosis-text"></div>
+      <!-- 3件目(初回の仮診断)の時だけ出す注記。オーナー仕様:
+           「入れるほど、当たりやすくなります」。 -->
+      <div class="pocket-diagnosis-note" id="new-diagnosis-note" style="display:none;"></div>
       <div id="new-diagnosis-movies" class="diagnosis-result-movies"></div>
 
       <!-- 一覧で選ばせる「おすすめ」ではなく、今日はこの1本だけをそっと
@@ -4085,7 +4085,7 @@ async function logout(){
   state.profile = null;
   state.hasReviewed = {}; state.myReviewsById = {}; state.myReviewRows = [];
   state.myLove = {}; state.myIntensity = {}; state.myReason = {}; state.myTagVotes = {};
-  state.myWatchLater = {}; state.myPocket = []; state.myLists = []; state.myLogs = [];
+  state.myWatchLater = {}; state.myPocket = []; state.myPocketAddedAt = {}; state.myLists = []; state.myLogs = [];
   state.mySubmittedMovieIds = []; state.mySubmittedMovies = []; state.diagnosisHistory = [];
   updateHeader();
   showToast('ログアウトしました');
@@ -4175,8 +4175,14 @@ supabase.auth.onAuthStateChange((event, session) => {
       // 走って新規登録したはずのアカウントがゲスト扱いになる事故が起きていた。
       // setTimeoutでコールバックの外の別タスクに逃がすことでデッドロックを回避する。
       setTimeout(() => {
-        loadProfile().then(() => {
+        loadProfile().then(async () => {
           updateHeader();
+          // 未登録の間にローカル(localStorage)へ溜めていたポケットの中身を、
+          // 登録完了のこのタイミングで一度だけアカウントへ移す。
+          if(state.profile && state.profile.emailVerified){
+            await migrateLocalPocketToAccount();
+            onPocketDataChanged();
+          }
           // ニックネーム未設定(=本当に登録直後でこれから名乗る必要がある)の
           // 時だけプロフィール画面へ連れて行く。ページを開き直すたびに
           // セッションが復元されてこの'SIGNED_IN'自体は毎回発火するため、
@@ -4197,7 +4203,13 @@ supabase.auth.onAuthStateChange((event, session) => {
     // ユーザーが「メール登録が必要です」と言われ続ける事故になる
     // (画面遷移が起きるgoProfile()は呼ばず、今の画面のまま静かに更新する)。
     setTimeout(() => {
-      loadProfile().then(() => updateHeader());
+      loadProfile().then(async () => {
+        updateHeader();
+        if(state.profile && state.profile.emailVerified){
+          await migrateLocalPocketToAccount();
+          onPocketDataChanged();
+        }
+      });
     }, 0);
   }
 });
@@ -4726,7 +4738,7 @@ function shouldHidePosterForIntensity(m, opts){
   return state.intensityFilter !== 100;
 }
 
-let state = { query: "", queryKeywords: [], activeTags: new Set(), currentMovieId: null, hasReviewed: {}, myReviewsById: {}, myReviewRows: [], myReviewRowsLoaded: false, myLove: {}, myIntensity: {}, myReason: {}, myTagVotes: {}, myWatchLater: {}, myPocket: [], myLists: [], currentListId: null, profile: null, profileLoaded: false, myLogs: [], myLogsLoaded: false, mySubmittedMovieIds: [], mySubmittedMovies: [], mySubmittedMoviesLoaded: false, lastSubmissionDate: null, todaySubmissionCount: 0, intensityFilter: 0, decadeFilter: 0, diagnosisHistory: [], activeGenres: new Set(), activeCountries: new Set(), catalogMode: 'movie', bookType: null, crossMediaSearch: false, pendingTrackAdd: null };
+let state = { query: "", queryKeywords: [], activeTags: new Set(), currentMovieId: null, hasReviewed: {}, myReviewsById: {}, myReviewRows: [], myReviewRowsLoaded: false, myLove: {}, myIntensity: {}, myReason: {}, myTagVotes: {}, myWatchLater: {}, myPocket: [], myPocketAddedAt: {}, myLists: [], currentListId: null, profile: null, profileLoaded: false, myLogs: [], myLogsLoaded: false, mySubmittedMovieIds: [], mySubmittedMovies: [], mySubmittedMoviesLoaded: false, lastSubmissionDate: null, todaySubmissionCount: 0, intensityFilter: 0, decadeFilter: 0, diagnosisHistory: [], activeGenres: new Set(), activeCountries: new Set(), catalogMode: 'movie', bookType: null, crossMediaSearch: false, pendingTrackAdd: null };
 
 
 function riskLabel(v){
@@ -5819,11 +5831,13 @@ function renderHomeRows(){
   if(catalogMode === 'music'){
     const pocketMovies = getPocketMovies();
     if(pocketMovies.length){
+      // 直近の月を重く、前の月を少し軽く使う(オーナー仕様:「推薦は、直近の
+      // 月を重く、前の月を少し軽く使う。空っぽに見えないようにする」)。
       const tagWeights = {};
-      pocketMovies.forEach(m => m.tags.forEach(t => { tagWeights[t] = (tagWeights[t] || 0) + 1; }));
+      pocketMovies.forEach(m => m.tags.forEach(t => { tagWeights[t] = (tagWeights[t] || 0) + pocketMovieWeight(m.id); }));
       const pocketMusic = pocketMovies.filter(m => m.isMusic);
       const genreWeights = {};
-      pocketMusic.forEach(m => (m.genre || []).forEach(g => { genreWeights[g] = (genreWeights[g] || 0) + 1; }));
+      pocketMusic.forEach(m => (m.genre || []).forEach(g => { genreWeights[g] = (genreWeights[g] || 0) + pocketMovieWeight(m.id); }));
       const pocketArtists = new Set(pocketMusic.map(m => m.director).filter(Boolean));
       const pocketIds = new Set(pocketMovies.map(m => m.id));
       const musicPool = discoveryMovies.filter(m => m.isMusic && !pocketIds.has(m.id));
@@ -9080,6 +9094,7 @@ async function goDetail(id){
     `<span class="mini-tag" style="color:${tagColor(t)}; background:${tagColor(t)}22;">${t}</span>`
   ).join('');
   updateLoveUI(m);
+  updatePocketHeartButton(id);
 
   // この映画についての「投稿する」パネルの未送信の選択状態を、既に投票済みの
   // 内容からリセットする(表現度スライダーを一度でも動かしたことがあれば、
@@ -10697,7 +10712,7 @@ async function loadDiagnosisHistory(){
     if(!userId){ state.diagnosisHistory = []; return; }
     const { data, error } = await supabase
       .from('diagnosis_history')
-      .select('id, created_at, name, body, top_tag, movie_ids')
+      .select('id, created_at, name, body, top_tag, movie_ids, milestone, month_key')
       .eq('user_id', userId)
       .order('created_at', { ascending: false });
     if(error) throw error;
@@ -10707,7 +10722,9 @@ async function loadDiagnosisHistory(){
       name: row.name,
       body: row.body,
       topTag: row.top_tag,
-      movieIds: row.movie_ids || []
+      movieIds: row.movie_ids || [],
+      milestone: row.milestone,
+      monthKey: row.month_key
     }));
   }catch(err){
     console.error(err);
@@ -10767,7 +10784,7 @@ async function loadProfile(){
 
     const { data, error } = await supabase
       .from('profiles')
-      .select('user_name, avatar_color, avatar_photo_url, review_count, lists_share_token, age')
+      .select('user_name, avatar_color, avatar_photo_url, review_count, lists_share_token, age, created_at, pocket_anchor_date')
       .eq('id', user.id)
       .single();
     if(error) throw error;
@@ -10812,7 +10829,11 @@ async function loadProfile(){
       excludedWords: (prefs && prefs.excluded_words) || [],
       // レビュー投稿・映画追加・診断結果の保存など、荒らし対策で
       // メール確認済みユーザー限定にしている機能の判定に使う。
-      emailVerified: user.is_anonymous === false && !!user.email_confirmed_at
+      emailVerified: user.is_anonymous === false && !!user.email_confirmed_at,
+      // ポケット・診断の月の区切りの起点日。登録前にローカルで使い始めていた
+      // 場合はmigrateLocalPocketToAccount()が最初の追加日で上書きする。
+      // まだ無ければ登録日(created_at)の日付をそのまま使う。
+      pocketAnchorDate: data.pocket_anchor_date || (data.created_at ? data.created_at.slice(0, 10) : null)
     };
     state.profileLoaded = true;
   }catch(err){
@@ -10977,6 +10998,15 @@ function myVoteWeight(){
 // 画面へ誘導し、falseを返す。呼び出し側はfalseならその場で処理を中断する。
 function isVerifiedUser(){
   return !!(state.profile && state.profile.emailVerified);
+}
+
+// isVerifiedUser()はstate.profile(非同期で読み込まれる)に依存するため、
+// loadMyPocket()のようにloadProfile()と並行(Promise.all)で走る場所からは
+// state.profileがまだ埋まっていない一瞬を誤判定してしまう。currentAuthUser()
+// (既にメモ化済みの非同期呼び出し)を直接見ることでこの競合を避ける。
+async function isEmailVerifiedNow(){
+  const user = await currentAuthUser();
+  return !!(user && user.is_anonymous === false && user.email_confirmed_at);
 }
 
 // currentAuthUser()の確認が何秒経っても終わらない環境(一時的なハングではなく、
@@ -11328,7 +11358,8 @@ async function submitProfile(){
   const previousReviewCount = state.profile ? (state.profile.reviewCount || 0) : 0;
   const previousEmailVerified = state.profile ? !!state.profile.emailVerified : false;
   const previousListsShareToken = state.profile ? state.profile.listsShareToken : undefined;
-  state.profile = { nickname, avatarColor: pendingAvatarColor, avatarPhoto: pendingAvatarPhoto, avatarPhotoPosX: pendingAvatarPosX, avatarPhotoPosY: pendingAvatarPosY, avatarPhotoZoom: pendingAvatarZoom, age: pendingAge, reviewCount: previousReviewCount, emailVerified: previousEmailVerified, listsShareToken: previousListsShareToken };
+  const previousPocketAnchorDate = state.profile ? state.profile.pocketAnchorDate : null;
+  state.profile = { nickname, avatarColor: pendingAvatarColor, avatarPhoto: pendingAvatarPhoto, avatarPhotoPosX: pendingAvatarPosX, avatarPhotoPosY: pendingAvatarPosY, avatarPhotoZoom: pendingAvatarZoom, age: pendingAge, reviewCount: previousReviewCount, emailVerified: previousEmailVerified, listsShareToken: previousListsShareToken, pocketAnchorDate: previousPocketAnchorDate };
   await saveProfile();
   updateHeader();
   showToast(isFirstRegistration ? '登録しました' : 'プロフィールを保存しました');
@@ -11684,11 +11715,128 @@ async function deleteMyLogConfirm(){
   }
 }
 
-const POCKET_THRESHOLD = 5;
 const POCKET_DIAGNOSIS_MATERIAL_LIMIT = 9;
+const POCKET_MILESTONES = [3, 5, 10];
+
+// --- JST(日本時間)での日付計算 -------------------------------------------
+// 愛度/きょうの贈り物で使っているtodaySeed()はUTC日跨ぎ(=JST朝9時)基準で、
+// ポケット・診断の月/週の区切り(オーナー仕様:「タイムゾーンは日本時間(JST)
+// で統一する」)には使えないため、別に用意する。
+function jstParts(date){
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Tokyo', year: 'numeric', month: '2-digit', day: '2-digit', weekday: 'short'
+  }).formatToParts(date);
+  const get = (type) => parts.find(p => p.type === type).value;
+  const weekdayMap = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
+  return {
+    year: parseInt(get('year'), 10),
+    month: parseInt(get('month'), 10), // 1-12
+    day: parseInt(get('day'), 10),
+    weekday: weekdayMap[get('weekday')]
+  };
+}
+function daysInMonth(year, month){
+  // monthは1-12。「次の月の0日目」=その月の末日。
+  return new Date(Date.UTC(year, month, 0)).getUTCDate();
+}
+// JSTのY/M/D(0:00)に対応するUTC Dateオブジェクト。範囲比較にだけ使う。
+function jstDateToUtc(year, month, day){
+  return new Date(Date.UTC(year, month - 1, day) - 9 * 60 * 60 * 1000);
+}
+
+// 月/週の区切りの起点日("YYYY-MM-DD")。登録済みならprofiles.pocket_anchor_date
+// (無ければ登録日)、未登録ならローカルに残っている一番古い追加日、
+// どちらも無ければ今日(=今まさに初めてポケットを使い始めた日)。
+function pocketAnchorDate(){
+  if(state.profile && state.profile.pocketAnchorDate) return state.profile.pocketAnchorDate;
+  const local = getLocalPocket();
+  if(local.length){
+    const earliest = local.reduce((min, it) => (it.addedAt < min ? it.addedAt : min), local[0].addedAt);
+    return earliest.slice(0, 10);
+  }
+  const t = jstParts(new Date());
+  return `${t.year}-${String(t.month).padStart(2, '0')}-${String(t.day).padStart(2, '0')}`;
+}
+
+// 起点日の「日」を今月に当てはめた月の区切り(オーナー仕様:登録日が31日等、
+// その月に無い日なら末日に揃える)。まだ今月の区切りに到達していなければ、
+// 1つ前の月が「今の月」になる。
+function currentMonthWindow(){
+  const anchorDay = parseInt(pocketAnchorDate().slice(8, 10), 10);
+  const now = jstParts(new Date());
+  const todayInstant = jstDateToUtc(now.year, now.month, now.day);
+
+  let startYear = now.year, startMonth = now.month;
+  let start = jstDateToUtc(startYear, startMonth, Math.min(anchorDay, daysInMonth(startYear, startMonth)));
+  if(todayInstant < start){
+    startMonth -= 1;
+    if(startMonth === 0){ startMonth = 12; startYear -= 1; }
+    start = jstDateToUtc(startYear, startMonth, Math.min(anchorDay, daysInMonth(startYear, startMonth)));
+  }
+  let endYear = startYear, endMonth = startMonth + 1;
+  if(endMonth === 13){ endMonth = 1; endYear += 1; }
+  const end = jstDateToUtc(endYear, endMonth, Math.min(anchorDay, daysInMonth(endYear, endMonth)));
+  return { start, end, monthKey: `${startYear}-${String(startMonth).padStart(2, '0')}` };
+}
+
+// 週の区切りも起点日の曜日に揃える(通知ではなく画面内表示用)。
+function currentWeekWindow(){
+  const anchor = pocketAnchorDate().split('-').map(Number);
+  const anchorWeekday = jstParts(jstDateToUtc(anchor[0], anchor[1], anchor[2])).weekday;
+  const now = jstParts(new Date());
+  const todayInstant = jstDateToUtc(now.year, now.month, now.day);
+  const back = (now.weekday - anchorWeekday + 7) % 7;
+  const start = new Date(todayInstant.getTime() - back * 86400000);
+  const end = new Date(start.getTime() + 7 * 86400000);
+  return { start, end };
+}
+
+function itemsInWindow(start, end){
+  const map = state.myPocketAddedAt || {};
+  return Object.keys(map)
+    .filter(idStr => { const t = new Date(map[idStr]); return t >= start && t < end; })
+    .map(idStr => parseInt(idStr, 10));
+}
+
+// --- ポケット(気になる作品の保管庫) --------------------------------------
+// 愛度(ハート)とは完全に別物で、診断にはポケットだけを使う(既存方針)。
+// 未登録(匿名)でもすぐ使えるようにしたいが、1ユーザー1行のpocketsテーブルは
+// 登録完了時にuser_idが変わってしまう(このサイトの登録はsignInWithOtp()で
+// 行い、匿名セッションをその場でアップグレードするのではなく別ユーザーとして
+// 扱うため、匿名時に書いた行は登録後のuser_idからは見えなくなる)。そのため、
+// 未登録の間はブラウザのlocalStorageに保存し、登録完了のタイミングで
+// 一括してDBへ移す(migrateLocalPocketToAccount、onAuthStateChangeから呼ぶ)。
+const LOCAL_POCKET_KEY = 'wander_pocket_v1';
+
+// 保存の失敗(ストレージ無効化・容量超過等)でサイト全体を止めたくないため、
+// 読み書きどちらも必ずtry/catchで握り、失敗時は「空」として静かに扱う
+// (オーナー仕様:「保存の失敗でエラーを大きく出さない」)。
+function getLocalPocket(){
+  try{
+    const parsed = JSON.parse(localStorage.getItem(LOCAL_POCKET_KEY) || '[]');
+    return Array.isArray(parsed) ? parsed : [];
+  }catch(err){ return []; }
+}
+function setLocalPocket(list){
+  try{ localStorage.setItem(LOCAL_POCKET_KEY, JSON.stringify(list)); }catch(err){ /* 静かに諦める */ }
+}
 
 function getPocketMovies(){
   return state.myPocket.map(id => MOVIES.find(m => m.id === id)).filter(Boolean);
+}
+
+// 「いつもの傾向」の材料に月で重み付けする(オーナー仕様:直近の月を重く、
+// 前の月を少し軽く使う。空っぽに見えないようにする)。
+function pocketMovieWeight(movieId){
+  const addedAt = state.myPocketAddedAt && state.myPocketAddedAt[movieId];
+  if(!addedAt) return 0.5;
+  const t = new Date(addedAt);
+  const thisMonth = currentMonthWindow();
+  if(t >= thisMonth.start) return 1;
+  const monthLenMs = thisMonth.end - thisMonth.start;
+  const prevStart = new Date(thisMonth.start.getTime() - monthLenMs);
+  if(t >= prevStart && t < thisMonth.start) return 0.5;
+  return 0.25;
 }
 
 function getDiagnosisMaterial(){
@@ -11701,39 +11849,164 @@ function isInPocket(movieId){
   return state.myPocket.includes(movieId);
 }
 
+// 戻り値: 'added'/'removed'/null(失敗時)。呼び出し側がトースト文言を
+// 出し分けるために使う。
+// 同じ作品に対する連打(ダブルタップ)で、2つの呼び出しが互いの更新前の
+// state.myPocketを見てしまい、一方の追加/削除が失われる競合が起きうる
+// (isEmailVerifiedNow()のネットワーク確認を挟む間に次のタップが入る実機
+// 検証で確認済み)。movieIdごとに処理中フラグを立て、処理中の再呼び出しは
+// 何もせず静かに無視する。
+const pocketToggleInFlight = new Set();
 async function togglePocketMembership(movieId){
-  if(!requireVerifiedUser()) return;
-  const userId = await currentUserId();
-  if(!userId) return;
-  const idx = state.myPocket.indexOf(movieId);
+  if(pocketToggleInFlight.has(movieId)) return null;
+  pocketToggleInFlight.add(movieId);
   try{
-    if(idx !== -1){
-      const { error } = await supabase.from('pockets').delete().eq('user_id', userId).eq('movie_id', movieId);
-      if(error) throw error;
-      state.myPocket.splice(idx, 1);
-    } else {
-      const { error } = await supabase.from('pockets').insert({ user_id: userId, movie_id: movieId });
-      if(error) throw error;
-      state.myPocket.push(movieId);
-    }
-  }catch(err){
-    console.error('ポケットの更新に失敗しました', err);
-    showToast(friendlyErrorMessage(err, '保存に失敗しました。通信環境を確認してください。'));
+    return await togglePocketMembershipInner(movieId);
+  }finally{
+    pocketToggleInFlight.delete(movieId);
   }
 }
 
+async function togglePocketMembershipInner(movieId){
+  const idx = state.myPocket.indexOf(movieId);
+  const nowIso = new Date().toISOString();
+
+  if(await isEmailVerifiedNow()){
+    const userId = await currentUserId();
+    if(!userId) return null;
+    try{
+      if(idx !== -1){
+        const { error } = await supabase.from('pockets').delete().eq('user_id', userId).eq('movie_id', movieId);
+        if(error) throw error;
+        state.myPocket.splice(idx, 1);
+        delete state.myPocketAddedAt[movieId];
+        return 'removed';
+      }
+      const { error } = await supabase.from('pockets').insert({ user_id: userId, movie_id: movieId });
+      if(error) throw error;
+      state.myPocket.push(movieId);
+      state.myPocketAddedAt[movieId] = nowIso;
+      maybeTriggerMilestoneDiagnosis();
+      return 'added';
+    }catch(err){
+      console.error('ポケットの更新に失敗しました', err);
+      showToast(friendlyErrorMessage(err, '保存に失敗しました。通信環境を確認してください。'));
+      return null;
+    }
+  }
+
+  // 未登録(匿名)の間はlocalStorageだけで完結させる(保存失敗時も
+  // 静かに諦めるだけで、画面は普段通りに動かし続ける)。
+  const local = getLocalPocket();
+  if(idx !== -1){
+    setLocalPocket(local.filter(it => it.movieId !== movieId));
+    state.myPocket.splice(idx, 1);
+    delete state.myPocketAddedAt[movieId];
+    return 'removed';
+  }
+  local.push({ movieId, addedAt: nowIso });
+  setLocalPocket(local);
+  state.myPocket.push(movieId);
+  state.myPocketAddedAt[movieId] = nowIso;
+  maybeTriggerMilestoneDiagnosis();
+  return 'added';
+}
+
 async function loadMyPocket(){
+  if(!(await isEmailVerifiedNow())){
+    const local = getLocalPocket();
+    state.myPocket = local.map(it => it.movieId);
+    state.myPocketAddedAt = {};
+    local.forEach(it => { state.myPocketAddedAt[it.movieId] = it.addedAt; });
+    return;
+  }
   try{
     const userId = await currentUserId();
-    if(!userId){ state.myPocket = []; return; }
+    if(!userId){ state.myPocket = []; state.myPocketAddedAt = {}; return; }
     const { data, error } = await supabase
       .from('pockets')
-      .select('movie_id')
+      .select('movie_id, created_at')
       .eq('user_id', userId)
       .order('created_at', { ascending: true });
     if(error) throw error;
     state.myPocket = (data || []).map(row => row.movie_id);
-  }catch(err){ state.myPocket = []; }
+    state.myPocketAddedAt = {};
+    (data || []).forEach(row => { state.myPocketAddedAt[row.movie_id] = row.created_at; });
+  }catch(err){ state.myPocket = []; state.myPocketAddedAt = {}; }
+}
+
+// 登録完了(isVerifiedUser()が初めてtrueになった)タイミングで1回呼ぶ。
+// ローカルに残っている項目のうち、DBにまだ無いmovie_idだけを、元の追加日
+// (created_at)をそのまま引き継いでpocketsへ書き込む(オーナー仕様:
+// 「登録前は、最初にハートを押した日を起点にし、登録時にその日付を引き継ぐ」)。
+// 失敗した場合はログだけに留め、ローカル側は消さない(次回また試行される)。
+async function migrateLocalPocketToAccount(){
+  const local = getLocalPocket();
+  if(!local.length) return;
+  const userId = await currentUserId();
+  if(!userId) return;
+  try{
+    const { data: existing, error: selErr } = await supabase.from('pockets').select('movie_id').eq('user_id', userId);
+    if(selErr) throw selErr;
+    const existingIds = new Set((existing || []).map(r => r.movie_id));
+    const toInsert = local.filter(it => !existingIds.has(it.movieId))
+      .map(it => ({ user_id: userId, movie_id: it.movieId, created_at: it.addedAt }));
+    if(toInsert.length){
+      const { error: insErr } = await supabase.from('pockets').insert(toInsert);
+      if(insErr) throw insErr;
+    }
+
+    const earliest = local.reduce((min, it) => (it.addedAt < min ? it.addedAt : min), local[0].addedAt);
+    const { error: profErr } = await supabase.from('profiles').update({ pocket_anchor_date: earliest.slice(0, 10) }).eq('id', userId);
+    if(profErr) throw profErr;
+    if(state.profile) state.profile.pocketAnchorDate = earliest.slice(0, 10);
+
+    setLocalPocket([]);
+    await loadMyPocket();
+  }catch(err){
+    console.error('ポケットのアカウントへの移行に失敗しました', err);
+  }
+}
+
+// 詳細ページ専用のポケット・ハートボタン。1タップで完了し、ページ遷移は
+// しない(オーナー仕様)。トーストは追加/取り消しで文言を分ける。
+async function onPocketHeartTap(event){
+  if(event) event.stopPropagation();
+  const movieId = state.currentMovieId;
+  if(movieId == null) return;
+  // 追加した結果ちょうど3/5/10に達した場合は、maybeTriggerMilestoneDiagnosis
+  // 側が専用のトースト(「診断が更新されました」「今月のポケットが完成
+  // しました」)を既に出している。showToastは1枚しか表示できないため、
+  // ここで重ねて「ポケットに入れました」を出すと専用の方が即座に消されて
+  // しまう。節目が新しく記録されたかどうかを前後で比べ、その場合だけ
+  // ここでの汎用トーストを出さないようにする。
+  const monthKeyBefore = currentMonthWindow().monthKey;
+  const milestoneAlreadyDoneBefore = POCKET_MILESTONES.filter(n => hasMilestoneRecordForMonth(monthKeyBefore, n));
+  const result = await togglePocketMembership(movieId);
+  const milestoneAlreadyDoneAfter = POCKET_MILESTONES.filter(n => hasMilestoneRecordForMonth(currentMonthWindow().monthKey, n));
+  const justHitMilestone = milestoneAlreadyDoneAfter.length > milestoneAlreadyDoneBefore.length;
+
+  if(result === 'added' && !justHitMilestone){
+    // 今月の節目(10件)が既に完成している状態でさらに追加した場合は、
+    // 「次の月のポケットに入ります」と案内する(オーナー仕様)。
+    showToast(hasMilestoneRecordForMonth(currentMonthWindow().monthKey, 10) ? '次の月のポケットに入ります' : 'ポケットに入れました');
+  } else if(result === 'removed'){
+    showToast('取り消しました');
+  }
+  updatePocketHeartButton(movieId);
+  // 「リストに追加」ドロワー側にも同じアルバム/作品のポケット状態チップが
+  // あるため(アルバム単位の経路は残している)、開いていれば揺らさず
+  // 文字だけ揃える。
+  renderAddToListOptions();
+}
+
+function updatePocketHeartButton(movieId){
+  const btn = document.getElementById('pocket-heart-btn');
+  const label = document.getElementById('pocket-heart-label');
+  if(!btn || !label) return;
+  const active = isInPocket(movieId);
+  btn.classList.toggle('active', active);
+  label.textContent = active ? 'ポケットに入っています' : 'ポケットに入れる';
 }
 
 // 各感情タグの根底にある「構造」を、断定的な名詞句として定義する
@@ -11774,79 +12047,88 @@ function pickThemeName(topTag){
   return `${modifier}${role}`;
 }
 
-// 誰にでも当てはまりうる、両価的(バーナム効果)な感性の強み。
-const SENSE_LIGHT = {
-  "楽しい":         "何気ない日常の中に小さな冒険を見つけ出す身軽さと、大切な瞬間はしっかり味わい尽くす丁寧さを、あなたは両方持ち合わせているようです。",
-  "感動":           "人の心の機微に深く寄り添う繊細さと、そこから前を向く力に変えるしなやかな強さを、あなたは併せ持っているのかもしれません。",
-  "リラックス":     "静けさの中で自分を取り戻す落ち着きと、いざという時にすっと動き出す軽やかさを、あなたはちゃんと持っています。",
-  "ワクワク":       "知らない世界に飛び込む好奇心と、足元をきちんと見つめる着実さを、あなたは両方兼ね備えているようです。",
-  "怖い":           "得体のしれないものにもまっすぐ向き合う大胆さと、その裏にある繊細な感受性を、あなたは同時に持っているのかもしれません。",
-  "美しい":         "細部の美しさに気づく感性の鋭さと、それを大らかに受け止める心の余白を、あなたは両方大切にしているようです。",
-  "ドキドキ":       "スリルに心を委ねる大胆さと、大事な人やものへの一途さを、あなたはどちらも持ち合わせています。",
-  "笑い":           "肩の力を抜いて笑い飛ばす軽やかさと、ここぞという時にまっすぐな想いを見せる誠実さを、あなたは併せ持っているようです。",
-  "悲しい":         "深い悲しみをきちんと受け止める強さと、そこから優しさを紡ぎ出す豊かな感受性を、あなたは持っているのかもしれません。",
-  "考えさせられる": "物事の奥にある意味をじっくり見つめる知性と、答えが出なくても歩き続けられるしなやかさを、あなたは両方持っているようです。"
+// 事実だけの名詞句(タグ→その傾向を表す短い言い回し)。占い風の「光」
+// 「強み」といった価値判断を含む言い回し(旧SENSE_LIGHT/FEELING_WORD)は使わず、
+// 本人に話しかける口調のまま、良い/悪いの判断を挟まない事実の記述に絞る
+// (オーナー仕様:「事実を示し、判断は入れない。良い・悪いの言葉は使わない。
+// 専門用語は使わない」)。
+const TAG_FACT_PHRASE = {
+  "楽しい":         "気軽に楽しめる作品",
+  "感動":           "心が動かされるような作品",
+  "リラックス":     "ゆったりと見られる作品",
+  "ワクワク":       "先が気になるような作品",
+  "怖い":           "日常から少し離れた、少し怖いような世界の作品",
+  "美しい":         "映像や言葉の美しさが印象的な作品",
+  "ドキドキ":       "緊張感のある作品",
+  "笑い":           "笑えるような作品",
+  "悲しい":         "切なさの残る作品",
+  "考えさせられる": "じっくり考えさせられるような作品"
 };
 
-// 「カードが告げる今のあなた」「映画オラクル」で使う、その気分を表す柔らかい言葉。
-const FEELING_WORD = {
-  "楽しい":         "弾むような楽しさ",
-  "感動":           "じんわりと込み上げる感動",
-  "リラックス":     "ほっと力を抜きたい気持ち",
-  "ワクワク":       "胸が高鳴るような期待感",
-  "怖い":           "ぞくぞくするような刺激",
-  "美しい":         "うっとりするような美しさへの憧れ",
-  "ドキドキ":       "手に汗握るような高揚感",
-  "笑い":           "くすっと笑える軽やかさ",
-  "悲しい":         "静かに涙したい気持ち",
-  "考えさせられる": "じっくり考えを巡らせたい気分"
+// タイプ見出しの下に出す一言説明(1行)。
+const TYPE_BLURB = {
+  "楽しい":         "気軽に楽しめる作品を選ぶタイプです。",
+  "感動":           "心が動かされる作品を選ぶタイプです。",
+  "リラックス":     "ゆったりと見られる作品を選ぶタイプです。",
+  "ワクワク":       "先が気になる作品を選ぶタイプです。",
+  "怖い":           "少し怖いような世界の作品を選ぶタイプです。",
+  "美しい":         "美しさが印象的な作品を選ぶタイプです。",
+  "ドキドキ":       "緊張感のある作品を選ぶタイプです。",
+  "笑い":           "笑える作品を選ぶタイプです。",
+  "悲しい":         "切なさの残る作品を選ぶタイプです。",
+  "考えさせられる": "じっくり考えさせられる作品を選ぶタイプです。"
 };
 
 function generateDiagnosisName(themeTitle){
   return `『${themeTitle}』`;
 }
 
-function generateDiagnosis(pocketMovies){
-  const tagCounts = {};
-  pocketMovies.forEach(m => m.tags.forEach(t => { tagCounts[t] = (tagCounts[t] || 0) + 1; }));
-  const sortedTags = Object.keys(tagCounts).sort((a, b) => tagCounts[b] - tagCounts[a]);
-  const topTag = sortedTags[0];
-  const secondTag = sortedTags[1];
+function topTagFromMovies(movies){
+  const counts = {};
+  movies.forEach(m => m.tags.forEach(t => { counts[t] = (counts[t] || 0) + 1; }));
+  const sorted = Object.keys(counts).sort((a, b) => counts[b] - counts[a]);
+  return sorted[0];
+}
 
-  const themeTitle = pickThemeName(topTag);
-  const diagnosisName = generateDiagnosisName(themeTitle);
-  const titlesText = pocketMovies.map(m => `「${unescapeHtml(m.title)}」`).join('・');
+// 「いつもの傾向」用。直近の月を重く、前の月を少し軽く使う(pocketMovieWeight、
+// オーナー仕様:「推薦は、直近の月を重く、前の月を少し軽く使う」と同じ考え方)。
+function topTagFromWeightedMovies(movies){
+  const counts = {};
+  movies.forEach(m => {
+    const w = pocketMovieWeight(m.id);
+    m.tags.forEach(t => { counts[t] = (counts[t] || 0) + w; });
+  });
+  const sorted = Object.keys(counts).sort((a, b) => counts[b] - counts[a]);
+  return sorted[0];
+}
 
-  const cardSection = [
-    '✦ カードが告げる今のあなた',
-    `${titlesText}——この5つを選んだあなたの心には、${FEELING_WORD[topTag] || "そのときどきの気分"}がそっと流れていたのかもしれません。`,
-    'その日、その瞬間の感覚を信じて選んだ5つは、まぎれもなくあなただけの物語です。'
-  ].join('\n');
+// 月の節目(3/5/10)で呼ぶ、新しい診断結果の生成。事実ベース・判断なし・
+// 専門用語なしの2段構成(今月の傾向/いつもの傾向)にする(オーナー仕様の
+// 「結果の構成」セクション)。
+function generateMonthlyDiagnosis(monthMovies, allPocketMovies, milestone){
+  const monthTopTag = topTagFromMovies(monthMovies) || "楽しい";
+  const usualTopTag = topTagFromWeightedMovies(allPocketMovies) || monthTopTag;
 
-  const senseSection = [
-    '✦ あなたの中に眠る「感性の光」',
-    SENSE_LIGHT[topTag] || "誰かと違う、あなただけの感じ方を、あなたはちゃんと持っているようです。"
-  ].join('\n');
+  const themeTitle = pickThemeName(monthTopTag);
+  const name = generateDiagnosisName(themeTitle);
+  const blurb = TYPE_BLURB[monthTopTag] || '';
 
-  const oracleFeeling = (secondTag && FEELING_WORD[secondTag]) || "これまでとは少し違う気分";
-  const oracleSection = [
-    '✦ 作品オラクル(未来への一歩)',
-    `次にポケットに加える1つは、${oracleFeeling}をそっと連れてきてくれるかもしれません。`,
-    'どんな新しい扉が開くのか、今から少し楽しみにしていてください。'
-  ].join('\n');
+  const monthPhrase = TAG_FACT_PHRASE[monthTopTag] || "気になる作品";
+  const usualPhrase = TAG_FACT_PHRASE[usualTopTag] || monthPhrase;
 
-  const body = [cardSection, senseSection, oracleSection].join('\n\n');
+  const monthLine = `今月は、${monthPhrase}を多く入れていました。`;
+  const usualLine = usualTopTag === monthTopTag
+    ? `いつもも同じように、${usualPhrase}を好んで選んでいる傾向があります。`
+    : `いつもは、${usualPhrase}を好んで選んでいる傾向があります。`;
 
-  // 今日の贈り物(選んでいない、傾向が近い作品から1本だけ)
-  const pickedIds = pocketMovies.map(m => m.id);
-  const omikujiMovieId = pickOmikujiMovie(topTag, secondTag, pickedIds);
+  const body = [monthLine, usualLine].join('\n');
+  const pickedIds = allPocketMovies.map(m => m.id);
 
   return {
-    name: diagnosisName,
-    themeTitle: themeTitle,
-    body: body,
-    omikujiMovieId: omikujiMovieId,
-    topTag: topTag
+    name, themeTitle, body, blurb,
+    topTag: monthTopTag,
+    milestone,
+    omikujiMovieId: pickOmikujiMovie(monthTopTag, usualTopTag, pickedIds)
   };
 }
 
@@ -12691,10 +12973,11 @@ function renderAddToListOptions(){
   }
 
   const m = MOVIES.find(x => x.id === state.currentMovieId);
-  const pocketActive = isInPocket(m.id);
   const watchLaterActive = !!state.myWatchLater[m.id];
-  let html = `<button class="ghost-btn pocket-option${pocketActive ? ' active' : ''}" style="width:100%; margin-bottom:8px; text-align:left;" onclick="addMovieToList('pocket')">${pocketActive ? '✓ ' : ''}ポケットに入れる(診断に使われます)</button>`;
-  html += `<button class="ghost-btn watch-later-option${watchLaterActive ? ' active' : ''}" style="width:100%; margin-bottom:8px; text-align:left;" onclick="addMovieToList('watch_later')">${watchLaterActive ? '✓ ' : ''}気になる</button>`;
+  // ポケットは詳細ページ専用のハートボタン(pocket-heart-btn)に一本化したため、
+  // ここの選択肢からは外した(オーナー仕様:「今あるリンクで作ってたポケットに
+  // 入れるを消す」)。
+  let html = `<button class="ghost-btn watch-later-option${watchLaterActive ? ' active' : ''}" style="width:100%; margin-bottom:8px; text-align:left;" onclick="addMovieToList('watch_later')">${watchLaterActive ? '✓ ' : ''}気になる</button>`;
   html += state.myLists.map(list => {
     const inList = list.movieIds.includes(m.id);
     return `<button class="ghost-btn${inList ? ' active' : ''}" style="width:100%; margin-bottom:8px; text-align:left;" onclick="addMovieToList('${list.id}')">${inList ? '✓ ' : ''}${list.name}(${listItemCount(list)}件)</button>`;
@@ -12844,12 +13127,21 @@ async function loadMyLists(){
   }catch(err){ state.myLists = []; }
 }
 
+// 未登録でも使える(オーナー仕様:「未ログインでも使える」)。以前は
+// requireVerifiedUser()でメール登録済み限定にしていたが、ポケット自体が
+// 未登録でも使えるようになったため、この画面への入口も揃えて外す。
 function goPocket(){
-  if(!requireVerifiedUser()) return;
   pocketShownCount = POCKET_PAGE_SIZE;
   renderPocketView();
+  renderPocketProgress();
+  const latest = (state.diagnosisHistory || [])[0];
+  if(latest) applyDiagnosisResultDisplay(latest, false);
+  else document.getElementById('diagnosis-result').style.display = 'none';
   switchView('view-pocket');
   saveViewState('view-pocket', {});
+  // 計測:節目の後に再訪したか、月末に結果カードを開いたかを後で集計
+  // できるよう、開いた時点のmonthKeyと一緒にログだけ残す。
+  logPocketDiagnosisEvent('pocket_view_opened', latest ? latest.milestone : null, currentMonthWindow().monthKey);
 }
 
 const POCKET_PAGE_SIZE = 9;
@@ -12886,7 +13178,7 @@ async function removeFromPocketView(movieId){
 function renderPocketView(){
   const pocketMovies = getPocketMovies();
 
-  renderDiagnosisPicker();
+  renderPocketProgress();
 
   // 新しく入れたもの順に並べ、他の一覧(検索結果など)と同じく横スライドで表示し、
   // 増えすぎた場合は「もっと見る」を押した分だけ追加表示する(縦に伸びすぎないように)
@@ -12933,91 +13225,58 @@ function loadMorePocket(){
   renderPocketView();
 }
 
-const DIAGNOSIS_MAX_PICK = 5;
-const DIAGNOSIS_COOLDOWN_DAYS = 30;
-let diagnosisSelection = [];
-
-// 直近の診断からDIAGNOSIS_COOLDOWN_DAYS日経っていなければ、残り日数(切り上げ)を返す。
-// 経過していれば0。診断履歴が無い(=一度も診断していない、または未確認ユーザーで
-// 履歴が保存されていない)場合も0。
-function diagnosisCooldownRemainingDays(){
-  const history = state.diagnosisHistory || [];
-  const prev = history[0];
-  if(!prev || !prev.date) return 0;
-  const elapsedDays = (Date.now() - new Date(prev.date).getTime()) / (1000 * 60 * 60 * 24);
-  const remaining = Math.ceil(DIAGNOSIS_COOLDOWN_DAYS - elapsedDays);
-  return remaining > 0 ? remaining : 0;
+// 計測(オーナー仕様の「計測」セクション)。click_logsと同じ考え方の匿名ログで、
+// ダッシュボードは作らず後でSQLから集計する想定。失敗してもUIには影響させない。
+function logPocketDiagnosisEvent(eventType, milestone, monthKey){
+  try{
+    supabase.from('pocket_diagnosis_events').insert({ event_type: eventType, milestone: milestone ?? null, month_key: monthKey ?? null })
+      .then(({ error }) => { if(error) console.error('計測ログの送信に失敗しました', error); });
+  }catch(err){ /* 計測の失敗は無視する */ }
 }
 
-function renderDiagnosisPicker(){
-  const root = document.getElementById('diagnosis-picker');
-  const runBtn = document.getElementById('diagnosis-run-btn');
-  const cooldownNote = document.getElementById('diagnosis-cooldown-note');
-  const pocketMovies = [...getPocketMovies()].reverse();
-
-  // ポケットから消えた作品は選択からも外す
-  diagnosisSelection = diagnosisSelection.filter(id => pocketMovies.some(m => m.id === id));
-
-  const remainingDays = diagnosisCooldownRemainingDays();
-  if(remainingDays > 0){
-    root.style.display = 'none';
-    runBtn.style.display = 'none';
-    cooldownNote.style.display = 'block';
-    cooldownNote.textContent = `5本での診断は1ヶ月に1回までです。あと${remainingDays}日で次の診断ができます。`;
-    // クールダウン中は次の診断ができない代わりに、直近の診断結果を
-    // 「過去の記憶を見る」を開かなくても見えるように出し続ける
-    // (以前はここでdiagnosis-resultに触れておらず、ページを開き直すと
-    // 結果ごと消えて見えていた)。
-    const latest = (state.diagnosisHistory || [])[0];
-    if(latest) applyDiagnosisResultDisplay(latest);
-    return;
-  }
-  root.style.display = '';
-  runBtn.style.display = '';
-  cooldownNote.style.display = 'none';
-  // クールダウンが明けた後は、また新しく診断できる状態を主役にする
-  // (30日を過ぎた古い結果を出しっぱなしにはしない)。
-  document.getElementById('diagnosis-result').style.display = 'none';
-
-  if(pocketMovies.length === 0){
-    root.innerHTML = Array.from({length: 6}).map((_, i) => `
-      <div class="diagnosis-picker-empty" onclick="goHome()">
-        <span class="pocket-empty-plus">+</span>
-        ${i === 0 ? '<span class="pocket-empty-label">作品を拾いに行く</span>' : ''}
-      </div>
-    `).join('');
-  } else {
-    root.innerHTML = pocketMovies.map(m => {
-      const isSelected = diagnosisSelection.includes(m.id);
-      return `
-        <div class="diagnosis-picker-item${isSelected ? ' selected' : ''}" style="background:${m.posterColor};" onclick="toggleDiagnosisPick(${m.id})">
-          <div class="poster-thumb-title">${m.title}</div>
-          <div class="diag-pick-check">✓</div>
-        </div>
-      `;
-    }).join('');
-  }
-
-  runBtn.disabled = diagnosisSelection.length !== DIAGNOSIS_MAX_PICK;
-  runBtn.textContent = diagnosisSelection.length > 0 ? `診断する(${diagnosisSelection.length}/${DIAGNOSIS_MAX_PICK})` : `診断する`;
+function hasMilestoneRecordForMonth(monthKey, milestone){
+  return (state.diagnosisHistory || []).some(h => h.monthKey === monthKey && h.milestone === milestone);
 }
 
-function toggleDiagnosisPick(id){
-  if(diagnosisCooldownRemainingDays() > 0) return;
-  const idx = diagnosisSelection.indexOf(id);
-  if(idx !== -1){
-    diagnosisSelection.splice(idx, 1);
-    playTone(420, 0.09, 0.08, 'sine');
+// ポケットの中身が変わった(追加/削除、登録によるローカルからの移行)後に
+// 呼ぶ、画面更新の入口。view-pocketを見ていない時に重い描画をしないよう、
+// その画面が実際に表示中の時だけ再描画する。
+function onPocketDataChanged(){
+  const view = document.getElementById('view-pocket');
+  if(view && view.classList.contains('active')) renderPocketProgress();
+  renderProfileMenuSummaries();
+}
+
+// 進捗表示(旧・手動ピッカー/クールダウン表示の置き換え)。節目に達した
+// 直後はmaybeTriggerMilestoneDiagnosis側で診断結果を表示するので、ここは
+// 「次の節目まで、あと○つ」「今月はあと○日です」「今週は○件入りました」
+// のような淡い進捗情報だけを出す(オーナー仕様:「診断は『結果を見る場所』
+// ではなく、『次の節目に戻る場所』として扱う」)。
+function renderPocketProgress(){
+  const el = document.getElementById('pocket-progress');
+  if(!el) return;
+  const { start, end, monthKey } = currentMonthWindow();
+  const monthCount = itemsInWindow(start, end).length;
+  const week = currentWeekWindow();
+  const weekCount = itemsInWindow(week.start, week.end).length;
+  const now = jstParts(new Date());
+  const todayInstant = jstDateToUtc(now.year, now.month, now.day);
+  const daysLeft = Math.max(1, Math.round((end - todayInstant) / 86400000));
+
+  let html = '';
+  if(hasMilestoneRecordForMonth(monthKey, 10)){
+    html += `<div class="pocket-progress-line pocket-progress-done">今月のポケットが完成しました</div>`;
   } else {
-    if(diagnosisSelection.length >= DIAGNOSIS_MAX_PICK){
-      showToast(`診断に使えるのは${DIAGNOSIS_MAX_PICK}本までです`);
-      return;
+    const next = POCKET_MILESTONES.find(n => n > monthCount);
+    if(next != null){
+      html += `<div class="pocket-progress-line">次の節目まで、あと${next - monthCount}つ</div>`;
     }
-    diagnosisSelection.push(id);
-    playTone(600, 0.09, 0.09, 'sine');
   }
-  if(navigator.vibrate) navigator.vibrate(10);
-  renderDiagnosisPicker();
+  html += `<div class="pocket-progress-sub">今月はあと${daysLeft}日です</div>`;
+  if(weekCount > 0){
+    html += `<div class="pocket-progress-sub">今週は${weekCount}件入りました</div>`;
+  }
+  el.innerHTML = html;
 }
 
 // 診断の「シネマ・タイプ」カード。ランクや段階の概念を一切持たず、10個の
@@ -13044,7 +13303,7 @@ function applyDiagnosisShareCard(cardId, topTag, themeTitle, movieTitles){
   const color = tagColor(topTag);
   card.style.background = `linear-gradient(155deg, ${hexAlphaToRgba(color, 'dd')} 0%, ${color} 55%, ${hexAlphaToRgba(color, 'bb')} 100%)`;
   card.querySelector('.diagnosis-share-title').textContent = themeTitle || 'まだ名前のない物語';
-  card.querySelector('.diagnosis-share-blurb').textContent = SENSE_LIGHT[topTag] || '';
+  card.querySelector('.diagnosis-share-blurb').textContent = TYPE_BLURB[topTag] || '';
   const moviesEl = card.querySelector('.diagnosis-share-movies');
   if(moviesEl){
     moviesEl.innerHTML = (movieTitles || []).slice(0, 5)
@@ -13052,10 +13311,11 @@ function applyDiagnosisShareCard(cardId, topTag, themeTitle, movieTitles){
   }
 }
 
-// クールダウン中(次に診断できるまでの30日間)は新しい結果を作れない代わりに、
-// 直近の診断結果をこの関数で出し続ける(runNewDiagnosis()の表示ロジックと
-// 共通化)。secondTagは履歴に保存していないので、みくじの候補はtopTagだけで絞る。
-function applyDiagnosisResultDisplay(historyEntry){
+// ポケット・診断画面を開いた時(ページ読み込み直後や、既に生成済みの結果を
+// 見返す時)に、直近の診断結果をここで出す。新しく節目に達した直後だけ
+// isFresh=trueにして、ファンファーレ付きの登場アニメーションにする
+// (maybeTriggerMilestoneDiagnosisから呼ぶ)。
+function applyDiagnosisResultDisplay(historyEntry, isFresh){
   const movies = (historyEntry.movieIds || []).map(id => MOVIES.find(m => m.id === id)).filter(Boolean);
   // history.nameは『』で囲って保存してあるので、カード表示用に中身だけ取り出す
   const themeTitle = (historyEntry.name || '').replace(/^『|』$/g, '') || 'まだ名前のない物語';
@@ -13063,6 +13323,15 @@ function applyDiagnosisResultDisplay(historyEntry){
   applyDiagnosisShareCard('diagnosis-share-card', historyEntry.topTag, themeTitle, movies.map(m => m.title));
   currentDiagnosisShareState = { name: historyEntry.name, topTag: historyEntry.topTag };
   document.getElementById('new-diagnosis-text').textContent = historyEntry.body;
+
+  // オーナー仕様:「3件:初回の仮診断...注記『入れるほど、当たりやすくなります』」。
+  const noteEl = document.getElementById('new-diagnosis-note');
+  if(historyEntry.milestone === 3){
+    noteEl.textContent = '入れるほど、当たりやすくなります';
+    noteEl.style.display = 'block';
+  } else {
+    noteEl.style.display = 'none';
+  }
 
   document.getElementById('new-diagnosis-movies').innerHTML = movies.map(m => `
     <div class="poster-thumb" style="background:${m.posterColor};" onclick="goDetailWithViewReturn(${m.id}, 'view-pocket', '← 診断に戻る')">
@@ -13074,6 +13343,18 @@ function applyDiagnosisResultDisplay(historyEntry){
   renderOmikujiCard(omikujiMovieId);
 
   const resultEl = document.getElementById('diagnosis-result');
+  if(isFresh){
+    resultEl.style.display = 'none';
+    resultEl.classList.remove('reveal');
+    void resultEl.offsetWidth;
+    requestAnimationFrame(() => {
+      resultEl.style.display = 'block';
+      void resultEl.offsetWidth;
+      resultEl.classList.add('reveal');
+      resultEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    });
+    return;
+  }
   resultEl.style.display = 'block';
   resultEl.classList.add('reveal');
 }
@@ -13089,15 +13370,17 @@ async function shareDiagnosisCard(){
   if(navigator.share){
     try{
       await navigator.share({ text: shareText });
+      logPocketDiagnosisEvent('diagnosis_shared', null, currentMonthWindow().monthKey);
     }catch(err){
       // ユーザーがシェアシートをキャンセルしただけの場合もここに来るので、
-      // エラー扱いにはせず静かに終わる。
+      // エラー扱いにはせず静かに終わる(計測もしない)。
     }
     return;
   }
   try{
     await navigator.clipboard.writeText(shareText);
     showToast('コピーしました。好きな場所に貼り付けてシェアしてね');
+    logPocketDiagnosisEvent('diagnosis_shared', null, currentMonthWindow().monthKey);
   }catch(err){
     showToast('コピーに失敗しました');
   }
@@ -13157,11 +13440,13 @@ async function shareDiagnosisCardAsImage(){
     if(navigator.canShare && navigator.canShare({ files: [file] })){
       try{
         await navigator.share({ files: [file] });
+        logPocketDiagnosisEvent('diagnosis_image_saved', null, currentMonthWindow().monthKey);
         return;
       }catch(err){
         // シェアシートをキャンセルしただけの場合もここに来るので、
         // エラー扱いにはせず静かにダウンロードへフォールバックしない
-        // (キャンセルした人に勝手にダウンロードさせても驚くだけのため)。
+        // (キャンセルした人に勝手にダウンロードさせても驚くだけのため、
+        // 計測もしない)。
         return;
       }
     }
@@ -13175,6 +13460,7 @@ async function shareDiagnosisCardAsImage(){
     a.remove();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
     showToast('画像を保存しました');
+    logPocketDiagnosisEvent('diagnosis_image_saved', null, currentMonthWindow().monthKey);
   }catch(err){
     console.error('診断カードの画像化に失敗しました', err);
     showToast('画像の作成に失敗しました');
@@ -13185,71 +13471,55 @@ async function shareDiagnosisCardAsImage(){
   }
 }
 
-async function runNewDiagnosis(){
-  if(!requireVerifiedUser()) return;
-  if(diagnosisSelection.length !== DIAGNOSIS_MAX_PICK) return;
-  if(diagnosisCooldownRemainingDays() > 0) return;
-  const selectedMovies = diagnosisSelection.map(id => MOVIES.find(m => m.id === id)).filter(Boolean);
-  const diagnosis = generateDiagnosis(selectedMovies);
+// togglePocketMembership()の追加経路から呼ぶ。今月分の件数がちょうど
+// 3/5/10に達した瞬間だけ、新しい診断を1回生成する(オーナー仕様:
+// 「3件:初回の仮診断、5件:2回目の更新、10件:今月の締めの診断」)。
+// 同じ月・同じ節目を二重に生成しないよう、state.diagnosisHistoryに
+// 同じ組が無いことを確認する。匿名(未登録)の間はdiagnosis_historyの
+// RLS(private.is_verified_user()必須)により保存できないため、結果は
+// その場で表示するだけに留め、ページ再読み込みでは残らない(次に3/5/10に
+// 達した時にまた生成される)。
+async function maybeTriggerMilestoneDiagnosis(){
+  const { start, end, monthKey } = currentMonthWindow();
+  const monthIds = itemsInWindow(start, end);
+  const milestone = POCKET_MILESTONES.find(n => n === monthIds.length);
+  if(milestone == null) return;
+  if(hasMilestoneRecordForMonth(monthKey, milestone)) return;
 
-  applyDiagnosisShareCard('diagnosis-share-card', diagnosis.topTag, diagnosis.themeTitle, selectedMovies.map(m => m.title));
-  currentDiagnosisShareState = { name: diagnosis.name, topTag: diagnosis.topTag };
-  document.getElementById('new-diagnosis-text').textContent = diagnosis.body;
+  const monthMovies = monthIds.map(id => MOVIES.find(m => m.id === id)).filter(Boolean);
+  const allPocketMovies = getPocketMovies();
+  if(!monthMovies.length) return;
+  const diagnosis = generateMonthlyDiagnosis(monthMovies, allPocketMovies, milestone);
 
-  const moviesEl = document.getElementById('new-diagnosis-movies');
-  moviesEl.innerHTML = selectedMovies.map(m => `
-    <div class="poster-thumb" style="background:${m.posterColor};" onclick="goDetailWithViewReturn(${m.id}, 'view-pocket', '← 診断に戻る')">
-      <div class="poster-thumb-title">${m.title}</div>
-    </div>
-  `).join('');
+  logPocketDiagnosisEvent('milestone_reached', milestone, monthKey);
 
-  renderOmikujiCard(diagnosis.omikujiMovieId);
+  const historyEntry = {
+    id: null, date: new Date().toISOString(), name: diagnosis.name, body: diagnosis.body,
+    topTag: diagnosis.topTag, movieIds: monthIds.slice(), milestone, monthKey
+  };
 
-  const resultEl = document.getElementById('diagnosis-result');
-  resultEl.style.display = 'none';
-  resultEl.classList.remove('reveal');
-  void resultEl.offsetWidth;
-  requestAnimationFrame(() => {
-    resultEl.style.display = 'block';
-    void resultEl.offsetWidth;
-    resultEl.classList.add('reveal');
-    resultEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-  });
-
-  // ここに到達する時点でメール登録済み(requireVerifiedUser()通過済み)なので、
-  // 診断結果は必ず履歴に保存する。
-  try{
-    const userId = await currentUserId();
-    const { data, error } = await supabase
-      .from('diagnosis_history')
-      .insert({
-        user_id: userId,
-        name: diagnosis.name,
-        body: diagnosis.body,
-        top_tag: diagnosis.topTag,
-        movie_ids: diagnosisSelection.slice()
-      })
-      .select('id, created_at')
-      .single();
-    if(error) throw error;
-    if(!state.diagnosisHistory) state.diagnosisHistory = [];
-    state.diagnosisHistory.unshift({
-      id: data.id,
-      date: data.created_at,
-      name: diagnosis.name,
-      body: diagnosis.body,
-      topTag: diagnosis.topTag,
-      movieIds: diagnosisSelection.slice()
-    });
-  }catch(err){
-    console.error('診断結果の保存に失敗しました', err);
-    showToast(friendlyErrorMessage(err, '診断結果の保存に失敗しました。通信環境を確認してください。'));
+  if(isVerifiedUser()){
+    try{
+      const userId = await currentUserId();
+      const { data, error } = await supabase
+        .from('diagnosis_history')
+        .insert({ user_id: userId, name: diagnosis.name, body: diagnosis.body, top_tag: diagnosis.topTag, movie_ids: monthIds, milestone, month_key: monthKey })
+        .select('id, created_at')
+        .single();
+      if(error) throw error;
+      historyEntry.id = data.id;
+      historyEntry.date = data.created_at;
+    }catch(err){
+      console.error('診断結果の保存に失敗しました', err);
+    }
   }
 
-  // 診断に使った選択は必ずクリアして、次にまた新しく選べるようにする
-  diagnosisSelection.length = 0;
-  renderDiagnosisPicker();
+  if(!state.diagnosisHistory) state.diagnosisHistory = [];
+  state.diagnosisHistory.unshift(historyEntry);
 
+  applyDiagnosisResultDisplay(historyEntry, true);
+  renderPocketProgress();
+  showToast(milestone === 10 ? '今月のポケットが完成しました' : `診断が更新されました:『${(historyEntry.name || '').replace(/^『|』$/g, '')}』`);
   playFanfare();
   if(navigator.vibrate) navigator.vibrate([15, 30, 15, 30, 40]);
 }
@@ -13281,6 +13551,8 @@ function renderDiagnosisHistoryList(){
   root.innerHTML = history.map(h => {
     const d = new Date(h.date);
     const dateStr = `${d.getFullYear()}/${d.getMonth()+1}/${d.getDate()}`;
+    // 旧方式(手動5本選択)の履歴にはmilestoneが無いので、その場合はラベル無し。
+    const milestoneLabel = h.milestone === 10 ? '今月の締め' : h.milestone === 5 ? '今月の更新' : h.milestone === 3 ? '今月の仮診断' : '';
     const color = TAG_COLORS[h.topTag] || 'var(--line)';
     const usedMovies = (h.movieIds || []).map(id => MOVIES.find(m => m.id === id)).filter(Boolean);
     const postersHTML = usedMovies.length
@@ -13291,7 +13563,7 @@ function renderDiagnosisHistoryList(){
         <div class="diagnosis-history-card" id="diag-history-card-${h.id}" onclick="toggleDiagnosisHistoryExpand(${h.id})">
           <div class="diagnosis-history-color" style="background:${color};"></div>
           <div class="diagnosis-history-info">
-            <div class="diagnosis-history-date">${dateStr}</div>
+            <div class="diagnosis-history-date">${dateStr}${milestoneLabel ? `・${milestoneLabel}` : ''}</div>
             <div class="diagnosis-history-name">${h.name}</div>
           </div>
           <button class="diagnosis-history-delete" onclick="event.stopPropagation(); deleteDiagnosisHistoryItem(${h.id})">🗑</button>
