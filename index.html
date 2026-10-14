@@ -6499,9 +6499,16 @@ function rotateHomeMoods(){
 // 間は「あと◯つで」という空状態にする。
 function renderHomeGift(){
   const container = document.getElementById('home-gift-area');
-  const pocketMovies = getPocketMovies();
-  if(pocketMovies.length < 3){
-    const remaining = 3 - pocketMovies.length;
+  // オーナー指摘:「すでに診断結果を出してあるのでその情報を元に出して
+  // ください」。ポケットから毎回新たにtopTagを計算し直すのではなく、
+  // view-pocket(goPocket/applyDiagnosisResultDisplay)と同じく
+  // state.diagnosisHistory[0](直近の診断結果、節目ごとに保存済み)の
+  // topTag/movieIdsをそのまま使う。診断がまだ無い(節目未達)場合だけ
+  // ポケットの件数から「あと◯つ」を出す。
+  const latest = (state.diagnosisHistory || [])[0];
+  if(!latest){
+    const pocketMovies = getPocketMovies();
+    const remaining = Math.max(1, 3 - pocketMovies.length);
     container.innerHTML = `
       <div class="gift-empty" onclick="scrollToSearchHome()">
         <div class="gift-empty-plus">+</div>
@@ -6509,10 +6516,7 @@ function renderHomeGift(){
       </div>`;
     return;
   }
-  const topTag = topTagFromWeightedMovies(pocketMovies);
-  const secondTag = secondTagFromMovies(pocketMovies, topTag);
-  const pickedIds = pocketMovies.map(m => m.id);
-  const movieId = pickOmikujiMovie(topTag, secondTag, pickedIds);
+  const movieId = pickOmikujiMovie(latest.topTag, null, latest.movieIds || []);
   if(movieId == null){
     container.innerHTML = `
       <div class="gift-empty" onclick="scrollToSearchHome()">
@@ -6526,7 +6530,7 @@ function renderHomeGift(){
   // 背景だけ他のホーム要素と同じ材質に揃える。色はこの贈り物自身の作品の
   // タグから作るので、日によって自然に変わる。
   const pickedMovie = MOVIES.find(m => m.id === movieId);
-  const glowTags = (pickedMovie && pickedMovie.tags.length) ? pickedMovie.tags.slice(0, 3) : [topTag];
+  const glowTags = (pickedMovie && pickedMovie.tags.length) ? pickedMovie.tags.slice(0, 3) : [latest.topTag];
   container.innerHTML = `
     <div id="omikuji-card-home" class="omikuji-card omikuji-glow" style="display:none;" onclick="onOmikujiCardClick('-home')">
       ${homeMoodBlurHTML(glowTags)}
@@ -14032,6 +14036,9 @@ function onPocketDataChanged(){
   const view = document.getElementById('view-pocket');
   if(view && view.classList.contains('active')) renderPocketProgress();
   renderProfileMenuSummaries();
+  // ホーム画面を見ている最中にポケットの中身が変わった(3件目を入れた等)
+  // 場合も、「きょうの贈り物」を最新の内容で描き直す(次の注参照)。
+  if(state.homeLandingActive) renderHomeGift();
 }
 
 // 進捗表示(旧・手動ピッカー/クールダウン表示の置き換え)。節目に達した
@@ -14566,6 +14573,14 @@ async function init(){
   personalDataPromise.then(() => {
     renderResults();
     renderHomeRows();
+    // splashはloadMovies()の完了だけで閉じるため、閉じた直後にユーザーが
+    // 即座に「ホーム」をタップすると、この並列読み込み(ポケット・診断履歴等)
+    // がまだ終わっていない状態でrenderHomeGift()が走り、実際には登録済みの
+    // ポケットがあっても「きょうの贈り物」が空状態のまま固まって見える
+    // 事故があった(オーナー報告:「作品登録しているはずなのに表に反映
+    // されていなかった」)。個人データが揃ったこのタイミングで、ホームを
+    // 見ている最中なら描き直す。
+    if(state.homeLandingActive) renderHomeGift();
     updateHeader();
     const animePreviewNow = isAnimePreviewEnabled();
     document.getElementById('catalog-mode-toggle-inline').classList.toggle('enabled', animePreviewNow);
