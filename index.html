@@ -2675,6 +2675,12 @@
   .gift-swipe-hint{
     margin-top: 10px; text-align:center; font-size:10.5px; color: var(--ink-soft);
   }
+  /* オーナー指摘:「スワイプで他の候補が見れない」。touch-actionが指定されて
+     いないと、実機では指を斜めに動かしただけでブラウザがページの縦スクロール
+     だと判断し、pointerupの前にpointercancelになってスワイプ判定(36px以上の
+     横移動)に届かない。横方向はJS側で処理し、縦方向だけブラウザの標準スク
+     ロールに任せる(pan-y)ことで、斜め気味のスワイプでも拾えるようにする。 */
+  #omikuji-card-home{ touch-action: pan-y; }
   .omikuji-label{
     font-size: 11px; color: var(--gold); font-weight:600; letter-spacing:.06em;
     margin-bottom: 16px;
@@ -6582,6 +6588,7 @@ function renderHomeGift(){
   const cardEl = document.getElementById('omikuji-card-home');
   cardEl.addEventListener('pointerdown', onHomeGiftPointerDown);
   cardEl.addEventListener('pointerup', onHomeGiftPointerUp);
+  cardEl.addEventListener('pointercancel', onHomeGiftPointerCancel);
 }
 
 function scrollToSearchHome(){
@@ -13125,6 +13132,9 @@ function onHomeGiftPointerUp(ev){
   const dir = dx < 0 ? 1 : -1;
   homeGiftIndex = (homeGiftIndex + dir + homeGiftCandidates.length) % homeGiftCandidates.length;
   swapHomeGiftMovie(homeGiftCandidates[homeGiftIndex]);
+}
+function onHomeGiftPointerCancel(){
+  homeGiftSwipeStartX = null;
 }
 function swapHomeGiftMovie(movieId){
   const m = MOVIES.find(x => x.id === movieId);
