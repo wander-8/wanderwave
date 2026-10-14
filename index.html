@@ -7706,6 +7706,33 @@ function renderResults(){
     resultsFiltered = head.concat(resultsFiltered.slice(SHUFFLE_WINDOW));
   }
 
+  // オーナー指摘:「ホームの感情検索はなるべく色んな項目を混ぜて欲しい」。
+  // 愛度順だけだと投票データの厚い映画が上位を占めがちで(全ジャンル帯で
+  // 直面したのと同じ問題)、アニメ・ドラマ・漫画・小説・音楽が下の方に
+  // 埋もれてしまう。ホームモード・文字検索なしの時だけ、各媒体内の順位
+  // 関係(愛度順)は保ったまま、媒体をまたいでラウンドロビンに混ぜ直す。
+  if(!q && state.homeLandingActive){
+    const byType = {};
+    resultsFiltered.forEach(m => {
+      const mode = mediaTypeInfo(m).mode;
+      (byType[mode] = byType[mode] || []).push(m);
+    });
+    const typeOrder = CATALOG_MODES.map(([mode]) => mode).filter(mode => byType[mode] && byType[mode].length);
+    const interleaved = [];
+    let hasMore = typeOrder.length > 0;
+    while(hasMore){
+      hasMore = false;
+      for(const mode of typeOrder){
+        const bucket = byType[mode];
+        if(bucket.length){
+          interleaved.push(bucket.shift());
+          hasMore = true;
+        }
+      }
+    }
+    resultsFiltered = interleaved;
+  }
+
   // 検索条件が変わるたびに最初のRESULTS_PAGE_SIZE件から表示し直す
   resultsShownCount = RESULTS_PAGE_SIZE;
   renderVisibleResults();
