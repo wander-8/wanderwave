@@ -1030,6 +1030,11 @@
   .result-poster img{ position:absolute; inset:0; width:100%; height:100%; object-fit:cover; }
   .result-body{ min-width:0; flex:1; padding-top:4px; }
   .result-synopsis{ font-size: 11.5px; color: var(--ink-soft); opacity:.75; line-height:1.6; margin: 6px 0 2px; font-style:italic; }
+  .result-love-row{
+    display:flex; align-items:center; gap:4px; margin: 4px 0 2px;
+    font-size:13px; font-weight:600; color: var(--love);
+  }
+  .result-love-row svg{ width:13px; height:13px; }
 
   /* 全ジャンル横断の自動ループ帯。見出しは.mood-row-header/.mood-row-kicker/
      .mood-row-tag(既存の「こんな気分の日に」棚と共通)を再利用する。
@@ -6346,14 +6351,10 @@ function buildHomeSceneResultItemHTML(m){
     ? `<img src="${m.posterUrl}" alt="" loading="lazy" decoding="async">`
     : m.title.charAt(0);
   const synopsis = m.synopsis ? `<div class="result-synopsis">${m.synopsis}</div>` : '';
-  const avg = loveDisplayValue(m);
-  const loveHTML = hasLoveBasis(m) ? `
-    <div class="interest-row">
-      <div class="interest-bar-track"><div class="interest-bar-fill" style="width:${(avg/5)*100}%"></div></div>
-      <span class="interest-pct">${HEART_ICON} ${loveScoreText(m)}</span>
-    </div>
-    <div class="interest-count">${loveCountTextForCard(m)}</div>
-  ` : '';
+  // オーナー指摘:「ハートの数だけタイトルの下に置いて欲しかった。あらすじは
+  // 右に置いて欲しかった。棒線はいらない」。バー(.interest-bar-track)や
+  // 件数の文(.interest-count)は出さず、ハート+スコアだけの最小表示にする。
+  const loveHTML = hasLoveBasis(m) ? `<div class="result-love-row">${HEART_ICON} ${loveScoreText(m)}</div>` : '';
   return `
     <div class="result-item">
       <div class="result-poster" style="background:${m.posterColor}" onclick="goDetail(${m.id})">
