@@ -966,6 +966,134 @@
     text-shadow: 0 0 8px rgba(200,196,190,0.7);
   }
 
+  /* ====================================================================
+     ホーム画面「ホーム」モード(場面カード・全ジャンル帯・きょうの贈り物)。
+     カタログモード一覧(映画/アニメ/…)の一番上に追加した「ホーム」を
+     タップすると表示される、#home-rowsとは別の発見用セクション。
+     デザインはArtifactで複数ラウンドのすり合わせを経たもの(経緯は
+     各関数のコメント参照)。.result-type-badge/.result-title/
+     .poster-thumb/.poster-thumb-titleは既存の共通クラスをそのまま使う。
+     ==================================================================== */
+  .section-sub{ font-size: 12px; color: var(--ink-soft); margin: 0 0 16px; }
+
+  .scene-row{
+    display:flex; gap: 10px; overflow-x:auto; padding: 2px 2px 10px;
+    scroll-snap-type: x proximity; -webkit-overflow-scrolling: touch;
+  }
+  .scene-row::-webkit-scrollbar{ height:5px; }
+  .scene-row::-webkit-scrollbar-thumb{ background: var(--line); border-radius:3px; }
+  .scene-card{
+    flex: 0 0 180px; scroll-snap-align: start; min-height: 128px;
+    border-radius: 14px; padding: 18px 15px; cursor: pointer;
+    position:relative; overflow:hidden; background: var(--surface);
+    transition: transform .15s cubic-bezier(.22,.8,.32,1), box-shadow .2s ease;
+  }
+  .scene-card:active{ transform: scale(0.97); }
+  .scene-card.active{ box-shadow: 0 0 0 2px #fff inset; }
+  /* renderPosterMood()(詳細ページのポスター背景)と同じ考え方:タグ色を
+     45pxぼかした円を複数重ねて、暖色の混ざったグローにする(単色の塗り
+     だと「暗い・明るさを感じない」との指摘を受けた)。 */
+  .scene-mood-blur{ position:absolute; inset:-30%; filter: blur(20px); z-index:0; }
+  .scene-mood-blob{ position:absolute; border-radius:50%; opacity:.85; }
+  .scene-card::after{
+    content:''; position:absolute; inset:0; z-index:0;
+    background: linear-gradient(180deg, rgba(0,0,0,0) 45%, rgba(0,0,0,.32) 100%);
+  }
+  .scene-title, .scene-desc{ position:relative; z-index:1; }
+  .scene-title{
+    font-size: 18px; font-weight:800; line-height:1.3; margin-bottom:8px;
+    color: rgba(255,255,255,0.95);
+    text-shadow: 0 2px 10px rgba(0,0,0,0.4), 0 0 16px rgba(160,132,242,0.25);
+  }
+  .scene-desc{ font-size: 11.5px; color: rgba(255,255,255,0.82); line-height:1.6; text-shadow: 0 1px 6px rgba(0,0,0,.35); }
+
+  .scene-results{
+    margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--line);
+    display:none;
+  }
+  .scene-results.open{ display:block; animation: fadeSlide .3s cubic-bezier(.22,.8,.32,1); }
+  @keyframes fadeSlide{ from{ opacity:0; transform:translateY(6px);} to{ opacity:1; transform:translateY(0);} }
+  .scene-results-label{ font-size: 12.5px; color: var(--ink-soft); margin-bottom: 16px; }
+  .result-item{
+    display:flex; gap: 16px; align-items:flex-start;
+    padding: 18px 0; border-bottom: 1px solid var(--line);
+  }
+  .result-item:last-child{ border-bottom:none; }
+  .result-poster{
+    width: 84px; height: 120px; border-radius: 10px; flex-shrink:0; position:relative;
+    display:flex; align-items:center; justify-content:center; cursor:pointer;
+    font-weight:700; font-size:22px; color:rgba(255,255,255,0.75);
+    box-shadow: 0 8px 20px -6px rgba(0,0,0,.5); overflow:hidden;
+  }
+  .result-poster img{ position:absolute; inset:0; width:100%; height:100%; object-fit:cover; }
+  .result-body{ min-width:0; flex:1; padding-top:4px; }
+  .result-synopsis{ font-size: 11.5px; color: var(--ink-soft); opacity:.75; line-height:1.6; margin: 2px 0 10px; font-style:italic; }
+  .pocket-btn{
+    display:inline-flex; align-items:center; gap:5px;
+    background:none; border:1px solid var(--line); border-radius:999px;
+    padding: 5px 12px; font-size: 11px; color: var(--ink-soft);
+    cursor:pointer; font-family:inherit;
+    transition: all .2s ease;
+  }
+  .pocket-btn svg{ width:11px; height:11px; }
+  .pocket-btn.active{ border-color: var(--plum); color: var(--plum); background: rgba(125,95,214,0.12); }
+
+  /* 全ジャンル横断の自動ループ帯。見出しは.mood-row-header/.mood-row-kicker/
+     .mood-row-tag(既存の「こんな気分の日に」棚と共通)を再利用する。
+     スクロールは.review-feed-marquee/trackと同じくinitAutoScrollMarquee()
+     で駆動する(CSSアニメーションではない)。 */
+  /* オーナー指摘:「場面カードとこんな気分の日にってところの位置は
+     離してほしい」。大きい余白は.mood-rotate-header側(ボタンの上)に
+     padding-topとして持たせ、相殺されず確実に間隔を作る。 */
+  .mood-rotate-header{ display:flex; justify-content:flex-end; padding-top: 48px; }
+  .mood-refresh-btn{
+    display:flex; align-items:center; gap:5px; font-size:11.5px; color:var(--ink-soft);
+    background:none; border:1px solid var(--line); border-radius:999px; padding:6px 12px;
+    cursor:pointer; font-family:inherit; transition: transform .15s ease;
+  }
+  .mood-refresh-btn:active{ transform:scale(0.96); }
+  .mood-refresh-btn .spin{ display:inline-block; transition: transform .5s cubic-bezier(.22,.8,.32,1); }
+  .mood-refresh-btn.spinning .spin{ transform: rotate(360deg); }
+  /* オーナー指摘:「気分を変えるところはもう少しモーションを追加」。
+     切り替え時にふわっとフェード+わずかに下から上がる。 */
+  .home-marquee-section{
+    margin: 0 0 4px;
+    transition: opacity .22s ease, transform .22s ease; opacity:1; transform:translateY(0);
+  }
+  .home-marquee-section.fading{ opacity:0; transform:translateY(6px); }
+  /* オーナー指摘:「気分を変えるボタンを少し近づけてほしい」。2本目以降の
+     行間(40px)はそのまま保ちつつ、ボタン直後の最初の行だけ近づける。 */
+  #home-marquee-group .mood-row-header:first-child{ margin-top: 12px; }
+  .home-marquee{
+    overflow-x:auto; overflow-y:hidden; -webkit-overflow-scrolling:touch; margin: 0 -16px; padding: 0 16px 6px;
+  }
+  .home-marquee::-webkit-scrollbar{ height:5px; }
+  /* オーナー指摘:「ポスターの情報量が多い分、お互いが狭いと情報密度が
+     高くて疲れる」。カード自体(.poster-thumb)は他の一覧とも共有の
+     サイズなのでここでは変えず、隣り合うポスター同士の間隔(gap)を
+     16→26pxに広げて、1枚ずつが独立して見えるようにした。行間も
+     .mood-row-headerは他ページの「こんな気分の日に」棚と共有クラスなので
+     直接は変えず、ホーム側だけ上書きする。 */
+  .home-marquee-track{ display:flex; gap:26px; width:max-content; }
+  #home-marquee-group .mood-row-header{ margin-top: 40px; }
+  /* 音楽を別枠に切り出さず、同じ帯の中で見つけやすくするための控えめな
+     強調(オーナー指摘:「音楽が他の項目と一緒にされてないのが気になる」)。 */
+  .home-mood-music-highlight .poster-thumb{ box-shadow: 0 0 0 2px var(--terracotta); }
+
+  /* きょうの贈り物(ホーム版): 既存の#omikuji-card一式(診断結果画面で
+     使っているもの、CSS定義は上の.omikuji-*を参照)を、別IDの2つ目の
+     インスタンスとしてそのまま流用する(renderOmikujiCard/onOmikujiCardClick
+     のsuffix引数参照)。ここで新しく定義するのは、ポケットがまだ少なくて
+     贈り物を選べない時の空状態だけ。 */
+  .gift-empty{
+    margin-top: 16px;
+    border: 1.5px dashed var(--line); border-radius:18px;
+    padding: 26px; text-align:center; cursor:pointer;
+    display:flex; flex-direction:column; align-items:center; gap:5px;
+  }
+  .gift-empty-plus{ font-size:24px; font-weight:700; color:var(--plum); line-height:1; }
+  .gift-empty-label{ font-size:13px; color:var(--ink-soft); }
+
   .interest-row{ display:flex; align-items:center; gap:6px; margin-bottom: 4px; }
   .interest-bar-track{ flex:1; height:5px; background: var(--line); border-radius:3px; overflow:hidden; }
   .interest-bar-fill{ height:100%; border-radius:3px; background: var(--love); }
@@ -1448,6 +1576,10 @@
     margin: 26px 0 10px;
     text-shadow: 0 0 8px rgba(160,132,242,0.3);
   }
+  /* オーナー指摘:「きょうの贈り物は他の項目から少し離した位置にして
+     ほしい」。ホームの全ジャンル帯のすぐ下に続くと地続きに見えるため、
+     この見出しだけ上の余白を広げる(他ページのsection-labelには影響しない)。 */
+  .gift-section-label{ margin-top: 52px; }
   /* Google広告の既定の白背景のまま出すと、ダークテーマのサイトの中で
      浮いてしまう(オーナー指摘)。枠自体を既存のカード(.menu-row等)と
      同じ背景・枠線・角丸で包み、「広告」ラベルだけ小さく添えることで、
@@ -2505,15 +2637,28 @@
     position: relative; overflow: hidden; text-align: center;
   }
   .omikuji-card:active{ transform: scale(0.99); }
+  /* ホーム版だけに付ける修飾クラス(オーナー最終決定:案A「グロー背景版」)。
+     場面カード(.scene-mood-blur/.scene-mood-blob)と同じ、タグ色をぼかした
+     円を重ねる技法をそのまま流用する。診断結果画面側の通常の.omikuji-card
+     (紫のradial-gradientのみ)には影響しない。 */
+  .omikuji-glow{ background: var(--surface); }
+  .omikuji-glow .scene-mood-blur{ opacity:.9; }
+  .omikuji-glow .omikuji-label,
+  .omikuji-glow .omikuji-closed,
+  .omikuji-glow .omikuji-body{ position:relative; z-index:1; }
   .omikuji-label{
     font-size: 11px; color: var(--gold); font-weight:600; letter-spacing:.06em;
     margin-bottom: 16px;
   }
   .omikuji-closed{ padding: 0; }
   .omikuji-orb-wrap{ position:relative; width:64px; height:64px; margin:0 auto 14px; }
+  /* オーナー指摘:「玉のところは真っ白にしてほしい」。球としての立体感
+     だけ残すため、ごく淡いグレーで陰影を付けているが、色味自体は入れず
+     真っ白にしている。周囲の紫のグロー(box-shadow)は玉そのものの色では
+     ないのでそのまま残した。 */
   .omikuji-orb{
     width:100%; height:100%; border-radius:50%;
-    background: radial-gradient(circle at 35% 30%, #fdf8f0 0%, var(--gold) 40%, var(--love) 100%);
+    background: radial-gradient(circle at 35% 30%, #ffffff 0%, #ffffff 55%, #e9e6f2 100%);
     animation: giftOrbBreathe 2.6s ease-in-out infinite;
     box-shadow: 0 0 24px -2px rgba(160,132,242,.55);
   }
@@ -2631,6 +2776,7 @@
        そのまま常時表示する(catalog-mode-inline-listが.catalog-mode-menuの
        display:none/絶対配置を上書きする)。 -->
   <div class="catalog-mode-menu catalog-mode-inline-list" id="catalog-mode-menu-side">
+    <button class="catalog-mode-menu-item" id="catalog-mode-btn-home-side" onclick="showHomeLanding()">ホーム</button>
     <button class="catalog-mode-menu-item active" id="catalog-mode-btn-movie-side" onclick="setCatalogMode('movie')">映画</button>
     <button class="catalog-mode-menu-item" id="catalog-mode-btn-anime-side" onclick="setCatalogMode('anime')">アニメ</button>
     <button class="catalog-mode-menu-item" id="catalog-mode-btn-drama-side" onclick="setCatalogMode('drama')">ドラマ</button>
@@ -2647,6 +2793,7 @@
 <div class="catalog-mode-drawer-backdrop" id="catalog-mode-drawer-backdrop" onclick="closeCatalogModeMenu()"></div>
 <div class="catalog-mode-drawer" id="catalog-mode-drawer">
   <div class="catalog-mode-drawer-heading">表示を選ぶ</div>
+  <button class="catalog-mode-drawer-item" id="catalog-mode-btn-home" onclick="showHomeLanding()">ホーム</button>
   <button class="catalog-mode-drawer-item active" id="catalog-mode-btn-movie" onclick="setCatalogMode('movie')">映画</button>
   <button class="catalog-mode-drawer-item" id="catalog-mode-btn-anime" onclick="setCatalogMode('anime')">アニメ</button>
   <button class="catalog-mode-drawer-item" id="catalog-mode-btn-drama" onclick="setCatalogMode('drama')">ドラマ</button>
@@ -2770,6 +2917,11 @@
     <div class="search-results-grid" id="results"></div>
 
     <div id="home-rows"></div>
+
+    <!-- 「ホーム」モード専用の発見セクション(場面カード・全ジャンル帯・
+         きょうの贈り物)。catalog-mode-menuに追加した「ホーム」をタップすると
+         表示され、#home-rowsと入れ替わる(renderResults()参照)。 -->
+    <div id="home-landing" style="display:none;"></div>
   </div>
 
   <!-- ============ DETAIL VIEW ============ -->
@@ -4824,7 +4976,7 @@ function shouldHidePosterForIntensity(m, opts){
   return state.intensityFilter !== 100;
 }
 
-let state = { query: "", queryKeywords: [], activeTags: new Set(), currentMovieId: null, hasReviewed: {}, myReviewsById: {}, myReviewRows: [], myReviewRowsLoaded: false, myLove: {}, myIntensity: {}, myReason: {}, myTagVotes: {}, myWatchLater: {}, myPocket: [], myPocketAddedAt: {}, myLists: [], currentListId: null, profile: null, profileLoaded: false, myLogs: [], myLogsLoaded: false, mySubmittedMovieIds: [], mySubmittedMovies: [], mySubmittedMoviesLoaded: false, lastSubmissionDate: null, todaySubmissionCount: 0, intensityFilter: 0, decadeFilter: 0, diagnosisHistory: [], activeGenres: new Set(), activeCountries: new Set(), catalogMode: 'movie', bookType: null, crossMediaSearch: false, pendingTrackAdd: null };
+let state = { query: "", queryKeywords: [], activeTags: new Set(), currentMovieId: null, hasReviewed: {}, myReviewsById: {}, myReviewRows: [], myReviewRowsLoaded: false, myLove: {}, myIntensity: {}, myReason: {}, myTagVotes: {}, myWatchLater: {}, myPocket: [], myPocketAddedAt: {}, myLists: [], currentListId: null, profile: null, profileLoaded: false, myLogs: [], myLogsLoaded: false, mySubmittedMovieIds: [], mySubmittedMovies: [], mySubmittedMoviesLoaded: false, lastSubmissionDate: null, todaySubmissionCount: 0, intensityFilter: 0, decadeFilter: 0, diagnosisHistory: [], activeGenres: new Set(), activeCountries: new Set(), catalogMode: 'movie', bookType: null, crossMediaSearch: false, pendingTrackAdd: null, homeLandingActive: false };
 
 
 function riskLabel(v){
@@ -5568,9 +5720,14 @@ function renderMovieCards(root, list, emptyMessage, opts){
 // TMDbのposter_pathがある作品は実際のポスター画像を表示し、無い作品は
 // 従来通り色ブロック+頭文字にフォールバックする。画像はloading="lazy"で、
 // 画面外のカードは実際にスクロールされるまで読み込まない。
+// opts.lean: ホーム画面で検索した時だけ使う、情報量を絞ったカード
+// (オーナー指摘:「結果は少し情報減らして」)。タイトルはポスターへの
+// オーバーレイにして年・愛度バーを省き、ホームは複数媒体が混ざるので
+// 種別バッジ(showTypeBadge)は呼び出し側で合わせて立てる。
 function buildCardHTML(m, opts){
   const avg = loveDisplayValue(m);
-  const overlayTitle = !!(opts && opts.overlayTitle);
+  const isLean = !!(opts && opts.lean);
+  const overlayTitle = isLean || !!(opts && opts.overlayTitle);
   const hasPoster = !!m.posterUrl && !shouldHidePosterForIntensity(m, opts);
   const posterImg = hasPoster ? `<img src="${m.posterUrl}" alt="" loading="lazy" decoding="async">` : '';
   const initialOrTitle = overlayTitle
@@ -5605,10 +5762,16 @@ function buildCardHTML(m, opts){
   const playBtn = (opts && opts.inlinePreview && m.isMusic)
     ? `<button type="button" class="card-play-btn" data-movie-id="${m.id}" onclick="event.stopPropagation(); toggleCardPreview(${m.id}, this)" title="試聴する">▶</button>`
     : '';
+  // opts.highlightMusic: ホームの「こんな気分の日に」帯だけで使う。音楽を
+  // 他媒体と別枠に切り出さず同じ帯に混ぜたままにする代わり(オーナー指摘:
+  // 「音楽が他の項目と一緒にされてないのが気になる」)、埋もれて見えなく
+  // ならないようポスターに縁取りを付けるだけの控えめな強調。
+  const musicHighlightClass = (opts && opts.highlightMusic && m.isMusic) ? ' home-mood-music-highlight' : '';
   return `
-    <div class="result-card" onclick="${clickHandler}">
+    <div class="result-card${musicHighlightClass}" onclick="${clickHandler}">
       <div class="poster-thumb" style="background:${m.posterColor}">${posterImg}${initialOrTitle}${typeBadge}${removeBtn}${playBtn}</div>
       ${overlayTitle ? '' : `<div class="result-title">${m.title}</div>`}
+      ${isLean ? '' : `
       <div class="result-year">${m.year}</div>
       ${hasLoveBasis(m) ? `
       <div class="interest-row">
@@ -5617,6 +5780,7 @@ function buildCardHTML(m, opts){
       </div>
       <div class="interest-count">${loveCountTextForCard(m)}</div>
       ` : ''}
+      `}
     </div>
   `;
 }
@@ -6085,6 +6249,322 @@ function renderHomeRows(){
   initAutoScrollMarquee('review-feed-marquee', 'review-feed-track');
 }
 
+// ============================================================
+// 「ホーム」モード(home-landing): 場面カード・全ジャンル帯・きょうの贈り物。
+// catalog-mode-menuの一番上「ホーム」から表示する(showHomeLanding参照)。
+// Artifactで複数ラウンドのすり合わせを経たデザインを、実データで動かす。
+// ============================================================
+
+// 場面カード6種。固定のタイトル・説明文は、裏でArtifactを見せながら
+// すり合わせた際に高く評価された言い回しをそのまま採用している
+// (オーナー:「誰とも話したくない夜などのセレクトはめちゃくちゃ雰囲気が
+// 良くて素敵」)。moodTagsは既存のTAG_COLORS語彙から2〜3個選び、カードの
+// 背景(renderPosterMoodと同じ、タグ色をぼかして重ねるグロー)と、実際の
+// 「近い作品」判定の両方に使う。
+const HOME_SCENES = [
+  { id:'quiet_night', title:'誰とも話したくない夜', desc:'泣けなかった分も、物語のなかで静かに沈んでいい時間', moodTags:['悲しい','感動','考えさせられる'] },
+  { id:'laugh_empty', title:'仕事のあと、何も考えずに笑いたい', desc:'頭を空っぽにして、ただ笑える時間', moodTags:['笑い','楽しい','ワクワク'] },
+  { id:'slow_heartbeat', title:'眠れない夜、心拍を下げたい', desc:'呼吸が整っていく、やさしい時間', moodTags:['リラックス','美しい','楽しい'] },
+  { id:'courage', title:'動き出す勇気がほしい日', desc:'背中をそっと押してくれる一本', moodTags:['ワクワク','楽しい','ドキドキ'] },
+  { id:'unknown_town', title:'知らない街に行きたい休日', desc:'行ったことのない場所へ、心だけ先に出かける', moodTags:['美しい','ワクワク','楽しい'] },
+  { id:'scary_safe', title:'少しだけ、ぞわっとしたい夜', desc:'怖さを安全に味わう、緊張の時間', moodTags:['怖い','ドキドキ','考えさせられる'], adultOnly:true }
+];
+
+function homeMoodBlurHTML(moodTags){
+  const positions = [
+    { top:'-15%', left:'-10%', size:'85%' },
+    { top:'15%',  left:'38%',  size:'90%' },
+    { top:'-20%', left:'30%',  size:'78%' }
+  ];
+  const blobs = moodTags.map((tag, i) => {
+    const pos = positions[i] || positions[0];
+    return `<div class="scene-mood-blob" style="top:${pos.top}; left:${pos.left}; width:${pos.size}; height:${pos.size}; background:${tagColor(tag)};"></div>`;
+  }).join('');
+  return `<div class="scene-mood-blur">${blobs}</div>`;
+}
+
+function renderHomeScenesRow(){
+  const row = document.getElementById('home-scene-row');
+  row.innerHTML = HOME_SCENES.map(s => `
+    <div class="scene-card" data-id="${s.id}" onclick="openHomeScene('${s.id}')">
+      ${homeMoodBlurHTML(s.moodTags)}
+      <div class="scene-title">${s.title}${s.adultOnly ? ' <span style="font-size:9px;opacity:.85;">(18+)</span>' : ''}</div>
+      <div class="scene-desc">${s.desc}</div>
+    </div>
+  `).join('');
+}
+
+// 場面カードが指す「近い作品」を、感情タグの重み(tagWeights、投稿時の
+// タグ+みんなの追加投票)で実際に採点して選ぶ。日替わりでシャッフルする
+// ことで、毎回同じ3本に固定されないようにする(他の棚と同じseededShuffle
+// の考え方)。
+function getHomeSceneResults(scene, limit){
+  limit = limit || 3;
+  const pool = MOVIES.filter(m => !matchesExcludedWord(m));
+  const scored = pool.map(m => {
+    const w = tagWeights(m);
+    const score = scene.moodTags.reduce((sum, t) => sum + (w[t] || 0), 0);
+    return { m, score };
+  }).filter(x => x.score > 0)
+    .sort((a, b) => b.score - a.score || (loveAverage(b.m) - loveAverage(a.m)));
+  const wide = scored.slice(0, 24).map(x => x.m);
+  return seededShuffle(wide, `home-scene:${scene.id}`).slice(0, limit);
+}
+
+let openHomeSceneId = null;
+
+function openHomeScene(id){
+  openHomeSceneId = id;
+  document.querySelectorAll('#home-scene-row .scene-card').forEach(el => el.classList.toggle('active', el.dataset.id === id));
+  const scene = HOME_SCENES.find(s => s.id === id);
+  const panel = document.getElementById('home-scene-results');
+  panel.classList.add('open');
+  document.getElementById('home-scene-results-label').textContent = `「${scene.title}」に近い作品`;
+  const results = getHomeSceneResults(scene, 3);
+  const listEl = document.getElementById('home-scene-results-list');
+  if(!results.length){
+    listEl.innerHTML = `<p style="font-size:12.5px; color:var(--ink-soft);">近い作品がまだ見つかりませんでした。</p>`;
+  } else {
+    listEl.innerHTML = results.map(m => buildHomeSceneResultItemHTML(m)).join('');
+  }
+  panel.scrollIntoView({ behavior:'smooth', block:'nearest' });
+}
+
+function buildHomeSceneResultItemHTML(m){
+  const typeInfo = mediaTypeInfo(m);
+  const hasPoster = !!m.posterUrl && !shouldHidePosterForIntensity(m);
+  const posterInner = hasPoster
+    ? `<img src="${m.posterUrl}" alt="" loading="lazy" decoding="async">`
+    : m.title.charAt(0);
+  const synopsis = m.synopsis ? `<div class="result-synopsis">${m.synopsis}</div>` : '';
+  const active = isInPocket(m.id);
+  return `
+    <div class="result-item">
+      <div class="result-poster" style="background:${m.posterColor}" onclick="goDetail(${m.id})">
+        <div class="result-type-badge" style="background:${typeInfo.color}">${typeInfo.label}</div>
+        ${posterInner}
+      </div>
+      <div class="result-body">
+        <div class="result-title">${m.title}</div>
+        ${synopsis}
+        <button class="pocket-btn ${active ? 'active' : ''}" id="hl-pocket-${m.id}" onclick="onHomeLandingPocketTap(event, ${m.id})">
+          <svg viewBox="0 0 32 30" fill="currentColor"><path d="M16 27 C6 20 2 13 2 8.5 C2 4 5.5 1 9.5 1 C12.5 1 15 2.8 16 5.5 C17 2.8 19.5 1 22.5 1 C26.5 1 30 4 30 8.5 C30 13 26 20 16 27 Z"/></svg>
+          <span>${active ? 'ポケットに入っています' : 'ポケットに入れる'}</span>
+        </button>
+      </div>
+    </div>
+  `;
+}
+
+// 詳細ページの.pocket-heart-btn(onPocketHeartTap)と同じ「節目を跨いだ
+// 場合は専用トーストに譲る」判定を、一覧カードからの操作でも揃える
+// (さもないと、場面カードから入れた1件で節目に達した時に、ここの汎用
+// トーストが節目トーストを即座に上書きしてしまう)。
+async function onHomeLandingPocketTap(event, movieId){
+  if(event) event.stopPropagation();
+  const monthKeyBefore = currentMonthWindow().monthKey;
+  const milestoneAlreadyDoneBefore = POCKET_MILESTONES.filter(n => hasMilestoneRecordForMonth(monthKeyBefore, n));
+  const result = await togglePocketMembership(movieId);
+  const milestoneAlreadyDoneAfter = POCKET_MILESTONES.filter(n => hasMilestoneRecordForMonth(currentMonthWindow().monthKey, n));
+  const justHitMilestone = milestoneAlreadyDoneAfter.length > milestoneAlreadyDoneBefore.length;
+
+  if(result === 'added' && !justHitMilestone){
+    showToast(hasMilestoneRecordForMonth(currentMonthWindow().monthKey, 10) ? '次の月のポケットに入ります' : 'ポケットに入れました');
+  } else if(result === 'removed'){
+    showToast('取り消しました');
+  }
+  const btn = document.getElementById(`hl-pocket-${movieId}`);
+  if(btn){
+    const active = isInPocket(movieId);
+    btn.classList.toggle('active', active);
+    btn.querySelector('span').textContent = active ? 'ポケットに入っています' : 'ポケットに入れる';
+  }
+}
+
+// 全ジャンル横断の自動ループ帯。見出しは置かず(オーナー指摘:「タイトル
+// 削除で、実際に流れてる作品は載せて欲しい」)。当初は媒体別(映画/アニメ/…)
+// に並べていたが、オーナー指摘:「映画アニメって並んでるけど、こんな気分の
+// 日に感動とか出してたとこに、各項目の作品を載せて流すのに変更すべきかも」
+// を受け、renderHomeRows()の「こんな気分の日に」棚と同じ考え方(感情タグ
+// ごとに、媒体を問わず実際に一致する作品を集める)に変更した。見出しの
+// 見た目も.mood-row-header/.mood-row-kicker/.mood-row-tagをそのまま再利用し、
+// 既存の「気分の棚」と地続きに見えるようにしている。スクロールは
+// 「みんなの声」と同じinitAutoScrollMarquee()で駆動する(CSSアニメーション
+// ではない、指で触ると一時停止する)。
+// famousFirstCompare(人気順)だけで上位を切ると、投票データが一番厚い
+// 映画に独占されてしまい、本・音楽・漫画がほとんど混ざらなくなる
+// (オーナー指摘:「本とか音楽とか漫画が混じってないのが気になる」)。
+// 媒体(CATALOG_MODES)ごとに上限を設けてから合流させ、1つの帯に必ず
+// 複数の媒体が混ざるようにする。
+function getHomeMoodMarqueePool(tag, count){
+  const pool = MOVIES.filter(m => !matchesExcludedWord(m) && m.tags.includes(tag));
+  const perTypeCap = Math.max(2, Math.ceil(count / CATALOG_MODES.length));
+  let picked = [];
+  CATALOG_MODES.forEach(([mode]) => {
+    const typePool = pool.filter(m => isInCatalogMode(m, mode));
+    const famous = [...typePool].sort(famousFirstCompare).slice(0, perTypeCap * 3);
+    picked = picked.concat(seededShuffle(famous, `home-marquee-tag:${tag}:${mode}`).slice(0, perTypeCap));
+  });
+  const shuffled = seededShuffle(picked, `home-marquee-tag-final:${tag}`);
+  // 音楽を他媒体から切り離さず(オーナー指摘:「音楽が他の項目と一緒に
+  // されてないのが気になる」)、同じ帯の中でも埋もれないよう先頭寄り
+  // (2枠目あたり)に差し込む。該当タグに音楽が無ければ何も起きない
+  // (「悲しい」「笑い」「怖い」には音楽作品が1件もタグ付けされていない
+  // ことを確認済みで、無理に出すと捏造になるため)。
+  const musicItems = shuffled.filter(m => m.isMusic);
+  const others = shuffled.filter(m => !m.isMusic);
+  const result = [];
+  others.forEach((m, i) => {
+    result.push(m);
+    if(i === 0 && musicItems.length) result.push(musicItems.shift());
+  });
+  result.push(...musicItems);
+  return result.slice(0, count);
+}
+
+// オーナー指摘:「こんな気分の日にってところが長すぎる」→ 全タグを並べず
+// 3本だけにし、「気分を変える」で別の3つに切り替えられるようにする。
+// 日替わり(todaySeed)がベースだが、手動で押すたびにhomeMoodRotationSeedを
+// 進めて別の組み合わせを出す(このセッション中だけ、次にホームへ入り
+// 直すとまた日替わりの既定値に戻る)。
+let homeMoodRotationSeed = 0;
+function pickHomeMoodTags(){
+  const pool = MOVIES.filter(m => !matchesExcludedWord(m));
+  const tagCounts = {};
+  pool.forEach(m => m.tags.forEach(t => { tagCounts[t] = (tagCounts[t] || 0) + 1; }));
+  const topTags = Object.keys(tagCounts).sort((a, b) => tagCounts[b] - tagCounts[a]);
+  return seededShuffle(topTags, `home-mood-tags:${homeMoodRotationSeed}`).slice(0, 3);
+}
+
+function renderHomeMarquees(){
+  const root = document.getElementById('home-marquee-group');
+  const tags = pickHomeMoodTags();
+
+  let html = '';
+  const renderedTags = [];
+  tags.forEach(tag => {
+    const movies = getHomeMoodMarqueePool(tag, 12);
+    if(!movies.length) return;
+    renderedTags.push(tag);
+    const cardsHtml = movies.map(m => buildCardHTML(m, { overlayTitle:true, showTypeBadge:true, highlightMusic:true })).join('');
+    const marqueeSeconds = Math.max(40, movies.length * 6);
+    html += `
+      <div class="mood-row-header">
+        <div class="mood-row-kicker">こんな気分の日に</div>
+        <div class="mood-row-tag" style="color:${tagColor(tag)}">${tag}</div>
+      </div>
+      <div class="home-marquee" id="home-mq-${tag}">
+        <div class="home-marquee-track" id="home-mq-track-${tag}" data-loop-seconds="${marqueeSeconds}">${cardsHtml}${cardsHtml}</div>
+      </div>
+    `;
+  });
+  root.innerHTML = html;
+  renderedTags.forEach(tag => {
+    initAutoScrollMarquee(`home-mq-${tag}`, `home-mq-track-${tag}`);
+  });
+}
+
+// 「気分を変える」ボタン。音は実サイトに既にある汎用タップ音の仕組み
+// (documentのクリック委譲、4480行付近)がbuttonタグなら自動で鳴らして
+// くれるので、ここで新しく音を鳴らすコードは書いていない。モーションだけ
+// フェードで付ける(オーナー指摘:「もう少しモーションと音を追加」)。
+function rotateHomeMoods(){
+  const root = document.getElementById('home-marquee-group');
+  const icon = document.getElementById('home-mood-refresh-icon');
+  if(icon) icon.closest('button').classList.add('spinning');
+  root.classList.add('fading');
+  setTimeout(() => {
+    homeMoodRotationSeed += 1;
+    renderHomeMarquees();
+    root.classList.remove('fading');
+    setTimeout(() => { if(icon) icon.closest('button').classList.remove('spinning'); }, 500);
+  }, 220);
+}
+
+// きょうの贈り物(ホーム版)。既存の.omikuji-card一式(診断結果画面と同じ
+// 演出)を、ポケットの感情タグから見た「今日の1件」として流用する
+// (pickOmikujiMovie/pickOmikujiMessageは既存の本番ロジックをそのまま
+// 呼ぶだけで、新しい選定ロジックは作らない)。ポケットがまだ無い/少ない
+// 間は「あと◯つで」という空状態にする。
+function renderHomeGift(){
+  const container = document.getElementById('home-gift-area');
+  const pocketMovies = getPocketMovies();
+  if(pocketMovies.length < 3){
+    const remaining = 3 - pocketMovies.length;
+    container.innerHTML = `
+      <div class="gift-empty" onclick="scrollToSearchHome()">
+        <div class="gift-empty-plus">+</div>
+        <div class="gift-empty-label">あと${remaining}つで、きょうの贈り物が届きます</div>
+      </div>`;
+    return;
+  }
+  const topTag = topTagFromWeightedMovies(pocketMovies);
+  const secondTag = secondTagFromMovies(pocketMovies, topTag);
+  const pickedIds = pocketMovies.map(m => m.id);
+  const movieId = pickOmikujiMovie(topTag, secondTag, pickedIds);
+  if(movieId == null){
+    container.innerHTML = `
+      <div class="gift-empty" onclick="scrollToSearchHome()">
+        <div class="gift-empty-plus">+</div>
+        <div class="gift-empty-label">まだ今日の贈り物を選べませんでした。また後で覗いてみてください</div>
+      </div>`;
+    return;
+  }
+  // オーナー最終決定:「案A(グロー背景版)」。場面カードと同じ、タグ色を
+  // ぼかした円を重ねる技法(homeMoodBlurHTML)を流用し、玉はそのまま残して
+  // 背景だけ他のホーム要素と同じ材質に揃える。色はこの贈り物自身の作品の
+  // タグから作るので、日によって自然に変わる。
+  const pickedMovie = MOVIES.find(m => m.id === movieId);
+  const glowTags = (pickedMovie && pickedMovie.tags.length) ? pickedMovie.tags.slice(0, 3) : [topTag];
+  container.innerHTML = `
+    <div id="omikuji-card-home" class="omikuji-card omikuji-glow" style="display:none;" onclick="onOmikujiCardClick('-home')">
+      ${homeMoodBlurHTML(glowTags)}
+      <div class="omikuji-label">きょうの贈り物。</div>
+      <div class="omikuji-closed" id="omikuji-closed-home">
+        <div class="omikuji-orb-wrap" id="omikuji-orb-wrap-home"><div class="omikuji-orb"></div></div>
+        <div class="omikuji-closed-text">タップして、開けてみる</div>
+      </div>
+      <div class="omikuji-body" id="omikuji-body-home" style="display:none;">
+        <div class="omikuji-poster" id="omikuji-poster-home"></div>
+        <div class="omikuji-text">
+          <div class="omikuji-type-badge" id="omikuji-type-badge-home"></div>
+          <div class="omikuji-title" id="omikuji-title-home"></div>
+          <div class="omikuji-line" id="omikuji-line-home"></div>
+        </div>
+      </div>
+    </div>`;
+  renderOmikujiCard(movieId, '-home');
+}
+
+function scrollToSearchHome(){
+  const input = document.getElementById('search-input');
+  if(input){ input.scrollIntoView({ behavior:'smooth', block:'center' }); input.focus(); }
+}
+
+function renderHomeLanding(){
+  const root = document.getElementById('home-landing');
+  root.innerHTML = `
+    <div class="section-label">場面カード</div>
+    <div class="section-sub">今の気分に近いものをタップすると、似た作品が見つかります</div>
+    <div class="scene-row" id="home-scene-row"></div>
+    <div class="scene-results" id="home-scene-results">
+      <div class="scene-results-label" id="home-scene-results-label"></div>
+      <div id="home-scene-results-list"></div>
+    </div>
+    <div class="mood-rotate-header">
+      <button class="mood-refresh-btn" onclick="rotateHomeMoods()"><span class="spin" id="home-mood-refresh-icon">↻</span> 気分を変える</button>
+    </div>
+    <div class="home-marquee-section" id="home-marquee-group"></div>
+    <div class="section-label gift-section-label">きょうの贈り物</div>
+    <div id="home-gift-area"></div>
+  `;
+  homeMoodRotationSeed = 0;
+  renderHomeScenesRow();
+  renderHomeMarquees();
+  renderHomeGift();
+  openHomeSceneId = null;
+}
+
 // 「みんなの声」は自動で流れ続けつつ、指でドラッグ/スワイプして自分でも
 // スクロールできるようにする。CSSのtransformアニメーションだと、ユーザーが
 // ネイティブスクロール(scrollLeft)で動かした位置と競合してカクつくため、
@@ -6162,7 +6642,10 @@ function renderFeaturedBanner(){
   // love実績の無い作品でも補って最低限の母数を確保する。
   const FEATURED_POOL_MIN = 20;
   const catalogMode = currentCatalogMode();
-  const eligibleMovies = MOVIES.filter(m => !matchesExcludedWord(m) && isInCatalogMode(m, catalogMode));
+  // 「ホーム」モード中は特定のメディア種別に絞らない(オーナー指摘:「今一番
+  // 愛されてる作品が映画のみなのが気になる」)。他の6モードでは今まで通り
+  // そのモードの作品だけに絞る。
+  const eligibleMovies = MOVIES.filter(m => !matchesExcludedWord(m) && (state.homeLandingActive || isInCatalogMode(m, catalogMode)));
   const lovedPool = eligibleMovies.filter(m => hasLoveBasis(m))
     .sort((a, b) => loveAverage(b) - loveAverage(a))
     .slice(0, 30);
@@ -7003,6 +7486,12 @@ function renderResults(){
   const root = document.getElementById('results');
   const homeRowsEl = document.getElementById('home-rows');
 
+  // オーナー指摘:「ホーム画面は感情検索のみにして詳細検索できないように
+  // する」。ジャンル・国・年代の「詳しく絞り込む」はホームでは出さない
+  // (感情タグ+自由文の検索だけにする)。
+  const filterDisclosureBtn = document.getElementById('filter-disclosure-btn');
+  if(filterDisclosureBtn) filterDisclosureBtn.style.display = state.homeLandingActive ? 'none' : '';
+
   const isActiveSearch = state.query.trim() !== "" || state.activeTags.size > 0
     || state.activeGenres.size > 0 || state.activeCountries.size > 0 || state.decadeFilter !== 0;
 
@@ -7026,14 +7515,23 @@ function renderResults(){
   }
 
   if(!isActiveSearch){
-    // 検索・タグ選択をしてない間は、おすすめの棚だけを見せる
+    // 検索・タグ選択をしてない間は、おすすめの棚(home-rows)か、「ホーム」
+    // モード選択中なら場面カード等(home-landing)のどちらか一方だけを見せる。
     root.style.display = 'none';
     root.innerHTML = '';
-    homeRowsEl.style.display = 'block';
+    const homeLandingEl = document.getElementById('home-landing');
+    if(state.homeLandingActive){
+      homeRowsEl.style.display = 'none';
+      homeLandingEl.style.display = 'block';
+    } else {
+      homeRowsEl.style.display = 'block';
+      homeLandingEl.style.display = 'none';
+    }
     return;
   }
 
   homeRowsEl.style.display = 'none';
+  document.getElementById('home-landing').style.display = 'none';
   root.style.display = 'grid';
 
   const q = normalizeForSearch(state.query.trim());
@@ -7125,10 +7623,13 @@ function renderResults(){
     // 横断検索(goPersonSearch)の時だけは、この人のメディアを問わず全部の
     // 仕事を一緒に見たいとの要望なので、カタログモード・本の種類の縛りを
     // 外す(crossMediaSearch参照)。
-    const matchCatalogMode = state.crossMediaSearch || isInCatalogMode(m, currentCatalogMode());
+    // 「ホーム」モード中は特定の媒体に絞らない(オーナー指摘:「検索ごとに
+    // 検索結果変えて欲しい」→ホームの検索はstate.catalogMode(直前の値の
+    // まま)に縛られず、全媒体を横断して探す)。
+    const matchCatalogMode = state.crossMediaSearch || state.homeLandingActive || isInCatalogMode(m, currentCatalogMode());
     // 小説モードの時だけ、本の種類の切り替え(小説/絵本/図鑑/新書)で
     // 絞り込む。他のモードでは本の種類の概念自体が無いので素通りさせる。
-    const matchBookType = state.crossMediaSearch || currentCatalogMode() !== 'novel' || itemBookType(m) === state.bookType;
+    const matchBookType = state.crossMediaSearch || state.homeLandingActive || currentCatalogMode() !== 'novel' || itemBookType(m) === state.bookType;
     return matchQuery && matchTags && matchIntensity && matchDecade && matchGenre && matchCountry && !matchesExcludedWord(m) && matchCatalogMode && matchBookType;
   });
 
@@ -7187,7 +7688,12 @@ function renderVisibleResults(){
   // との要望(オーナー:「音楽の再生ボタン...検索した時に出して欲しい」)。
   // ボタン自体はカード側でm.isMusicの時だけ出るので、常に渡しておけば
   // 音楽以外の結果には影響しない(横断検索で音楽が混ざる場合も同様)。
-  const cardOpts = state.crossMediaSearch
+  // ホームの検索結果は媒体が混ざる(showTypeBadge)上、情報量を絞った
+  // カードにする(lean、オーナー指摘:「結果は少し情報減らして、その
+  // 作品の項目も載せてほしい」= 種別バッジは残しつつ年・愛度バーは省く)。
+  const cardOpts = state.homeLandingActive
+    ? { showTypeBadge: true, forceModeFn: (m) => mediaTypeInfo(m).mode, inlinePreview: true, lean: true }
+    : state.crossMediaSearch
     ? { showTypeBadge: true, forceModeFn: (m) => mediaTypeInfo(m).mode, inlinePreview: true }
     : { inlinePreview: true };
   renderMovieCards(root, visible, `条件に合う${modeLabel}が見つかりませんでした。タグを減らすか、表現度の絞り込みを外してみましょう。`, cardOpts);
@@ -7746,7 +8252,7 @@ function switchView(id){
   if(id !== 'view-home') clearInterval(featuredTimer);
 }
 
-function goHome(){ renderFeaturedBanner(); renderHomeRows(); switchView('view-home'); maybeOfferHitokoto(); clearViewState(); }
+function goHome(){ state.homeLandingActive = false; renderFeaturedBanner(); renderHomeRows(); switchView('view-home'); maybeOfferHitokoto(); clearViewState(); updateCatalogModeToggleUI(); }
 
 // リロードすると必ずホームに戻ってしまい、詳細ページ・プロフィール・ポケット・
 // マイリストを見ていた途中でも最初からやり直しになる、という指摘があった。
@@ -8827,14 +9333,45 @@ document.addEventListener('click', (e) => {
 // 切り替えた直後の選択を後から上書きしてしまう事故を防ぐためのフラグ。
 let userHasSwitchedCatalogMode = false;
 
+// 「ホーム」(catalog-mode-menuの一番上、映画より前に追加)。他の6モードと
+// 違い特定のメディア種別に絞らず、場面カード・全ジャンル帯・きょうの贈り物
+// (home-landing、renderHomeLanding参照)を表示する。state.catalogMode自体は
+// 直前の値のまま変えない(映画/アニメ側のジャンル・タグ絞り込みロジックが
+// 軒並みstate.catalogModeが実在のメディア種別であることを前提にしているため、
+// 'home'という値を紛れ込ませると既存コードを壊すリスクがある。そのため
+// 別のフラグstate.homeLandingActiveだけで分岐させている)。
+function showHomeLanding(){
+  closeCatalogModeMenu();
+  if(state.homeLandingActive){ switchView('view-home'); return; }
+  const homeView = document.getElementById('view-home');
+  homeView.classList.add('mode-switch-fade');
+  setTimeout(() => {
+    try{
+      state.homeLandingActive = true;
+      renderFeaturedBanner();
+      renderHomeLanding();
+      clearSearch(); // 絞り込み状態のリセットと、内部のrenderResults()呼び出しの両方を兼ねる
+      switchView('view-home');
+      updateCatalogModeToggleUI();
+    } finally {
+      requestAnimationFrame(() => homeView.classList.remove('mode-switch-fade'));
+    }
+  }, 150);
+}
+
 // dirはスワイプ由来の切り替えの時だけ渡す(1=次へ/-1=前へ)。ハンバーガー
 // メニューのタップ等、方向の無い切り替えではundefinedのまま(従来通りの
 // フェード)。
 function setCatalogMode(mode, dir){
   closeCatalogModeMenu();
   if(!isAnimePreviewEnabled() || !CATALOG_MODES.some(([m]) => m === mode)) return;
-  if(state.catalogMode === mode) return;
+  // 「ホーム」モード中はstate.catalogMode自体は直前の値のまま変えていない
+  // ため、同じメディア種別ボタン(例: 映画)を押しただけでは通常ここで
+  // 早期returnしてしまう。ホームから抜ける操作も有効にするため、
+  // homeLandingActiveが立っている間はmode一致でも素通りさせる。
+  if(state.catalogMode === mode && !state.homeLandingActive) return;
   state.catalogMode = mode;
+  state.homeLandingActive = false;
   userHasSwitchedCatalogMode = true;
   // モードは端末に保存しない(常に映画から始める方針のため、次に開いた時は
   // 引き継がない。切り替え自体はこのセッション中だけ効く)。
@@ -8914,15 +9451,18 @@ const CATALOG_MODES = [
 ];
 function updateCatalogModeToggleUI(){
   const mode = state.catalogMode;
+  const landingActive = state.homeLandingActive;
   const current = CATALOG_MODES.find(([m]) => m === mode);
   CATALOG_MODE_UI_INSTANCES.forEach(u => {
     if(u.label){
       const label = document.getElementById(u.label);
-      if(label && current) label.textContent = current[1];
+      if(label && current) label.textContent = landingActive ? 'ホーム' : current[1];
     }
+    const homeBtn = document.getElementById(`catalog-mode-btn-home${u.suffix}`);
+    if(homeBtn) homeBtn.classList.toggle('active', landingActive);
     CATALOG_MODES.forEach(([m]) => {
       const el = document.getElementById(`catalog-mode-btn-${m}${u.suffix}`);
-      if(el) el.classList.toggle('active', m === mode);
+      if(el) el.classList.toggle('active', !landingActive && m === mode);
     });
   });
 }
@@ -12404,55 +12944,71 @@ function pickOmikujiMessage(){
 // 本物のおみくじと同じく、表示された瞬間に結果を見せず、タップして
 // 「引く」までは伏せておく。1回目のタップで開封、開封済みの状態で
 // もう一度タップしたら、その作品の詳細ページへ移動する。
-let omikujiPendingMovieId = null;
-let omikujiOpened = false;
+//
+// 元々は診断結果(view-pocket)専用の単一カードだったが、「ホーム」モード
+// (home-landing)にも同じ演出の贈り物カードを置きたいという要望を受け、
+// id/状態ともsuffix('' = 診断結果側、'-home' = ホーム側)で2系統に分けて
+// 共存できるようにした。見た目・インタラクションのロジック自体は完全に
+// 共通(2箇所に同じ処理を書いて食い違う事故を避けるため)。
+const omikujiState = {
+  '': { pendingMovieId: null, opened: false },
+  '-home': { pendingMovieId: null, opened: false },
+};
 
-function renderOmikujiCard(movieId){
-  const card = document.getElementById('omikuji-card');
+function renderOmikujiCard(movieId, suffix){
+  suffix = suffix || '';
+  const card = document.getElementById('omikuji-card' + suffix);
+  if(!card) return;
   const m = movieId != null ? MOVIES.find(x => x.id === movieId) : null;
-  omikujiPendingMovieId = m ? m.id : null;
-  omikujiOpened = false;
+  omikujiState[suffix].pendingMovieId = m ? m.id : null;
+  omikujiState[suffix].opened = false;
   if(!m){ card.style.display = 'none'; return; }
 
-  document.getElementById('omikuji-closed').style.display = 'block';
-  document.getElementById('omikuji-orb-wrap').style.display = '';
-  const bodyEl = document.getElementById('omikuji-body');
+  document.getElementById('omikuji-closed' + suffix).style.display = 'block';
+  document.getElementById('omikuji-orb-wrap' + suffix).style.display = '';
+  const bodyEl = document.getElementById('omikuji-body' + suffix);
   bodyEl.style.display = 'none';
   bodyEl.classList.remove('reveal');
 
-  const posterEl = document.getElementById('omikuji-poster');
+  const posterEl = document.getElementById('omikuji-poster' + suffix);
   posterEl.style.background = m.posterColor;
   posterEl.innerHTML = m.posterUrl
     ? `<img src="${m.posterUrl}" alt="" loading="lazy" decoding="async">`
     : escapeHtml(m.title.charAt(0));
   // m.titleは既にHTMLエスケープ済みなので、featured-title-textと同じ理由で
   // innerHTMLを使う(textContentだとエスケープ文字列がそのまま見えてしまう)。
-  document.getElementById('omikuji-title').innerHTML = m.title;
-  document.getElementById('omikuji-line').textContent = pickOmikujiMessage();
+  document.getElementById('omikuji-title' + suffix).innerHTML = m.title;
+  document.getElementById('omikuji-line' + suffix).textContent = pickOmikujiMessage();
   // 「今日の贈り物」の対象は映画に限らず漫画・音楽等も混ざる日があるため、
   // 何が贈られたのか一目で分かるようメディア種別のバッジを出す(オーナー
   // 要望:「今日の贈り物の作品の項目が音楽なら音楽、漫画なら漫画って
   // 表示してほしい」)。
   const typeInfo = mediaTypeInfo(m);
-  const typeBadgeEl = document.getElementById('omikuji-type-badge');
+  const typeBadgeEl = document.getElementById('omikuji-type-badge' + suffix);
   typeBadgeEl.textContent = typeInfo.label;
   typeBadgeEl.style.background = typeInfo.color;
   card.style.display = 'block';
 }
 
-function onOmikujiCardClick(){
-  if(omikujiPendingMovieId == null) return;
-  if(!omikujiOpened){
-    omikujiOpened = true;
-    burstGiftSparks(document.getElementById('omikuji-card'), 7);
-    document.getElementById('omikuji-closed').style.display = 'none';
-    const bodyEl = document.getElementById('omikuji-body');
+function onOmikujiCardClick(suffix){
+  suffix = suffix || '';
+  const st = omikujiState[suffix];
+  if(st.pendingMovieId == null) return;
+  if(!st.opened){
+    st.opened = true;
+    burstGiftSparks(document.getElementById('omikuji-card' + suffix), 7);
+    document.getElementById('omikuji-closed' + suffix).style.display = 'none';
+    const bodyEl = document.getElementById('omikuji-body' + suffix);
     bodyEl.style.display = 'flex';
     bodyEl.classList.add('reveal');
     feedbackGiftOpen();
     return;
   }
-  goDetailWithViewReturn(omikujiPendingMovieId, 'view-pocket', '← 診断に戻る');
+  if(suffix === '-home'){
+    goDetailWithViewReturn(st.pendingMovieId, 'view-home', '← ホームに戻る');
+  } else {
+    goDetailWithViewReturn(st.pendingMovieId, 'view-pocket', '← 診断に戻る');
+  }
 }
 
 function pocketSnapshotIds(pocketMovies){
