@@ -1031,10 +1031,14 @@
   .result-body{ min-width:0; flex:1; padding-top:4px; }
   .result-synopsis{ font-size: 11.5px; color: var(--ink-soft); opacity:.75; line-height:1.6; margin: 6px 0 2px; font-style:italic; }
   .result-love-row{
-    display:flex; align-items:center; gap:4px; margin: 4px 0 2px;
-    font-size:13px; font-weight:600; color: var(--love);
+    display:flex; align-items:center; gap:5px; margin: 5px 0 3px;
+    font-size:16px; font-weight:700; color: var(--love);
   }
-  .result-love-row svg{ width:13px; height:13px; }
+  .result-love-row svg{ width:16px; height:16px; }
+  /* オーナー指摘:「タイトルもハートの大きさも小さすぎる」。.result-titleは
+     他ページの検索結果グリッドとも共有のクラス(16.5px)なので、そちらは
+     変えずホームの場面カード結果欄だけ上書きする。 */
+  #home-scene-results-list .result-title{ font-size: 19px; }
 
   /* 全ジャンル横断の自動ループ帯。見出しは.mood-row-header/.mood-row-kicker/
      .mood-row-tag(既存の「こんな気分の日に」棚と共通)を再利用する。
@@ -9362,6 +9366,9 @@ function showHomeLanding(){
   setTimeout(() => {
     try{
       state.homeLandingActive = true;
+      // init()側の「読み込み中にユーザーが実際に切り替えていたら、初期値へ
+      // の巻き戻しをスキップする」ガードと同じ仕組み(setCatalogModeと共通)。
+      userHasSwitchedCatalogMode = true;
       renderFeaturedBanner();
       renderHomeLanding();
       clearSearch(); // 絞り込み状態のリセットと、内部のrenderResults()呼び出しの両方を兼ねる
@@ -14605,26 +14612,33 @@ async function init(){
   })();
   const savedView = hasShareParams ? null : loadViewState();
 
-  // 最初に開いた画面は常に映画から始める(前回アニメを見ていたとしても、
-  // 開くたびにアニメから始まるのは望ましくないとのオーナーの指示)。
-  // ただし、この一括await中(スプラッシュの8秒セーフティタイムアウト経由で
-  // 先に閉じてしまい、その間にオーナーが実際にモードを切り替えていた場合)
-  // ここで無条件に'movie'へ戻すと、その場でのクリックを後から静かに
+  // 最初に開いた画面は「ホーム」から始める(オーナー指摘:「最初はホーム
+  // 画面からにして欲しい」。以前は映画固定だったが変更)。state.catalogMode
+  // 自体は引き続き'movie'にリセットしておく(前回アニメを見ていたとしても、
+  // ホームから他のモードへ移った時にいきなりアニメから始まるのは望ましく
+  // ないとの以前からの方針はそのまま)。
+  // この一括await中(スプラッシュの8秒セーフティタイムアウト経由で先に
+  // 閉じてしまい、その間にオーナーが実際にモードを切り替えていた場合)
+  // ここで無条件に上書きすると、その場でのクリックを後から静かに
   // 上書きしてしまい、画面が真っ暗に固まる事故の引き金にもなっていた。
   // 実際にユーザー操作でモードが切り替わっていた場合はこのリセットを
-  // スキップする。
+  // スキップする(userHasSwitchedCatalogModeはsetCatalogMode/showHomeLanding
+  // の両方で立つ)。
   const animePreview = isAnimePreviewEnabled();
-  if(!userHasSwitchedCatalogMode) state.catalogMode = 'movie';
+  if(!userHasSwitchedCatalogMode){
+    state.catalogMode = 'movie';
+    state.homeLandingActive = true;
+  }
 
   renderTagCloud();
   renderGenreCloud();
   renderDecadeCloud();
   renderCountryCloud();
-  renderResults();
   renderFormTags();
   renderFormPlatforms();
   renderFeaturedBanner();
-  renderHomeRows();
+  if(state.homeLandingActive) renderHomeLanding(); else renderHomeRows();
+  renderResults();
   updateHeader();
   document.getElementById('catalog-mode-toggle-inline').classList.toggle('enabled', animePreview);
   document.getElementById('catalog-mode-toggle-side').classList.toggle('enabled', animePreview);
