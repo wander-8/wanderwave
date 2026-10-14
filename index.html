@@ -4602,6 +4602,21 @@ function mediaTypeInfo(m){
   return { mode: 'movie', label: '映画', color: MEDIA_TYPE_COLORS.movie };
 }
 
+// オーナー指摘:「検索したらなるべくは、日本で配信されてるものや人気な方を
+// 検索結果の上に置いてほしい」。配信・購入の実データ(vod_flatrate等)は
+// 一覧用の軽量一括取得には含まれておらず(場面カードのHOME_SCENE_VERIFIABLE_MODES
+// と同じ制約)、検索1文字ごとに数万件へ個別に問い合わせるのは現実的でない
+// (このすぐ下のresultsFiltered.filterが検索の一番ホットな経路であることの
+// コメント参照)。代わりに、既に一括取得済みのjapan_release_date(日本で
+// 正式に公開された実績)を「日本で観られていた」ことの手がかりとして使う。
+// 映像作品(映画・アニメ・ドラマ)だけが対象(本・漫画・音楽は公開日の概念が
+// 薄い/データがほぼ無いので対象外、そちらは今まで通り愛度=人気順のみ)。
+function hasJapanAvailabilitySignal(m){
+  const mode = mediaTypeInfo(m).mode;
+  if(mode !== 'movie' && mode !== 'anime' && mode !== 'drama') return false;
+  return !!m.japanReleaseDate;
+}
+
 
 // movie_reviewsはRLS上「誰でも投稿できる」公開レビューなので、他人の投稿を
 // innerHTMLに差し込む箇所では必ずエスケープしてスクリプト注入を防ぐ。
@@ -7800,6 +7815,8 @@ function renderResults(){
   resultsFiltered.sort((a, b) => {
     const rankDiff = titleRelevanceRank(a) - titleRelevanceRank(b);
     if(rankDiff !== 0) return rankDiff;
+    const availDiff = (hasJapanAvailabilitySignal(b) ? 1 : 0) - (hasJapanAvailabilitySignal(a) ? 1 : 0);
+    if(availDiff !== 0) return availDiff;
     return loveAverage(b) - loveAverage(a);
   });
 
