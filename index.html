@@ -6396,14 +6396,23 @@ async function onHomeLandingPocketTap(event, movieId){
 // (オーナー指摘:「本とか音楽とか漫画が混じってないのが気になる」)。
 // 媒体(CATALOG_MODES)ごとに上限を設けてから合流させ、1つの帯に必ず
 // 複数の媒体が混ざるようにする。
+// オーナー指摘:「同じ作品ばっかり流れる」。以前は媒体ごとにfamousFirstCompare
+// 上位をperTypeCap*3(=だいたい6件)だけに絞ってから選んでおり、候補の
+// 母数が狭すぎた。renderHomeRows()の「こんな気分の日に」棚と同じ
+// 「有名どころ(famous)+まだ無名だが情報が揃っている作品(rare)」を混ぜる
+// 方式に変え、候補の母数を大きく広げた。
 function getHomeMoodMarqueePool(tag, count){
   const pool = MOVIES.filter(m => !matchesExcludedWord(m) && m.tags.includes(tag));
-  const perTypeCap = Math.max(2, Math.ceil(count / CATALOG_MODES.length));
+  const perTypeCap = Math.max(3, Math.ceil(count / CATALOG_MODES.length));
   let picked = [];
   CATALOG_MODES.forEach(([mode]) => {
     const typePool = pool.filter(m => isInCatalogMode(m, mode));
-    const famous = [...typePool].sort(famousFirstCompare).slice(0, perTypeCap * 3);
-    picked = picked.concat(seededShuffle(famous, `home-marquee-tag:${tag}:${mode}`).slice(0, perTypeCap));
+    const famous = [...typePool].sort(famousFirstCompare).slice(0, 20);
+    const famousIds = new Set(famous.map(m => m.id));
+    const rarePool = typePool.filter(m => !famousIds.has(m.id) && (m.synopsis || m.genre));
+    const rarePicks = seededShuffle(rarePool, `home-marquee-rare:${tag}:${mode}`).slice(0, 10);
+    const combined = seededShuffle([...famous, ...rarePicks], `home-marquee-tag:${tag}:${mode}`);
+    picked = picked.concat(combined.slice(0, perTypeCap));
   });
   const shuffled = seededShuffle(picked, `home-marquee-tag-final:${tag}`);
   // 音楽を他媒体から切り離さず(オーナー指摘:「音楽が他の項目と一緒に
@@ -6443,7 +6452,9 @@ function renderHomeMarquees(){
   let html = '';
   const renderedTags = [];
   tags.forEach(tag => {
-    const movies = getHomeMoodMarqueePool(tag, 12);
+    // オーナー指摘:「作品の数とその項目も合わせて増やしてから流して」。
+    // 12→24件に増やし、2回複製したループ1周ぶんがより長くなるようにした。
+    const movies = getHomeMoodMarqueePool(tag, 24);
     if(!movies.length) return;
     renderedTags.push(tag);
     const cardsHtml = movies.map(m => buildCardHTML(m, { overlayTitle:true, showTypeBadge:true, highlightMusic:true })).join('');
