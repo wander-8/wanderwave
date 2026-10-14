@@ -6329,40 +6329,90 @@ function renderHomeScenesRow(){
   `).join('');
 }
 
+// オーナー指摘:「場面カードに出されてる作品あんまり適切なものじゃないかも。
+// 配信や販売がちゃんとあるもので組んでほしい」。DB調査の結果、配信/購入の
+// 実データ(vod_flatrate/vod_watch_link/amazon_url)があるのは映画・アニメ
+// (どちらも一部)・本(ほぼ全件)だけで、ドラマ・漫画・音楽には現状ゼロ件
+// (以前のEgressフリーズでバックフィルも止まっている)。オーナー確認の上、
+// 映画・アニメ・本は実データで「ちゃんと配信/購入できる」ものだけに絞り、
+// データの無いドラマ・漫画・音楽はfamousFirstCompare(知名度ヒント+愛度)で
+// 人気順を強く効かせることで代わりにする。
+const HOME_SCENE_VERIFIABLE_MODES = new Set(['movie', 'anime', 'novel']);
+
+// 候補(映画・アニメ・本)だけ、配信/購入の実データをSupabaseに問い合わせる。
+// 場面カード1枚につき候補は数十件程度なので、全件バックフィルとは違い
+// Egressフリーズの対象になるような規模ではない。一度取得した作品は
+// m.vodFlatrate等にキャッシュし(詳細ページの遅延取得と同じ仕組み)、
+// 何度タップしても再取得しない。
+async function filterByRealAvailability(movies){
+  const unchecked = movies.filter(m => m.vodFlatrate === undefined && m.amazonUrl === undefined && !m.availabilityChecked);
+  if(unchecked.length){
+    try{
+      const { data, error } = await supabase.from('movies').select(WATCH_LINK_COLUMNS).in('id', unchecked.map(m => m.id));
+      if(error) throw error;
+      const byId = new Map(data.map(row => [row.id, row]));
+      unchecked.forEach(m => {
+        const row = byId.get(m.id);
+        m.vodFlatrate = (row && row.vod_flatrate) || undefined;
+        m.vodWatchLink = (row && row.vod_watch_link) || undefined;
+        m.officialUrl = (row && row.official_url) || undefined;
+        m.amazonUrl = (row && row.amazon_url) || undefined;
+        m.availabilityChecked = true;
+      });
+    }catch(err){
+      console.error('配信・購入データの確認に失敗しました', err);
+      return [];
+    }
+  }
+  return movies.filter(m => (m.vodFlatrate && m.vodFlatrate.length) || m.vodWatchLink || m.amazonUrl);
+}
+
 // 場面カードが指す「近い作品」を、感情タグの重み(tagWeights、投稿時の
 // タグ+みんなの追加投票)で実際に採点して選ぶ。日替わりでシャッフルする
 // ことで、毎回同じ3本に固定されないようにする(他の棚と同じseededShuffle
 // の考え方)。
-function getHomeSceneResults(scene, limit){
+async function getHomeSceneResults(scene, limit){
   limit = limit || 3;
   const pool = MOVIES.filter(m => !matchesExcludedWord(m));
   const scored = pool.map(m => {
     const w = tagWeights(m);
     const score = scene.moodTags.reduce((sum, t) => sum + (w[t] || 0), 0);
-    return { m, score };
-  }).filter(x => x.score > 0)
-    .sort((a, b) => b.score - a.score || (loveAverage(b.m) - loveAverage(a.m)));
-  const wide = scored.slice(0, 24).map(x => x.m);
+    return { m, score, mode: mediaTypeInfo(m).mode };
+  }).filter(x => x.score > 0);
+
+  const byScoreThenFame = (a, b) => b.score - a.score || famousFirstCompare(a.m, b.m);
+  const verifiable = scored.filter(x => HOME_SCENE_VERIFIABLE_MODES.has(x.mode)).sort(byScoreThenFame);
+  const unverifiable = scored.filter(x => !HOME_SCENE_VERIFIABLE_MODES.has(x.mode)).sort(byScoreThenFame);
+
+  // 検証対象は上位40件を広めに問い合わせて、実際に配信/購入できるものだけ
+  // 残す。データの無い媒体は代わりに候補の幅自体を狭くし(24→12)、
+  // famousFirstCompareの人気順が効きやすいようにする。
+  const verifiableCandidates = await filterByRealAvailability(verifiable.slice(0, 40).map(x => x.m));
+  const unverifiableCandidates = unverifiable.slice(0, 12).map(x => x.m);
+
+  const wide = [...verifiableCandidates.slice(0, 15), ...unverifiableCandidates];
   return seededShuffle(wide, `home-scene:${scene.id}`).slice(0, limit);
 }
 
 let openHomeSceneId = null;
 
-function openHomeScene(id){
+async function openHomeScene(id){
   openHomeSceneId = id;
   document.querySelectorAll('#home-scene-row .scene-card').forEach(el => el.classList.toggle('active', el.dataset.id === id));
   const scene = HOME_SCENES.find(s => s.id === id);
   const panel = document.getElementById('home-scene-results');
   panel.classList.add('open');
   document.getElementById('home-scene-results-label').textContent = `「${scene.title}」に近い作品`;
-  const results = getHomeSceneResults(scene, 3);
   const listEl = document.getElementById('home-scene-results-list');
+  listEl.innerHTML = `<p style="font-size:12.5px; color:var(--ink-soft);">探しています…</p>`;
+  panel.scrollIntoView({ behavior:'smooth', block:'nearest' });
+  const results = await getHomeSceneResults(scene, 3);
+  if(openHomeSceneId !== id) return; // 取得中に別の場面カードへ切り替えられた場合は結果を捨てる
   if(!results.length){
     listEl.innerHTML = `<p style="font-size:12.5px; color:var(--ink-soft);">近い作品がまだ見つかりませんでした。</p>`;
   } else {
     listEl.innerHTML = results.map(m => buildHomeSceneResultItemHTML(m)).join('');
   }
-  panel.scrollIntoView({ behavior:'smooth', block:'nearest' });
 }
 
 // オーナー指摘:「ポケットに入れるは消して。右側にあらすじ書いて。
