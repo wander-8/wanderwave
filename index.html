@@ -13033,14 +13033,12 @@ function secondTagFromMovies(movies, excludeTag){
   return sorted[0];
 }
 
-// 月の節目(3/5/10)で呼ぶ、新しい診断結果の生成。事実ベース・判断なし・
-// 専門用語なしの2段構成(今月の傾向/いつもの傾向)にする(オーナー仕様の
-// 「結果の構成」セクション)。オーナー指摘:「診断結果の方が長い方がいい」
-// を受けて、各段を1行の要約だけでなく、実際に選んだ作品名や累計件数などの
-// 具体的な事実を添えて2〜3行ずつに増やしている。
-function generateMonthlyDiagnosis(monthMovies, allPocketMovies, milestone){
-  const monthTopTag = topTagFromMovies(monthMovies) || "楽しい";
-  const usualTopTag = topTagFromWeightedMovies(allPocketMovies) || monthTopTag;
+// 旧方式(事実ベース・判断なし・専門用語なしの2段構成)。タグの頻度集計だけの
+// テンプレート文章で、作品の中身(あらすじ等)は一切見ていない。オーナー指摘:
+// 「診断内容をもっと面白くしたい。作品の内容や雰囲気から似てる点を見つけて
+// 提示して欲しい」を受けて下のgenerateMonthlyDiagnosis()がAIに置き換えたが、
+// 通信エラー・APIキー未設定時のフォールバックとしてそのまま残す。
+function generateMonthlyDiagnosisTemplate(monthMovies, allPocketMovies, milestone, monthTopTag, usualTopTag, pickedIds, omikujiMovieId){
   const monthSecondTag = secondTagFromMovies(monthMovies, monthTopTag);
 
   const themeTitle = pickThemeName(monthTopTag);
@@ -13063,14 +13061,53 @@ function generateMonthlyDiagnosis(monthMovies, allPocketMovies, milestone){
   const usualLine2 = `これまでにポケットへ入れた作品は、合わせて${allPocketMovies.length}件になりました。`;
 
   const body = [monthLine1, monthLine2, monthLine3, usualLine1, usualLine2].filter(Boolean).join('\n');
-  const pickedIds = allPocketMovies.map(m => m.id);
 
-  return {
-    name, themeTitle, body, blurb,
-    topTag: monthTopTag,
-    milestone,
-    omikujiMovieId: pickOmikujiMovie(monthTopTag, usualTopTag, pickedIds)
-  };
+  return { name, themeTitle, body, blurb, topTag: monthTopTag, milestone, omikujiMovieId };
+}
+
+// 月の節目(3/5/10)で呼ぶ、診断結果の生成。オーナー指摘:「診断内容をもっと
+// 面白くしたい。作品の内容や雰囲気から似てる点を見つけて提示して欲しい。
+// 性格診断テストのようなイメージ」。タグの頻度集計では作品の中身を見られない
+// ため、generate-diagnosis edge function(ai-searchと同じAnthropic API構成)に
+// 実際のあらすじ・ジャンル・キーワードを渡し、そこから共通点を書かせる。
+// 通信エラーやAPIキー未設定などで失敗した場合は、診断機能自体を止めないよう
+// 必ず旧テンプレート方式にフォールバックする。
+async function generateMonthlyDiagnosis(monthMovies, allPocketMovies, milestone){
+  const monthTopTag = topTagFromMovies(monthMovies) || "楽しい";
+  const usualTopTag = topTagFromWeightedMovies(allPocketMovies) || monthTopTag;
+  const pickedIds = allPocketMovies.map(m => m.id);
+  const omikujiMovieId = pickOmikujiMovie(monthTopTag, usualTopTag, pickedIds);
+
+  try{
+    const payloadMovies = monthMovies.slice(0, 10).map(m => ({
+      title: unescapeHtml(m.title),
+      mediaTypeLabel: mediaTypeInfo(m).label,
+      synopsis: m.synopsis || '',
+      genre: m.genre || [],
+      keywords: m.keywords || [],
+      emotionTags: m.tags || []
+    }));
+    const { data, error } = await supabase.functions.invoke('generate-diagnosis', {
+      body: { movies: payloadMovies, milestone, usualTopTagLabel: usualTopTag }
+    });
+    if(error) throw error;
+    if(data?.error) throw new Error(data.error);
+    if(!data?.themeTitle || !data?.body) throw new Error('empty_ai_diagnosis_output');
+
+    const usualLine2 = `これまでにポケットへ入れた作品は、合わせて${allPocketMovies.length}件になりました。`;
+    return {
+      name: generateDiagnosisName(data.themeTitle),
+      themeTitle: data.themeTitle,
+      body: `${data.body}\n\n${usualLine2}`,
+      blurb: TYPE_BLURB[monthTopTag] || '',
+      topTag: monthTopTag,
+      milestone,
+      omikujiMovieId
+    };
+  }catch(err){
+    console.error('AIによる診断生成に失敗したため、テンプレート文章にフォールバックします', err);
+    return generateMonthlyDiagnosisTemplate(monthMovies, allPocketMovies, milestone, monthTopTag, usualTopTag, pickedIds, omikujiMovieId);
+  }
 }
 
 // 「今日の贈り物」が映画専用に固定されていたのを、日替わりで映画・アニメ・
@@ -14567,7 +14604,7 @@ async function runMilestoneDiagnosis(pending){
   const monthMovies = monthIds.map(id => MOVIES.find(m => m.id === id)).filter(Boolean);
   const allPocketMovies = getPocketMovies();
   if(!monthMovies.length) return;
-  const diagnosis = generateMonthlyDiagnosis(monthMovies, allPocketMovies, milestone);
+  const diagnosis = await generateMonthlyDiagnosis(monthMovies, allPocketMovies, milestone);
 
   logPocketDiagnosisEvent('milestone_reached', milestone, monthKey);
 
@@ -14604,10 +14641,18 @@ async function runMilestoneDiagnosis(pending){
 }
 
 // きょうの贈り物カード・ポケット画面の「診断してみる」ボタン、両方の
-// onclickから呼ぶ共通の入口。
+// onclickから呼ぶ共通の入口。診断文の生成はAI(generate-diagnosis)呼び出しで
+// 数秒かかるため、呼び出し元がどちらであっても(片方しか画面に無くても)
+// 待機中の表示に差し替えておく。
 async function onTapRunDiagnosis(){
   const pending = getPendingDiagnosisMilestone();
   if(!pending) return;
+  const giftPendingEl = document.querySelector('#home-gift-area .gift-pending-label');
+  if(giftPendingEl) giftPendingEl.textContent = '診断を書いています…';
+  const progressPendingEl = document.querySelector('#pocket-progress .pocket-progress-pending');
+  if(progressPendingEl){
+    document.getElementById('pocket-progress').innerHTML = '<div class="pocket-progress-line pocket-progress-pending">診断を書いています…</div>';
+  }
   await runMilestoneDiagnosis(pending);
 }
 
