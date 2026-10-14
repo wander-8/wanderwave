@@ -14371,16 +14371,21 @@ function renderPocketProgress(){
     return;
   }
 
-  let html = '';
+  // オーナー指摘:「この説明わかりにくいのと、上下合計2列にして欲しい」。
+  // 「次の節目まであと◯つ」だけだと今月何件入れたのかが分からず、かつ
+  // 「今月はあと◯日」「今週は◯件」が別行に分かれて3行になっていた。
+  // 1行目に今月の件数と次の節目までの差を一緒に、2行目に残り日数と
+  // 今週分をまとめて、合計2行にする。
   const next = POCKET_MILESTONES.find(n => n > monthCount);
-  if(next != null){
-    html += `<div class="pocket-progress-line">次の節目まで、あと${next - monthCount}つ</div>`;
-  }
-  html += `<div class="pocket-progress-sub">今月はあと${daysLeft}日です</div>`;
-  if(weekCount > 0){
-    html += `<div class="pocket-progress-sub">今週は${weekCount}件入りました</div>`;
-  }
-  el.innerHTML = html;
+  const mainLine = next != null
+    ? `今月${monthCount}件・次の節目まであと${next - monthCount}つ`
+    : `今月${monthCount}件`;
+  const subParts = [`今月はあと${daysLeft}日`];
+  if(weekCount > 0) subParts.push(`今週${weekCount}件`);
+  el.innerHTML = `
+    <div class="pocket-progress-line">${mainLine}</div>
+    <div class="pocket-progress-sub">${subParts.join('・')}</div>
+  `;
 }
 
 // 診断の「シネマ・タイプ」カード。ランクや段階の概念を一切持たず、10個の
