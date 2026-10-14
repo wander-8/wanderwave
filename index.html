@@ -2688,6 +2688,7 @@
   }
   .gift-swipe-hint{
     margin-top: 10px; text-align:center; font-size:10.5px; color: var(--ink-soft);
+    cursor:pointer;
   }
   /* オーナー指摘:「スワイプで他の候補が見れない」。touch-actionが指定されて
      いないと、実機では指を斜めに動かしただけでブラウザがページの縦スクロール
@@ -6676,7 +6677,7 @@ function renderHomeGift(){
         </div>
       </div>
     </div>
-    ${homeGiftCandidates.length > 1 ? `<div class="gift-swipe-hint">← スワイプでほかの候補も見られます →</div>` : ''}`;
+    ${homeGiftCandidates.length > 1 ? `<div class="gift-swipe-hint" onclick="onHomeGiftHintTap(event)">← タップ・スワイプでほかの候補も見られます →</div>` : ''}`;
   renderOmikujiCard(movieId, '-home');
   const cardEl = document.getElementById('omikuji-card-home');
   cardEl.addEventListener('pointerdown', onHomeGiftPointerDown);
@@ -13209,6 +13210,12 @@ let homeGiftJustSwiped = false;
 function onHomeGiftPointerDown(ev){
   homeGiftSwipeStartX = (ev.touches ? ev.touches[0].clientX : ev.clientX);
 }
+// スワイプ・タップどちらから呼ばれても同じ方法で候補を進める共通処理。
+function advanceHomeGiftCandidate(dir){
+  if(homeGiftCandidates.length < 2) return;
+  homeGiftIndex = (homeGiftIndex + dir + homeGiftCandidates.length) % homeGiftCandidates.length;
+  swapHomeGiftMovie(homeGiftCandidates[homeGiftIndex]);
+}
 function onHomeGiftPointerUp(ev){
   if(homeGiftSwipeStartX == null) return;
   const endX = (ev.changedTouches ? ev.changedTouches[0].clientX : ev.clientX);
@@ -13220,12 +13227,19 @@ function onHomeGiftPointerUp(ev){
   if(!st || !st.opened || homeGiftCandidates.length < 2) return;
   if(Math.abs(dx) < 36) return;
   homeGiftJustSwiped = true;
-  const dir = dx < 0 ? 1 : -1;
-  homeGiftIndex = (homeGiftIndex + dir + homeGiftCandidates.length) % homeGiftCandidates.length;
-  swapHomeGiftMovie(homeGiftCandidates[homeGiftIndex]);
+  advanceHomeGiftCandidate(dx < 0 ? 1 : -1);
 }
 function onHomeGiftPointerCancel(){
   homeGiftSwipeStartX = null;
+}
+// オーナー指摘:「今日の贈り物は今下側にメッセージあるけど、そこをタップ
+// すると次の項目が見れるようにしてほしい」。スワイプだけだと気づきにくい
+// /実機で拾いにくいことがあるため、ヒント文言自体をタップでも次の候補へ
+// 進められるようにする(外側カードのonclick=「詳細へ移動/開封」と競合
+// しないようstopPropagationする)。
+function onHomeGiftHintTap(event){
+  if(event) event.stopPropagation();
+  advanceHomeGiftCandidate(1);
 }
 function swapHomeGiftMovie(movieId){
   const m = MOVIES.find(x => x.id === movieId);
