@@ -982,9 +982,11 @@
   }
   .scene-row::-webkit-scrollbar{ height:5px; }
   .scene-row::-webkit-scrollbar-thumb{ background: var(--line); border-radius:3px; }
+  /* オーナー指摘:「場面カードの大きさをもっと大きくしていい」。
+     180→212px、高さも128→156pxに拡大。 */
   .scene-card{
-    flex: 0 0 180px; scroll-snap-align: start; min-height: 128px;
-    border-radius: 14px; padding: 18px 15px; cursor: pointer;
+    flex: 0 0 212px; scroll-snap-align: start; min-height: 156px;
+    border-radius: 14px; padding: 20px 18px; cursor: pointer;
     position:relative; overflow:hidden; background: var(--surface);
     transition: transform .15s cubic-bezier(.22,.8,.32,1), box-shadow .2s ease;
   }
