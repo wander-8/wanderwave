@@ -1029,16 +1029,7 @@
   }
   .result-poster img{ position:absolute; inset:0; width:100%; height:100%; object-fit:cover; }
   .result-body{ min-width:0; flex:1; padding-top:4px; }
-  .result-synopsis{ font-size: 11.5px; color: var(--ink-soft); opacity:.75; line-height:1.6; margin: 2px 0 10px; font-style:italic; }
-  .pocket-btn{
-    display:inline-flex; align-items:center; gap:5px;
-    background:none; border:1px solid var(--line); border-radius:999px;
-    padding: 5px 12px; font-size: 11px; color: var(--ink-soft);
-    cursor:pointer; font-family:inherit;
-    transition: all .2s ease;
-  }
-  .pocket-btn svg{ width:11px; height:11px; }
-  .pocket-btn.active{ border-color: var(--plum); color: var(--plum); background: rgba(125,95,214,0.12); }
+  .result-synopsis{ font-size: 11.5px; color: var(--ink-soft); opacity:.75; line-height:1.6; margin: 6px 0 2px; font-style:italic; }
 
   /* 全ジャンル横断の自動ループ帯。見出しは.mood-row-header/.mood-row-kicker/
      .mood-row-tag(既存の「こんな気分の日に」棚と共通)を再利用する。
@@ -2648,6 +2639,18 @@
   .omikuji-glow .omikuji-label,
   .omikuji-glow .omikuji-closed,
   .omikuji-glow .omikuji-body{ position:relative; z-index:1; }
+  /* オーナー指摘:「中身の文字が紫で、目立ってないかも」。.omikuji-label/
+     -line/-closed-textは元々var(--gold)/var(--ink-soft)という紫寄りの色で、
+     単色背景の診断結果画面では問題なかったが、グロー背景(タグ色のぼかし、
+     紫系も混ざりうる)の上だと沈んで見えることがあった。グロー版だけ白系+
+     影に差し替える(診断結果画面側の見た目は変えない)。 */
+  .omikuji-glow .omikuji-label{ color: rgba(255,255,255,.95); text-shadow: 0 1px 6px rgba(0,0,0,.45); }
+  .omikuji-glow .omikuji-closed-text{ color: rgba(255,255,255,.88); text-shadow: 0 1px 6px rgba(0,0,0,.4); }
+  .omikuji-glow .omikuji-title{ text-shadow: 0 2px 10px rgba(0,0,0,.4); }
+  .omikuji-glow .omikuji-line{ color: rgba(255,255,255,.85); text-shadow: 0 1px 6px rgba(0,0,0,.4); }
+  .gift-swipe-hint{
+    margin-top: 10px; text-align:center; font-size:10.5px; color: var(--ink-soft);
+  }
   .omikuji-label{
     font-size: 11px; color: var(--gold); font-weight:600; letter-spacing:.06em;
     margin-bottom: 16px;
@@ -6332,6 +6335,10 @@ function openHomeScene(id){
   panel.scrollIntoView({ behavior:'smooth', block:'nearest' });
 }
 
+// オーナー指摘:「ポケットに入れるは消して。右側にあらすじ書いて。
+// タイトルの下にハートとその数を置いてほしい」。ハート表示は新規CSSでは
+// なく、通常の検索結果グリッド(buildCardHTML)の.interest-row/
+// .interest-countをそのまま再利用している(見た目を揃えるため)。
 function buildHomeSceneResultItemHTML(m){
   const typeInfo = mediaTypeInfo(m);
   const hasPoster = !!m.posterUrl && !shouldHidePosterForIntensity(m);
@@ -6339,7 +6346,14 @@ function buildHomeSceneResultItemHTML(m){
     ? `<img src="${m.posterUrl}" alt="" loading="lazy" decoding="async">`
     : m.title.charAt(0);
   const synopsis = m.synopsis ? `<div class="result-synopsis">${m.synopsis}</div>` : '';
-  const active = isInPocket(m.id);
+  const avg = loveDisplayValue(m);
+  const loveHTML = hasLoveBasis(m) ? `
+    <div class="interest-row">
+      <div class="interest-bar-track"><div class="interest-bar-fill" style="width:${(avg/5)*100}%"></div></div>
+      <span class="interest-pct">${HEART_ICON} ${loveScoreText(m)}</span>
+    </div>
+    <div class="interest-count">${loveCountTextForCard(m)}</div>
+  ` : '';
   return `
     <div class="result-item">
       <div class="result-poster" style="background:${m.posterColor}" onclick="goDetail(${m.id})">
@@ -6348,39 +6362,11 @@ function buildHomeSceneResultItemHTML(m){
       </div>
       <div class="result-body">
         <div class="result-title">${m.title}</div>
+        ${loveHTML}
         ${synopsis}
-        <button class="pocket-btn ${active ? 'active' : ''}" id="hl-pocket-${m.id}" onclick="onHomeLandingPocketTap(event, ${m.id})">
-          <svg viewBox="0 0 32 30" fill="currentColor"><path d="M16 27 C6 20 2 13 2 8.5 C2 4 5.5 1 9.5 1 C12.5 1 15 2.8 16 5.5 C17 2.8 19.5 1 22.5 1 C26.5 1 30 4 30 8.5 C30 13 26 20 16 27 Z"/></svg>
-          <span>${active ? 'ポケットに入っています' : 'ポケットに入れる'}</span>
-        </button>
       </div>
     </div>
   `;
-}
-
-// 詳細ページの.pocket-heart-btn(onPocketHeartTap)と同じ「節目を跨いだ
-// 場合は専用トーストに譲る」判定を、一覧カードからの操作でも揃える
-// (さもないと、場面カードから入れた1件で節目に達した時に、ここの汎用
-// トーストが節目トーストを即座に上書きしてしまう)。
-async function onHomeLandingPocketTap(event, movieId){
-  if(event) event.stopPropagation();
-  const monthKeyBefore = currentMonthWindow().monthKey;
-  const milestoneAlreadyDoneBefore = POCKET_MILESTONES.filter(n => hasMilestoneRecordForMonth(monthKeyBefore, n));
-  const result = await togglePocketMembership(movieId);
-  const milestoneAlreadyDoneAfter = POCKET_MILESTONES.filter(n => hasMilestoneRecordForMonth(currentMonthWindow().monthKey, n));
-  const justHitMilestone = milestoneAlreadyDoneAfter.length > milestoneAlreadyDoneBefore.length;
-
-  if(result === 'added' && !justHitMilestone){
-    showToast(hasMilestoneRecordForMonth(currentMonthWindow().monthKey, 10) ? '次の月のポケットに入ります' : 'ポケットに入れました');
-  } else if(result === 'removed'){
-    showToast('取り消しました');
-  }
-  const btn = document.getElementById(`hl-pocket-${movieId}`);
-  if(btn){
-    const active = isInPocket(movieId);
-    btn.classList.toggle('active', active);
-    btn.querySelector('span').textContent = active ? 'ポケットに入っています' : 'ポケットに入れる';
-  }
 }
 
 // 全ジャンル横断の自動ループ帯。見出しは置かず(オーナー指摘:「タイトル
@@ -6533,6 +6519,12 @@ function renderHomeGift(){
   // タグから作るので、日によって自然に変わる。
   const pickedMovie = MOVIES.find(m => m.id === movieId);
   const glowTags = (pickedMovie && pickedMovie.tags.length) ? pickedMovie.tags.slice(0, 3) : [latest.topTag];
+  // オーナー指摘:「作品をスライドすると他の項目のおすすめも出るように
+  // してもいいかも」。pickOmikujiMovieと同じ候補プールから続けて何件か
+  // 引いておき(1件目は必ず上のmovieIdと一致)、開封後に横スワイプで
+  // 切り替えられるようにする(onHomeGiftPointerUp参照)。
+  homeGiftCandidates = pickOmikujiCandidates(latest.topTag, null, latest.movieIds || [], 5);
+  homeGiftIndex = 0;
   container.innerHTML = `
     <div id="omikuji-card-home" class="omikuji-card omikuji-glow" style="display:none;" onclick="onOmikujiCardClick('-home')">
       ${homeMoodBlurHTML(glowTags)}
@@ -6549,8 +6541,12 @@ function renderHomeGift(){
           <div class="omikuji-line" id="omikuji-line-home"></div>
         </div>
       </div>
-    </div>`;
+    </div>
+    ${homeGiftCandidates.length > 1 ? `<div class="gift-swipe-hint">← スワイプでほかの候補も見られます →</div>` : ''}`;
   renderOmikujiCard(movieId, '-home');
+  const cardEl = document.getElementById('omikuji-card-home');
+  cardEl.addEventListener('pointerdown', onHomeGiftPointerDown);
+  cardEl.addEventListener('pointerup', onHomeGiftPointerUp);
 }
 
 function scrollToSearchHome(){
@@ -12933,6 +12929,34 @@ function pickOmikujiMovie(topTag, secondTag, excludeIds){
   return candidates[Math.floor(rand() * candidates.length)].id;
 }
 
+// ホームの贈り物だけ、スワイプでほかの候補も見られるようにする(オーナー
+// 指摘:「作品をスライドすると他の項目のおすすめも出るようにしてもいい
+// かも」)。pickOmikujiMovieと全く同じ候補プール・同じシードから連続して
+// 引くので、1件目は必ずpickOmikujiMovie()の結果と一致する(その上で続けて
+// 2件目以降も引く)。診断結果画面(view-pocket)側は今まで通り1件固定。
+function pickOmikujiCandidates(topTag, secondTag, excludeIds, count){
+  const mode = todaysGiftMode();
+  const candidates = MOVIES.filter(m =>
+    !excludeIds.includes(m.id) && isInCatalogMode(m, mode)
+    && (m.tags.includes(topTag) || (secondTag && m.tags.includes(secondTag)))
+  );
+  if(!candidates.length) return [];
+  const seedKey = `movie-omikuji:${excludeIds.slice().sort((a, b) => a - b).join(',')}`;
+  const rand = mulberry32(todaySeed(seedKey));
+  const picked = [];
+  const usedIdx = new Set();
+  const maxTries = candidates.length * 3;
+  let tries = 0;
+  while(picked.length < Math.min(count, candidates.length) && tries < maxTries){
+    const idx = Math.floor(rand() * candidates.length);
+    tries++;
+    if(usedIdx.has(idx)) continue;
+    usedIdx.add(idx);
+    picked.push(candidates[idx].id);
+  }
+  return picked;
+}
+
 // 「今日はこの1つを、そっと差し出してみます。」固定だったおみくじの添え書きを、
 // 日替わりでランダムに変える(オーナー要望)。映画・漫画・音楽など媒体を
 // 問わず使える言い回しだけにしている(「1本」のような媒体限定の数え方は避ける)。
@@ -13007,8 +13031,55 @@ function renderOmikujiCard(movieId, suffix){
   card.style.display = 'block';
 }
 
+// スワイプ⇔タップの判定用。開封後、横方向に一定以上動いたらスワイプ扱い
+// にして候補を切り替え、クリックハンドラ側(onOmikujiCardClick)の「詳細へ
+// 移動」は1回だけ無視する(でないとスワイプのたびに詳細ページへ飛んでしまう)。
+let homeGiftCandidates = [];
+let homeGiftIndex = 0;
+let homeGiftSwipeStartX = null;
+let homeGiftJustSwiped = false;
+
+function onHomeGiftPointerDown(ev){
+  homeGiftSwipeStartX = (ev.touches ? ev.touches[0].clientX : ev.clientX);
+}
+function onHomeGiftPointerUp(ev){
+  if(homeGiftSwipeStartX == null) return;
+  const endX = (ev.changedTouches ? ev.changedTouches[0].clientX : ev.clientX);
+  const dx = endX - homeGiftSwipeStartX;
+  homeGiftSwipeStartX = null;
+  const st = omikujiState['-home'];
+  // 開封前のスワイプはタップ(開封)として普通に扱う。候補切り替えは
+  // 開封後だけ。
+  if(!st || !st.opened || homeGiftCandidates.length < 2) return;
+  if(Math.abs(dx) < 36) return;
+  homeGiftJustSwiped = true;
+  const dir = dx < 0 ? 1 : -1;
+  homeGiftIndex = (homeGiftIndex + dir + homeGiftCandidates.length) % homeGiftCandidates.length;
+  swapHomeGiftMovie(homeGiftCandidates[homeGiftIndex]);
+}
+function swapHomeGiftMovie(movieId){
+  const m = MOVIES.find(x => x.id === movieId);
+  if(!m) return;
+  omikujiState['-home'].pendingMovieId = m.id;
+  const posterEl = document.getElementById('omikuji-poster-home');
+  posterEl.style.background = m.posterColor;
+  posterEl.innerHTML = m.posterUrl
+    ? `<img src="${m.posterUrl}" alt="" loading="lazy" decoding="async">`
+    : escapeHtml(m.title.charAt(0));
+  document.getElementById('omikuji-title-home').innerHTML = m.title;
+  document.getElementById('omikuji-line-home').textContent = pickOmikujiMessage();
+  const typeInfo = mediaTypeInfo(m);
+  const badgeEl = document.getElementById('omikuji-type-badge-home');
+  badgeEl.textContent = typeInfo.label;
+  badgeEl.style.background = typeInfo.color;
+  const bodyEl = document.getElementById('omikuji-body-home');
+  bodyEl.classList.remove('reveal'); void bodyEl.offsetWidth; bodyEl.classList.add('reveal');
+  feedbackGiftOpen();
+}
+
 function onOmikujiCardClick(suffix){
   suffix = suffix || '';
+  if(suffix === '-home' && homeGiftJustSwiped){ homeGiftJustSwiped = false; return; }
   const st = omikujiState[suffix];
   if(st.pendingMovieId == null) return;
   if(!st.opened){
