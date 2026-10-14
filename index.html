@@ -2815,7 +2815,7 @@
       </div>
       <div class="movie-info-row" id="d-synopsis-row">
         <div class="movie-info-label">あらすじ</div>
-        <div class="movie-info-value" id="d-synopsis">情報がまだありません</div>
+        <div class="movie-info-value" id="d-synopsis">あらすじ情報は順次更新中です</div>
       </div>
     </div>
 
@@ -9057,7 +9057,11 @@ function renderMovieInfoPanel(m){
   // 音楽アルバムに「あらすじ」は無いので、この行ごと隠す(代わりに
   // tracks-wrapの「収録曲を見る」で曲目を出す)。
   document.getElementById('d-synopsis-row').style.display = m.isMusic ? 'none' : '';
-  if(!m.isMusic) document.getElementById('d-synopsis').textContent = m.synopsis || '情報がまだありません';
+  // TMDB/楽天等の外部ソース側に該当言語のあらすじが無い作品は実在する
+  // (バックフィル側でchecked_atが立っていても見つからない場合がある)。
+  // 「情報がまだありません」より、継続的に埋まっていく仕組みがある
+  // ことが伝わる文言にする(オーナー指示)。
+  if(!m.isMusic) document.getElementById('d-synopsis').textContent = m.synopsis || 'あらすじ情報は順次更新中です';
   document.getElementById('movie-info-panel').style.display = 'none';
 }
 
@@ -10385,7 +10389,7 @@ async function loadFullSynopsisForMovie(movieId){
       [movie.title, data.synopsis, ...(movie.genre || []), ...keywordsArr].filter(Boolean).join(' ')
     );
     if(state.currentMovieId === movieId && document.getElementById('view-detail').classList.contains('active')){
-      document.getElementById('d-synopsis').textContent = movie.synopsis || '情報がまだありません';
+      document.getElementById('d-synopsis').textContent = movie.synopsis || 'あらすじ情報は順次更新中です';
     }
   }catch(err){
     console.error('あらすじ全文の取得に失敗しました', err);
