@@ -9222,6 +9222,7 @@ async function goDetail(id){
 
   renderWatchLinks(m);
   loadWatchLinksForMovie(id);
+  loadFullSynopsisForMovie(id);
 
   editingMovieId = null;
   const textBox = document.getElementById('review-text');
@@ -10202,16 +10203,21 @@ async function selectAllRows(table, columns, applyFilterFn, orderColumn = 'id', 
 // 存在意義に関わるため)初回取得に残したまま、この2つだけ後から
 // バックグラウンドで取得する(loadMovieBigFieldsInBackground参照)。
 const MOVIE_LIGHT_COLUMNS = 'id, title, release_year, emotion_tags, genre, director, country, poster_path, japan_release_date, keywords, series, trailer_key, media_type, is_anime, is_drama, is_manga, is_novel, is_music, volume_count, tmdb_vote_average, tmdb_vote_count';
-// synopsis/cast_membersは検索(termMatchesMovie)が全作品横断で参照するため、
-// 引き続き全件バックグラウンド取得する。一方vod_flatrate/vod_watch_link/
-// official_url/amazon_urlは検索・絞り込みのどこからも参照されず、詳細ページの
-// 「ここで観る・買う」チップ表示にしか使わないため、これらだけ全件一括取得を
-// やめ、goDetail()で開いた作品1件分だけをその場で取得する方式に変更した
-// (Supabase無料枠のEgress/接続プール逼迫の実機確認を受けた軽量化。
-// オーナー指示:「詳細情報のオンデマンド化」のうち、検索機能を壊さない
-// 範囲で適用できる部分)。loadWatchLinksForMovie()参照。
-const MOVIE_BIG_COLUMNS = 'id, synopsis, cast_members';
+// cast_membersは検索(termMatchesMovie)が全作品横断で参照するため、全件
+// バックグラウンド取得を続ける(配列でサイズも小さい)。synopsis(あらすじ)は
+// 全文だと転送量が重いため、全件一括取得は「先頭200文字の要約」
+// (synopsis_excerpt、DBトリガーで自動同期)だけに絞り、検索はこの要約で
+// 行う。詳細ページを開いた作品だけ、別途本物の全文synopsisを1件取得して
+// 表示に使う(loadFullSynopsisForMovie参照。オーナー承認済みのトレード
+// オフ:あらすじの後半だけに出てくる単語での検索が、未閲覧の作品に限り
+// 引っかからなくなる場合がある)。
+// vod_flatrate/vod_watch_link/official_url/amazon_urlは検索・絞り込みの
+// どこからも参照されず、詳細ページの「ここで観る・買う」チップ表示にしか
+// 使わないため、これらも全件一括取得をやめ、goDetail()で開いた作品1件分
+// だけをその場で取得する(loadWatchLinksForMovie参照)。
+const MOVIE_BIG_COLUMNS = 'id, synopsis:synopsis_excerpt, cast_members';
 const WATCH_LINK_COLUMNS = 'id, vod_flatrate, vod_watch_link, official_url, amazon_url';
+const FULL_SYNOPSIS_COLUMNS = 'id, synopsis';
 
 // moviesの1行(DBのrow)+集計データから、アプリ内部で使う表示用オブジェクトを
 // 組み立てる。loadMovies()の初回取得と、オーナーのプレビュー用バックグラウンド
@@ -10357,6 +10363,32 @@ async function loadWatchLinksForMovie(movieId){
     }
   }catch(err){
     console.error('配信・購入リンクの取得に失敗しました', err);
+  }
+}
+
+// あらすじは全件一括取得だと先頭200文字の要約(synopsis_excerpt、検索用)
+// しか持っていないため、詳細ページを開いた作品だけ本物の全文を1件取得して
+// 差し替える。取得が終わるまでは要約がそのまま表示されており、途中で
+// 切れて見える一瞬があり得るが、全文が届き次第静かに差し替わる
+// (hasFullData系の他のバックグラウンド更新と同じ考え方)。
+async function loadFullSynopsisForMovie(movieId){
+  const movie = MOVIES.find(m => m.id === movieId);
+  if(!movie || movie.isMusic) return; // 音楽はあらすじ欄自体を表示しないため取得不要
+  try{
+    const { data, error } = await supabase.from('movies').select(FULL_SYNOPSIS_COLUMNS).eq('id', movieId).single();
+    if(error) throw error;
+    movie.synopsis = data.synopsis || undefined;
+    movie.synopsisNorm = data.synopsis ? normalizeForSearch(data.synopsis) : undefined;
+    // 除外ワードフィルタ(あらすじの内容も見ている)も全文ベースに更新する。
+    const keywordsArr = movie.keywords || [];
+    movie.excludedWordHaystack = normalizeForSearch(
+      [movie.title, data.synopsis, ...(movie.genre || []), ...keywordsArr].filter(Boolean).join(' ')
+    );
+    if(state.currentMovieId === movieId && document.getElementById('view-detail').classList.contains('active')){
+      document.getElementById('d-synopsis').textContent = movie.synopsis || '情報がまだありません';
+    }
+  }catch(err){
+    console.error('あらすじ全文の取得に失敗しました', err);
   }
 }
 
