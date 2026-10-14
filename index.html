@@ -1031,14 +1031,16 @@
   .result-body{ min-width:0; flex:1; padding-top:4px; }
   .result-synopsis{ font-size: 11.5px; color: var(--ink-soft); opacity:.75; line-height:1.6; margin: 6px 0 2px; font-style:italic; }
   .result-love-row{
-    display:flex; align-items:center; gap:5px; margin: 5px 0 3px;
-    font-size:16px; font-weight:700; color: var(--love);
+    display:flex; align-items:center; gap:6px; margin: 7px 0 4px;
+    font-size:19px; font-weight:700; color: var(--love);
   }
-  .result-love-row svg{ width:16px; height:16px; }
-  /* オーナー指摘:「タイトルもハートの大きさも小さすぎる」。.result-titleは
-     他ページの検索結果グリッドとも共有のクラス(16.5px)なので、そちらは
-     変えずホームの場面カード結果欄だけ上書きする。 */
-  #home-scene-results-list .result-title{ font-size: 19px; }
+  .result-love-row svg{ width:18px; height:18px; }
+  /* オーナー指摘:「全然まだ小さい。下につかない程度に大きくして」。
+     .result-titleは他ページの検索結果グリッドとも共有のクラス(16.5px)
+     なので、そちらは変えずホームの場面カード結果欄だけ上書きする。
+     line-height/margin-bottomも広げ、大きくした文字が次の行や
+     あらすじと詰まって見えないようにしている。 */
+  #home-scene-results-list .result-title{ font-size: 23px; line-height:1.3; margin-bottom:4px; }
 
   /* 全ジャンル横断の自動ループ帯。見出しは.mood-row-header/.mood-row-kicker/
      .mood-row-tag(既存の「こんな気分の日に」棚と共通)を再利用する。
