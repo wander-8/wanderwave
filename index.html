@@ -2659,6 +2659,19 @@
   .omikuji-glow .omikuji-closed-text{ color: rgba(255,255,255,.88); text-shadow: 0 1px 6px rgba(0,0,0,.4); }
   .omikuji-glow .omikuji-title{ text-shadow: 0 2px 10px rgba(0,0,0,.4); }
   .omikuji-glow .omikuji-line{ color: rgba(255,255,255,.85); text-shadow: 0 1px 6px rgba(0,0,0,.4); }
+  /* オーナー指摘:「背景で使ってる感情の色の部分、モヤモヤゆっくり動かそう
+     と思うんだけど」。まずは「きょうの贈り物」1枚だけに試す(場面カード・
+     詳細ページの.mood-blobは対象外、今はここだけで様子を見る)。3つの円を
+     別々の速さでゆらゆら平行移動+わずかに拡大縮小させる、そよ風ドリフト。 */
+  .omikuji-glow .scene-mood-blob:nth-child(1){ animation: omikujiDrift1 22s ease-in-out infinite; }
+  .omikuji-glow .scene-mood-blob:nth-child(2){ animation: omikujiDrift2 26s ease-in-out infinite; }
+  .omikuji-glow .scene-mood-blob:nth-child(3){ animation: omikujiDrift3 19s ease-in-out infinite; }
+  @keyframes omikujiDrift1{ 0%,100%{ transform:translate(0,0) scale(1); } 50%{ transform:translate(6%,8%) scale(1.08); } }
+  @keyframes omikujiDrift2{ 0%,100%{ transform:translate(0,0) scale(1); } 50%{ transform:translate(-7%,5%) scale(0.94); } }
+  @keyframes omikujiDrift3{ 0%,100%{ transform:translate(0,0) scale(1); } 50%{ transform:translate(4%,-7%) scale(1.05); } }
+  @media (prefers-reduced-motion: reduce){
+    .omikuji-glow .scene-mood-blob{ animation: none !important; }
+  }
   .gift-swipe-hint{
     margin-top: 10px; text-align:center; font-size:10.5px; color: var(--ink-soft);
   }
