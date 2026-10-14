@@ -1097,6 +1097,19 @@
   }
   .gift-empty-plus{ font-size:24px; font-weight:700; color:var(--plum); line-height:1; }
   .gift-empty-label{ font-size:13px; color:var(--ink-soft); }
+  /* オーナー指摘:「今日の贈り物の点線を、足りてない作品分で作って欲しい」。
+     次の節目(3/5/10)までの点を全部並べ、今月すでに入れた分だけ埋まった
+     見た目にする(.filledは愛度と被らない色に)。 */
+  .gift-progress-dashes{ display:flex; gap:5px; margin:2px 0 1px; flex-wrap:wrap; justify-content:center; }
+  .gift-progress-dash{ width:16px; height:4px; border-radius:2px; background: var(--line); }
+  .gift-progress-dash.filled{ background: var(--plum); }
+  /* 節目に達した直後、診断はまだ自動実行しない(オーナー指摘:「作品を
+     入れた時点で診断されるのはやめて欲しい。メッセージで診断できるよって
+     施して欲しい」)。代わりにこの状態で「診断してみる」を案内し、本人が
+     タップした時だけ生成する。 */
+  .gift-pending{ border-color: var(--plum); }
+  .gift-pending-label{ font-size:13px; color: var(--ink); font-weight:700; }
+  .gift-pending-sub{ font-size:11.5px; color:var(--ink-soft); }
 
   .interest-row{ display:flex; align-items:center; gap:6px; margin-bottom: 4px; }
   .interest-bar-track{ flex:1; height:5px; background: var(--line); border-radius:3px; overflow:hidden; }
@@ -2341,6 +2354,7 @@
     font-size: 15px; color: var(--ink); margin-bottom: 4px;
   }
   .pocket-progress-done{ color: var(--gold); }
+  .pocket-progress-pending{ color: var(--plum); }
   .pocket-progress-sub{ font-size: 12px; color: var(--ink-soft); margin-bottom: 2px; }
   .pocket-diagnosis-note{
     font-size: 12px; color: var(--ink-soft); margin-top: 6px;
@@ -6578,20 +6592,47 @@ function rotateHomeMoods(){
 // (pickOmikujiMovie/pickOmikujiMessageは既存の本番ロジックをそのまま
 // 呼ぶだけで、新しい選定ロジックは作らない)。ポケットがまだ無い/少ない
 // 間は「あと◯つで」という空状態にする。
+// あと何個で次の節目(3/5/10)に届くかを、点の列(塗り=今月分、空=残り)で
+// 見える化する。オーナー指摘:「今日の贈り物の点線を、足りてない作品分で
+// 作って欲しい」。
+function buildGiftProgressDashesHTML(filled, total){
+  let html = '';
+  for(let i = 0; i < total; i++){
+    html += `<div class="gift-progress-dash${i < filled ? ' filled' : ''}"></div>`;
+  }
+  return html;
+}
+
 function renderHomeGift(){
   const container = document.getElementById('home-gift-area');
+  // オーナー指摘:「作品を入れた時点で診断されるのはやめて欲しい。メッセージ
+  // で診断できるよって施して欲しい」。latestが古い月の診断であっても
+  // (前月分の診断が残っている状態で今月新しく節目に達した場合も含め)、
+  // 診断履歴の有無より先にこちらを確認する。
+  const pending = getPendingDiagnosisMilestone();
+  if(pending){
+    container.innerHTML = `
+      <div class="gift-empty gift-pending" onclick="onTapRunDiagnosis()">
+        <div class="gift-pending-label">診断ができます</div>
+        <div class="gift-pending-sub">タップして、きょうの贈り物を受け取る</div>
+      </div>`;
+    return;
+  }
   // オーナー指摘:「すでに診断結果を出してあるのでその情報を元に出して
   // ください」。ポケットから毎回新たにtopTagを計算し直すのではなく、
   // view-pocket(goPocket/applyDiagnosisResultDisplay)と同じく
   // state.diagnosisHistory[0](直近の診断結果、節目ごとに保存済み)の
   // topTag/movieIdsをそのまま使う。診断がまだ無い(節目未達)場合だけ
-  // ポケットの件数から「あと◯つ」を出す。
+  // 今月分の件数から「あと◯つ」を点の列と一緒に出す。
   const latest = (state.diagnosisHistory || [])[0];
   if(!latest){
-    const pocketMovies = getPocketMovies();
-    const remaining = Math.max(1, 3 - pocketMovies.length);
+    const { start, end } = currentMonthWindow();
+    const monthCount = itemsInWindow(start, end).length;
+    const next = POCKET_MILESTONES.find(n => n > monthCount) || POCKET_MILESTONES[POCKET_MILESTONES.length - 1];
+    const remaining = Math.max(1, next - monthCount);
     container.innerHTML = `
       <div class="gift-empty" onclick="scrollToSearchHome()">
+        <div class="gift-progress-dashes">${buildGiftProgressDashesHTML(monthCount, next)}</div>
         <div class="gift-empty-plus">+</div>
         <div class="gift-empty-label">あと${remaining}つで、きょうの贈り物が届きます</div>
       </div>`;
@@ -12766,7 +12807,6 @@ async function togglePocketMembershipInner(movieId){
       if(error) throw error;
       state.myPocket.push(movieId);
       state.myPocketAddedAt[movieId] = nowIso;
-      maybeTriggerMilestoneDiagnosis();
       return 'added';
     }catch(err){
       console.error('ポケットの更新に失敗しました', err);
@@ -12788,7 +12828,6 @@ async function togglePocketMembershipInner(movieId){
   setLocalPocket(local);
   state.myPocket.push(movieId);
   state.myPocketAddedAt[movieId] = nowIso;
-  maybeTriggerMilestoneDiagnosis();
   return 'added';
 }
 
@@ -12858,22 +12897,22 @@ async function onPocketHeartTap(event){
   playTone(520, 0.16, 0.11, 'sine');
   const movieId = state.currentMovieId;
   if(movieId == null) return;
-  // 追加した結果ちょうど3/5/10に達した場合は、maybeTriggerMilestoneDiagnosis
-  // 側が専用のトースト(「診断が更新されました」「今月のポケットが完成
-  // しました」)を既に出している。showToastは1枚しか表示できないため、
-  // ここで重ねて「ポケットに入れました」を出すと専用の方が即座に消されて
-  // しまう。節目が新しく記録されたかどうかを前後で比べ、その場合だけ
-  // ここでの汎用トーストを出さないようにする。
-  const monthKeyBefore = currentMonthWindow().monthKey;
-  const milestoneAlreadyDoneBefore = POCKET_MILESTONES.filter(n => hasMilestoneRecordForMonth(monthKeyBefore, n));
   const result = await togglePocketMembership(movieId);
-  const milestoneAlreadyDoneAfter = POCKET_MILESTONES.filter(n => hasMilestoneRecordForMonth(currentMonthWindow().monthKey, n));
-  const justHitMilestone = milestoneAlreadyDoneAfter.length > milestoneAlreadyDoneBefore.length;
 
-  if(result === 'added' && !justHitMilestone){
-    // 今月の節目(10件)が既に完成している状態でさらに追加した場合は、
-    // 「次の月のポケットに入ります」と案内する(オーナー仕様)。
-    showToast(hasMilestoneRecordForMonth(currentMonthWindow().monthKey, 10) ? '次の月のポケットに入ります' : 'ポケットに入れました');
+  // オーナー指摘:「作品を入れた時点で診断されるのはやめて欲しい。メッセージ
+  // で診断できるよって施して欲しい」。節目にちょうど達した場合でもここでは
+  // 生成せず(runMilestoneDiagnosisは呼ばない)、代わりに「診断ができます」
+  // と案内するだけにする。実際にタップして生成するのは、きょうの贈り物
+  // カード・ポケット画面の進捗欄に出る専用ボタンから。
+  if(result === 'added'){
+    const pending = getPendingDiagnosisMilestone();
+    if(pending){
+      showToast('診断ができるようになりました');
+    } else {
+      // 今月の節目(10件)が既に完成している状態でさらに追加した場合は、
+      // 「次の月のポケットに入ります」と案内する(オーナー仕様)。
+      showToast(hasMilestoneRecordForMonth(currentMonthWindow().monthKey, 10) ? '次の月のポケットに入ります' : 'ポケットに入れました');
+    }
   } else if(result === 'removed'){
     showToast('取り消しました');
   }
@@ -14245,11 +14284,11 @@ function onPocketDataChanged(){
   if(state.homeLandingActive) renderHomeGift();
 }
 
-// 進捗表示(旧・手動ピッカー/クールダウン表示の置き換え)。節目に達した
-// 直後はmaybeTriggerMilestoneDiagnosis側で診断結果を表示するので、ここは
-// 「次の節目まで、あと○つ」「今月はあと○日です」「今週は○件入りました」
-// のような淡い進捗情報だけを出す(オーナー仕様:「診断は『結果を見る場所』
-// ではなく、『次の節目に戻る場所』として扱う」)。
+// 進捗表示(旧・手動ピッカー/クールダウン表示の置き換え)。節目にちょうど
+// 達していてまだ診断していない間は「診断してみる」ボタンを出し(下記)、
+// それ以外は「次の節目まで、あと○つ」「今月はあと○日です」「今週は○件
+// 入りました」のような淡い進捗情報だけを出す(オーナー仕様:「診断は
+// 『結果を見る場所』ではなく、『次の節目に戻る場所』として扱う」)。
 function renderPocketProgress(){
   const el = document.getElementById('pocket-progress');
   if(!el) return;
@@ -14265,6 +14304,19 @@ function renderPocketProgress(){
   // (「あと30日です」「今週は11件入りました」と3行重ねて出す必要は無い)。
   if(hasMilestoneRecordForMonth(monthKey, 10)){
     el.innerHTML = `<div class="pocket-progress-line pocket-progress-done">今月のポケットが完成しました</div>`;
+    return;
+  }
+
+  // オーナー指摘:「作品を入れた時点で診断されるのはやめて欲しい。メッセージ
+  // で診断できるよって施して欲しい」。節目にちょうど達していても自動では
+  // 生成せず、ここで「診断ができます」の案内とボタンを出し、タップした
+  // 時だけonTapRunDiagnosis→runMilestoneDiagnosisが生成する。
+  const pending = getPendingDiagnosisMilestone();
+  if(pending){
+    el.innerHTML = `
+      <div class="pocket-progress-line pocket-progress-pending">診断ができます</div>
+      <button class="ghost-btn" style="margin-top:6px;" onclick="onTapRunDiagnosis()">診断してみる</button>
+    `;
     return;
   }
 
@@ -14313,9 +14365,9 @@ function applyDiagnosisShareCard(cardId, topTag, themeTitle, movieTitles){
 }
 
 // ポケット・診断画面を開いた時(ページ読み込み直後や、既に生成済みの結果を
-// 見返す時)に、直近の診断結果をここで出す。新しく節目に達した直後だけ
-// isFresh=trueにして、ファンファーレ付きの登場アニメーションにする
-// (maybeTriggerMilestoneDiagnosisから呼ぶ)。
+// 見返す時)に、直近の診断結果をここで出す。本人が「診断してみる」を
+// タップして新しく生成した直後だけisFresh=trueにして、ファンファーレ付きの
+// 登場アニメーションにする(runMilestoneDiagnosisから呼ぶ)。
 function applyDiagnosisResultDisplay(historyEntry, isFresh){
   const movies = (historyEntry.movieIds || []).map(id => MOVIES.find(m => m.id === id)).filter(Boolean);
   // history.nameは『』で囲って保存してあるので、カード表示用に中身だけ取り出す
@@ -14472,21 +14524,32 @@ async function shareDiagnosisCardAsImage(){
   }
 }
 
-// togglePocketMembership()の追加経路から呼ぶ。今月分の件数がちょうど
-// 3/5/10に達した瞬間だけ、新しい診断を1回生成する(オーナー仕様:
-// 「3件:初回の仮診断、5件:2回目の更新、10件:今月の締めの診断」)。
-// 同じ月・同じ節目を二重に生成しないよう、state.diagnosisHistoryに
-// 同じ組が無いことを確認する。匿名(未登録)の間はdiagnosis_historyの
-// RLS(private.is_verified_user()必須)により保存できないため、結果は
-// その場で表示するだけに留め、ページ再読み込みでは残らない(次に3/5/10に
-// 達した時にまた生成される)。
-async function maybeTriggerMilestoneDiagnosis(){
+// 今月分の件数がちょうど3/5/10の節目に達していて、まだその節目の診断が
+// 生成されていないかどうかを判定するだけの関数(ここでは何も生成しない)。
+// オーナー指摘:「作品を入れた時点で診断されるのはやめて欲しい。メッセージ
+// で診断できるよって施して欲しい」→以前はtogglePocketMembership直後に
+// 下のrunMilestoneDiagnosisまで自動で走っていたが、今は判定だけ行い、
+// 「診断ができます」という案内(きょうの贈り物カード・ポケット画面の
+// 進捗欄、両方ともこの関数を呼ぶ)を出すだけに留める。生成は本人がそこを
+// タップした時(runMilestoneDiagnosis)だけ行う。
+function getPendingDiagnosisMilestone(){
   const { start, end, monthKey } = currentMonthWindow();
   const monthIds = itemsInWindow(start, end);
+  if(!monthIds.length) return null;
   const milestone = POCKET_MILESTONES.find(n => n === monthIds.length);
-  if(milestone == null) return;
-  if(hasMilestoneRecordForMonth(monthKey, milestone)) return;
+  if(milestone == null) return null;
+  if(hasMilestoneRecordForMonth(monthKey, milestone)) return null;
+  return { milestone, monthKey, monthIds };
+}
 
+// getPendingDiagnosisMilestone()が返した節目を、実際に生成・保存する
+// (オーナー仕様:「3件:初回の仮診断、5件:2回目の更新、10件:今月の
+// 締めの診断」)。匿名(未登録)の間はdiagnosis_historyのRLS
+// (private.is_verified_user()必須)により保存できないため、結果はその場で
+// 表示するだけに留め、ページ再読み込みでは残らない(次に3/5/10に達した
+// 時にまた生成できる)。
+async function runMilestoneDiagnosis(pending){
+  const { milestone, monthKey, monthIds } = pending;
   const monthMovies = monthIds.map(id => MOVIES.find(m => m.id === id)).filter(Boolean);
   const allPocketMovies = getPocketMovies();
   if(!monthMovies.length) return;
@@ -14520,9 +14583,18 @@ async function maybeTriggerMilestoneDiagnosis(){
 
   applyDiagnosisResultDisplay(historyEntry, true);
   renderPocketProgress();
+  if(state.homeLandingActive) renderHomeGift();
   showToast(milestone === 10 ? '今月のポケットが完成しました' : `診断が更新されました:『${(historyEntry.name || '').replace(/^『|』$/g, '')}』`);
   playFanfare();
   if(navigator.vibrate) navigator.vibrate([15, 30, 15, 30, 40]);
+}
+
+// きょうの贈り物カード・ポケット画面の「診断してみる」ボタン、両方の
+// onclickから呼ぶ共通の入口。
+async function onTapRunDiagnosis(){
+  const pending = getPendingDiagnosisMilestone();
+  if(!pending) return;
+  await runMilestoneDiagnosis(pending);
 }
 
 function openDiagnosisHistoryModal(){
