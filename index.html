@@ -1097,12 +1097,20 @@
   }
   .gift-empty-plus{ font-size:24px; font-weight:700; color:var(--plum); line-height:1; }
   .gift-empty-label{ font-size:13px; color:var(--ink-soft); }
-  /* オーナー指摘:「今日の贈り物の点線を、足りてない作品分で作って欲しい」。
-     次の節目(3/5/10)までの点を全部並べ、今月すでに入れた分だけ埋まった
-     見た目にする(.filledは愛度と被らない色に)。 */
-  .gift-progress-dashes{ display:flex; gap:5px; margin:2px 0 1px; flex-wrap:wrap; justify-content:center; }
-  .gift-progress-dash{ width:16px; height:4px; border-radius:2px; background: var(--line); }
-  .gift-progress-dash.filled{ background: var(--plum); }
+  /* オーナー指摘:「今日の贈り物の点線を、足りてない作品分で作って欲しい」
+     →さらに「点線で作品を入れられる箱を3つ(次の節目の数)作った方が
+     埋めたくなる欲が出て楽しいんじゃないか」。単なる点の列ではなく、
+     ポケット一覧の「穴」カード(.pocket-empty-thumb)と同じ視覚言語で、
+     次の節目までの数だけ実物大より小さい「箱」を並べる。埋まっている分は
+     実際に入れた作品のポスターを表示し、残りは点線の空き箱のままにする。 */
+  .gift-progress-dashes{ display:flex; gap:6px; margin:2px 0 4px; flex-wrap:wrap; justify-content:center; }
+  .gift-slot{ width:40px; height:56px; border-radius:8px; position:relative; overflow:hidden; flex:0 0 auto; }
+  .gift-slot-filled img{ position:absolute; inset:0; width:100%; height:100%; object-fit:cover; }
+  .gift-slot-empty{
+    border:1.5px dashed var(--line); background:transparent;
+    display:flex; align-items:center; justify-content:center;
+  }
+  .gift-slot-empty-plus{ font-size:16px; font-weight:700; color:var(--plum); line-height:1; }
   /* 節目に達した直後、診断はまだ自動実行しない(オーナー指摘:「作品を
      入れた時点で診断されるのはやめて欲しい。メッセージで診断できるよって
      施して欲しい」)。代わりにこの状態で「診断してみる」を案内し、本人が
@@ -6608,13 +6616,27 @@ function rotateHomeMoods(){
 // (pickOmikujiMovie/pickOmikujiMessageは既存の本番ロジックをそのまま
 // 呼ぶだけで、新しい選定ロジックは作らない)。ポケットがまだ無い/少ない
 // 間は「あと◯つで」という空状態にする。
-// あと何個で次の節目(3/5/10)に届くかを、点の列(塗り=今月分、空=残り)で
-// 見える化する。オーナー指摘:「今日の贈り物の点線を、足りてない作品分で
-// 作って欲しい」。
-function buildGiftProgressDashesHTML(filled, total){
+// あと何個で次の節目(3/5/10)に届くかを、「作品を入れられる箱」の列で
+// 見える化する。オーナー指摘:「点線で作品を入れられる箱を3つ作った方が
+// 埋めたくなる欲が出て楽しいんじゃないか」。今月すでに入れた分は実際の
+// ポスターを表示し、残りはポケット一覧の「穴」カードと同じ点線の空き箱に
+// する。monthIdsはitemsInWindowの戻り値(Object.keysの数値キー仕様上、
+// 挿入順ではなく常に昇順になる)なので、実際の追加順にするには
+// myPocketAddedAtで並べ替える。
+function buildGiftProgressSlotsHTML(monthIds, total){
+  const sortedIds = [...monthIds].sort((a, b) =>
+    new Date(state.myPocketAddedAt[a] || 0) - new Date(state.myPocketAddedAt[b] || 0));
   let html = '';
   for(let i = 0; i < total; i++){
-    html += `<div class="gift-progress-dash${i < filled ? ' filled' : ''}"></div>`;
+    const m = sortedIds[i] != null ? MOVIES.find(x => x.id === sortedIds[i]) : null;
+    if(m){
+      const posterInner = m.posterUrl
+        ? `<img src="${m.posterUrl}" alt="" loading="lazy" decoding="async">`
+        : escapeHtml(m.title.charAt(0));
+      html += `<div class="gift-slot gift-slot-filled" style="background:${m.posterColor};">${posterInner}</div>`;
+    } else {
+      html += `<div class="gift-slot gift-slot-empty"><span class="gift-slot-empty-plus">+</span></div>`;
+    }
   }
   return html;
 }
@@ -6643,14 +6665,17 @@ function renderHomeGift(){
   const latest = (state.diagnosisHistory || [])[0];
   if(!latest){
     const { start, end } = currentMonthWindow();
-    const monthCount = itemsInWindow(start, end).length;
-    const next = POCKET_MILESTONES.find(n => n > monthCount) || POCKET_MILESTONES[POCKET_MILESTONES.length - 1];
-    const remaining = Math.max(1, next - monthCount);
+    const monthIds = itemsInWindow(start, end);
+    const next = POCKET_MILESTONES.find(n => n > monthIds.length) || POCKET_MILESTONES[POCKET_MILESTONES.length - 1];
+    const remaining = Math.max(1, next - monthIds.length);
+    // オーナー指摘:「３つ入れたらってメッセージわかりにくい」。節目に
+    // 達しても自動では診断されなくなった(getPendingDiagnosisMilestone)
+    // ため、「贈り物が届く」ではなく実際の動きに合わせて「診断ができる
+    // ようになる」と伝える。
     container.innerHTML = `
       <div class="gift-empty" onclick="scrollToSearchHome()">
-        <div class="gift-progress-dashes">${buildGiftProgressDashesHTML(monthCount, next)}</div>
-        <div class="gift-empty-plus">+</div>
-        <div class="gift-empty-label">あと${remaining}つで、きょうの贈り物が届きます</div>
+        <div class="gift-progress-dashes">${buildGiftProgressSlotsHTML(monthIds, next)}</div>
+        <div class="gift-empty-label">あと${remaining}つポケットに入れると、診断ができます</div>
       </div>`;
     return;
   }
@@ -8435,8 +8460,12 @@ function switchView(id){
   // 唯一の出口で、「戻る」で一覧に戻る(goHome()等、別の作品のgoDetail()を
   // 経由しない)経路では一切呼ばれず、試聴中の曲が鳴り続けたまま一覧に
   // 戻ってしまう事故になっていた。
-  const detailView = document.getElementById('view-detail');
-  if(id !== 'view-detail' && detailView && detailView.classList.contains('active') && playingTrackIndex != null){
+  // オーナー指摘:「違う画面に切り替えても音楽流れる」→上の対策は
+  // view-detailがアクティブな時のplayingTrackIndexしか見ておらず、一覧・
+  // ホームのカードからその場で試聴した場合(toggleCardPreview、
+  // playingCardMovieIdだけが立つ経路)は対象外だったため、そちらの画面を
+  // 離れても鳴り続けていた。両方の再生状態を見るようにする。
+  if(id !== 'view-detail' && (playingTrackIndex != null || playingCardMovieId != null)){
     stopTrackPreview();
   }
   document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
