@@ -9905,10 +9905,14 @@ function personLinksHTML(names){
 function renderMovieInfoPanel(m){
   // 漫画・小説は「監督」ではなく「作者」の方が自然なので、作品種別に応じてラベルを切り替える。
   document.getElementById('d-director-label').textContent = m.isMusic ? 'アーティスト' : (m.isManga || m.isNovel) ? '作者' : '監督';
-  // directorは書籍の場合「原作者/訳者」のように"/"区切りで複数名が
-  // 入っていることがある(isForeignAuthorName参照)ため、分割してそれぞれ
-  // 個別にリンクにする。
-  const directorNames = (m.director || '').split('/').map(s => s.trim()).filter(Boolean);
+  // directorは複数名が1つの文字列に入っていることがある:書籍の
+  // 「原作者/訳者」のような"/"区切り(isForeignAuthorName参照)に加えて、
+  // 監督が2人以上いる映画・アニメ・ドラマ等はTMDB/AniList取り込み時に
+  // "、"区切りで結合されている(directors.join("、")、各discover系
+  // エッジ関数を参照)。分割せず1本のリンクのままだと、2人まとめて検索
+  // されてしまい片方だけで絞り込めなかった(オーナー指摘)。両方の区切り
+  // で分割し、それぞれ個別にリンクにする。
+  const directorNames = (m.director || '').split(/[/、]/).map(s => s.trim()).filter(Boolean);
   document.getElementById('d-director').innerHTML = directorNames.length ? personLinksHTML(directorNames) : '情報がまだありません';
   // 「主演」は実写・アニメ向けの項目で、小説・漫画・音楽には俳優がいないため
   // 常に「情報がまだありません」としか出ない空欄になっていた。該当しない
