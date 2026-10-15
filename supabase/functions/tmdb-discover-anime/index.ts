@@ -187,6 +187,10 @@ Deno.serve(async (req: Request) => {
       // (その場合はorigin_country・min_vote_count等で別途絞り込む前提)。
       require_anime_keyword = true,
       with_origin_country = null,
+      // 自動の日次取り込み用。1日に入れる件数を抑えたい(「少しずつでいい」との
+      // オーナー要望)ため、新規候補が見つかった順に先頭N件だけを詳細取得・
+      // 挿入する。nullなら従来通り無制限。
+      limit = null,
     } = await req.json().catch(() => ({}));
 
     if (media !== "movie" && media !== "tv") {
@@ -247,11 +251,12 @@ Deno.serve(async (req: Request) => {
     });
 
     // 3) 詳細情報を取得し、挿入用の行を組み立てる
+    const limited = limit != null ? fresh.slice(0, limit) : fresh;
     const rows: any[] = [];
     const skipped: any[] = [];
     const CONCURRENCY = 3;
-    for (let i = 0; i < fresh.length; i += CONCURRENCY) {
-      const chunk = fresh.slice(i, i + CONCURRENCY);
+    for (let i = 0; i < limited.length; i += CONCURRENCY) {
+      const chunk = limited.slice(i, i + CONCURRENCY);
       const chunkRows = await Promise.all(
         chunk.map(async (c: any) => {
           const detailPath = media === "movie" ? `/movie/${c.id}` : `/tv/${c.id}`;
