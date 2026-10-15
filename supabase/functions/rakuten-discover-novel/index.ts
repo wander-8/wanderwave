@@ -576,12 +576,14 @@ function normalizeTitle(t: string): string {
   return (t || "").trim().toLowerCase();
 }
 
-async function selectAllRows(supabase: any, table: string, columns: string): Promise<any[]> {
+async function selectAllRows(supabase: any, table: string, columns: string, eqFilter?: [string, string]): Promise<any[]> {
   const PAGE_SIZE = 1000;
   let all: any[] = [];
   let from = 0;
   while (true) {
-    const { data, error } = await supabase.from(table).select(columns).order("id", { ascending: true }).range(from, from + PAGE_SIZE - 1);
+    let query = supabase.from(table).select(columns).order("id", { ascending: true }).range(from, from + PAGE_SIZE - 1);
+    if (eqFilter) query = query.eq(eqFilter[0], eqFilter[1]);
+    const { data, error } = await query;
     if (error) throw error;
     all = all.concat(data || []);
     if (!data || data.length < PAGE_SIZE) break;
@@ -626,7 +628,14 @@ Deno.serve(async (req: Request) => {
 
     const supabase = createClient(SUPABASE_URL, SERVICE_ROLE);
 
-    const existingRows = await selectAllRows(supabase, "movies", "title, release_year");
+    // 重複チェックはmedia_type="novel"の既存行だけに限定する。漫画・アニメ・
+    // 実写化で原作と同じタイトルの行が別media_typeとして既に存在するのは
+    // 正常(例:【推しの子】がmanga行とtv行の両方に存在する)なので、
+    // 全media_type横断で既存チェックすると、人気ライトノベルほどアニメ化・
+    // 漫画化されていて同名の行が既にあるために軒並み「重複」扱いされ、
+    // 小説側には一切追加されなくなってしまう(ライトノベルの新規取り込みが
+    // ほぼ0件になっていたことから発覚)。
+    const existingRows = await selectAllRows(supabase, "movies", "title, release_year", ["media_type", "novel"]);
     // 既存タイトルは、以前このstripVolumeSuffix修正が入る前に「（第21巻）」の
     // ような巻数付きのまま登録された行が混じっているため、既存タイトル側も
     // stripVolumeSuffixで正規化してから比較し、クロスバッチ重複を防ぐ。
