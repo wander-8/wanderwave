@@ -90,6 +90,10 @@ function normalizeTitle(t: string): string {
   return (t || "").trim().toLowerCase();
 }
 
+function isRealIsbn(isbn: string | null | undefined): boolean {
+  return !!isbn && /^97[89]/.test(isbn);
+}
+
 Deno.serve(async (req: Request) => {
   try {
     const {
@@ -104,7 +108,7 @@ Deno.serve(async (req: Request) => {
 
     const { data: rows, error } = await supabase
       .from("movies")
-      .select("id, title")
+      .select("id, title, isbn")
       .eq(flagCol, true)
       .or("synopsis.is.null,synopsis.eq.")
       .gt("id", after_id)
@@ -114,24 +118,48 @@ Deno.serve(async (req: Request) => {
 
     const results: any[] = [];
     for (const r of rows || []) {
-      const data: any = await rakutenFetch({ booksGenreId, title: r.title, hits: "10", sort: "sales" });
-      await sleep(400);
-      if (data?.error) {
-        results.push({ id: r.id, title: r.title, error: data.status });
-        continue;
-      }
-      const items = (data?.Items || []).map((w: any) => w.Item);
-      const targetNorm = normalizeTitle(r.title);
       let caption: string | null = null;
-      for (const item of items) {
-        if (normalizeTitle(stripVolumeSuffix(item.title)) !== targetNorm) continue;
-        const c = (item.itemCaption || "").trim();
-        if (c) {
-          caption = trimToSentenceBoundaryJa(c, SYNOPSIS_MAX_LEN);
-          break;
+      let matchedVia: string | null = null;
+
+      // ISBN(movies.isbnに本物のISBNが記録済みの行)があれば、そちらを先に
+      // 試す。タイトル完全一致より信頼できる(ISBNは一意なので、全集・改版・
+      // 別表記などタイトルのゆらぎでマッチしない問題が起きない)。
+      // オーナー指摘を受けた作業で判明:タイトル完全一致だけでは残っている
+      // 分(改版・全◯巻セット等)のヒット率が0.2%程度まで落ちていた。
+      if (isRealIsbn(r.isbn)) {
+        const isbnData: any = await rakutenFetch({ isbnjan: r.isbn, hits: "1" });
+        await sleep(400);
+        if (!isbnData?.error) {
+          const item = ((isbnData?.Items || [])[0] || {}).Item;
+          const c = (item?.itemCaption || "").trim();
+          if (c) {
+            caption = trimToSentenceBoundaryJa(c, SYNOPSIS_MAX_LEN);
+            matchedVia = "isbn";
+          }
         }
       }
-      results.push({ id: r.id, title: r.title, found: !!caption, synopsis: caption });
+
+      if (!caption) {
+        const data: any = await rakutenFetch({ booksGenreId, title: r.title, hits: "10", sort: "sales" });
+        await sleep(400);
+        if (data?.error) {
+          results.push({ id: r.id, title: r.title, error: data.status });
+          continue;
+        }
+        const items = (data?.Items || []).map((w: any) => w.Item);
+        const targetNorm = normalizeTitle(r.title);
+        for (const item of items) {
+          if (normalizeTitle(stripVolumeSuffix(item.title)) !== targetNorm) continue;
+          const c = (item.itemCaption || "").trim();
+          if (c) {
+            caption = trimToSentenceBoundaryJa(c, SYNOPSIS_MAX_LEN);
+            matchedVia = "title";
+            break;
+          }
+        }
+      }
+
+      results.push({ id: r.id, title: r.title, found: !!caption, synopsis: caption, matchedVia });
       if (caption && !dry_run) {
         const { error: updErr } = await supabase.from("movies").update({ synopsis: caption }).eq("id", r.id);
         if (updErr) throw updErr;
