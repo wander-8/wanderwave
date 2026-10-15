@@ -466,6 +466,23 @@ function isGoodsIsbn(isbn: string | null | undefined): boolean {
   return !!isbn && !/^97[89]/.test(isbn);
 }
 
+// 末尾の「特装版」「限定版」「愛蔵版」「豪華版」等の小売り版表記(中身の
+// 違いではなく、特典グッズの有無だけの違い)を取り除く(オーナー指摘:
+// 「特装版の部分いらないのに入ってくる」)。stripRetailTagsは先頭の
+// 【】タグしか対象にしておらず、末尾に付くこの種の表記は素通りしていた。
+// 「完全版」「通常版」のように内容そのものが違う版は対象に含めない
+// (別物として区別する意味があるため)。「(特典名)付き」の前置き部分は、
+// スペース区切りが無い実例(「『作品名』SS冊子付き特装版」のように作品名と
+// 特典名の間に空白が無いもの)でタイトル全体を飲み込んでしまう事故が
+// 起きたため、短い範囲(12文字)だけを対象にする(飲み込みきれない長い
+// 特典名は、版表記だけ取れて特典名が多少残るだけに留める=壊すより安全側に倒す)。
+function stripTrailingEditionSuffix(title: string): string {
+  return title
+    .replace(/[^\s　]{1,12}(?:付き|つき|付)(特装版|限定版|愛蔵版|豪華版|初回限定版|永久愛蔵版)[\s　]*$/u, "")
+    .replace(/[\s　]*(特装版|限定版|愛蔵版|豪華版|初回限定版|永久愛蔵版)[\s　]*$/u, "")
+    .trim();
+}
+
 // 「全12巻セット」「（3冊）」のような、まとめ買い用の巻数セット表記を
 // 持つ商品はまとめ買いSKUであり、通常の単巻とは別にシリーズ代表として
 // 選ばれると「作品名（3冊）」のような不自然な表示になってしまうため、
@@ -481,7 +498,7 @@ function isBundleTitle(title: string): boolean {
 // 楽天のseriesNameは(漫画と同じく)出版レーベル名が入っていることが多く
 // 作品名として使えないため、シリーズ名の判定はtitleベースの推定だけに頼る。
 function stripVolumeSuffix(rawTitle: string): string {
-  const title = stripRetailTags(stripBonusPrefix(rawTitle));
+  const title = stripTrailingEditionSuffix(stripRetailTags(stripBonusPrefix(rawTitle)));
   // 「新・人間革命（第21巻）」のような「第N巻」表記(古い作品の重版・文庫化で
   // よく使われる)。これを見逃すと同じ作品の巻違いが別作品として重複登録される。
   const withKanjiVolume = title.match(/^(.*?)[\s　]*[\(（]?第[0-9０-９]+[巻冊集][\)）]?\s*$/u);
