@@ -5067,7 +5067,7 @@ function shouldHidePosterForIntensity(m, opts){
   return state.intensityFilter !== 100;
 }
 
-let state = { query: "", queryKeywords: [], activeTags: new Set(), currentMovieId: null, hasReviewed: {}, myReviewsById: {}, myReviewRows: [], myReviewRowsLoaded: false, myLove: {}, myIntensity: {}, myReason: {}, myTagVotes: {}, myWatchLater: {}, myPocket: [], myPocketAddedAt: {}, myLists: [], currentListId: null, profile: null, profileLoaded: false, myLogs: [], myLogsLoaded: false, mySubmittedMovieIds: [], mySubmittedMovies: [], mySubmittedMoviesLoaded: false, lastSubmissionDate: null, todaySubmissionCount: 0, intensityFilter: 0, decadeFilter: 0, diagnosisHistory: [], activeGenres: new Set(), activeCountries: new Set(), catalogMode: 'movie', bookType: null, crossMediaSearch: false, pendingTrackAdd: null, homeLandingActive: false };
+let state = { query: "", queryKeywords: [], activeTags: new Set(), currentMovieId: null, hasReviewed: {}, myReviewsById: {}, myReviewRows: [], myReviewRowsLoaded: false, myLove: {}, myIntensity: {}, myReason: {}, myTagVotes: {}, myWatchLater: {}, myPocket: [], myPocketAddedAt: {}, myLists: [], currentListId: null, profile: null, profileLoaded: false, myLogs: [], myLogsLoaded: false, mySubmittedMovieIds: [], mySubmittedMovies: [], mySubmittedMoviesLoaded: false, lastSubmissionDate: null, todaySubmissionCount: 0, intensityFilter: 0, decadeFilter: 0, diagnosisHistory: [], activeGenres: new Set(), activeCountries: new Set(), catalogMode: 'movie', bookType: null, crossMediaSearch: false, pendingTrackAdd: null, homeLandingActive: false, semanticMatches: null };
 
 
 function riskLabel(v){
@@ -5639,8 +5639,10 @@ function onSearchInput(){
   if(searchComposing) return;
   state.query = document.getElementById('search-input').value.trim();
   // 手で打ち直した時点で、直前のAI検索が拾った複数キーワードのAND絞り込み
-  // は引き継がない(以後は通常の単一文字列の部分一致検索に戻る)。
+  // も、雰囲気検索(voyage-search)の結果も引き継がない(以後は通常の
+  // 単一文字列の部分一致検索に戻る)。
   state.queryKeywords = [];
+  state.semanticMatches = null;
   // 人物名の横断検索(goPersonSearch)から戻って普通に文字を打ち直したら、
   // カタログモードの縛りは元に戻す。
   state.crossMediaSearch = false;
@@ -5655,6 +5657,7 @@ function goPersonSearch(name){
   if(!name) return;
   state.query = name;
   state.queryKeywords = [];
+  state.semanticMatches = null;
   state.crossMediaSearch = true;
   // マイケル・ジャクソンのように、映画側(カタカナ)と音楽側(英語)で
   // 表記が違う同一人物も一緒に見つけられるよう、確認済みの別表記があれば
@@ -5730,6 +5733,29 @@ async function submitSearch(){
     state.queryKeywords = keywords;
     state.query = keywords.join(' ');
     state.crossMediaSearch = false;
+    state.semanticMatches = null;
+
+    // オーナー指摘(自動化パック):「言葉にできない焦燥感」のような、
+    // ai-searchが具体的な手がかりを1つも拾えない(searchTerms空配列、
+    // decadeも無し)曖昧な文章の時は、今まで「特に手がかりが見つかりません
+    // でした」のまま検索自体が成立していなかった。ここだけ、文章全体の
+    // 雰囲気で近い作品を探すベクトル検索(voyage-search)にフォールバック
+    // する(意味的に近い候補をsimilarity順で返す。文字一致ではない)。
+    let usedSemantic = false;
+    if(keywords.length === 0 && !state.decadeFilter){
+      try{
+        const { data: semData, error: semErr } = await supabase.functions.invoke('voyage-search', {
+          body: { query, match_count: 200 },
+        });
+        if(!semErr && !semData?.error && Array.isArray(semData?.results) && semData.results.length){
+          state.semanticMatches = new Map(semData.results.map(r => [r.id, r.similarity]));
+          usedSemantic = true;
+        }
+      }catch(semErr){
+        console.error('雰囲気検索(voyage-search)に失敗しました', semErr);
+      }
+    }
+
     // 以前はここで検索欄の中身をAIが拾ったキーワードに書き換えていたが、
     // 拾えた言葉が無かった時は空文字列が入り、自分で打った文章がそのまま
     // 消えて見えていた(オーナー指摘:「ユーザーの検索のまま出してほしい」)。
@@ -5745,7 +5771,9 @@ async function submitSearch(){
       ...keywords.map(k => `「${k}」`),
       ...(state.decadeFilter ? [decadeLabel(state.decadeFilter)] : []),
     ];
-    showToast(appliedParts.length ? `${appliedParts.join('・')}で検索しました` : '特に手がかりが見つかりませんでした');
+    showToast(appliedParts.length
+      ? `${appliedParts.join('・')}で検索しました`
+      : usedSemantic ? '雰囲気が近い作品を探しました' : '特に手がかりが見つかりませんでした');
   }catch(err){
     // AI側が落ちていても検索そのものを止めない(今はこれが唯一の検索確定
     // 操作なので、失敗時は普通の部分一致検索にフォールバックする)。
@@ -5765,6 +5793,7 @@ async function submitSearch(){
 function clearSearch(){
   state.query = "";
   state.queryKeywords = [];
+  state.semanticMatches = null;
   document.getElementById('search-input').value = "";
   state.activeTags.clear();
   state.activeGenres.clear();
@@ -7744,7 +7773,8 @@ function renderResults(){
   if(filterDisclosureBtn) filterDisclosureBtn.style.display = state.homeLandingActive ? 'none' : '';
 
   const isActiveSearch = state.query.trim() !== "" || state.activeTags.size > 0
-    || state.activeGenres.size > 0 || state.activeCountries.size > 0 || state.decadeFilter !== 0;
+    || state.activeGenres.size > 0 || state.activeCountries.size > 0 || state.decadeFilter !== 0
+    || !!(state.semanticMatches && state.semanticMatches.size > 0);
 
   // 検索欄の×は、以前はキーワードを打った時だけ出ていたが、感情タグや
   // ジャンル・国だけで絞り込んでいる時も同じように「全部まとめて消す」
@@ -7837,7 +7867,9 @@ function renderResults(){
     // フィールド」だけを使う(normalizeForSearchをここで呼び直さない)。
     // 以前はここで毎回normalizeForSearchを呼んでおり、あらすじ(最大400字)
     // まで含め全作品を正規化し直していたため、検索1文字目で固まっていた。
-    const matchQuery = keywordTerms
+    const matchQuery = state.semanticMatches
+      ? state.semanticMatches.has(m.id)
+      : keywordTerms
       ? (() => {
           const score = keywordTerms.reduce((n, term, i) =>
             n + (termMatchesMovie(m, term, keywordTermsVibeKws[i], keywordTermsShortTitleRe[i]) ? 1 : 0), 0);
@@ -7900,6 +7932,10 @@ function renderResults(){
     return 2;
   }
   resultsFiltered.sort((a, b) => {
+    // 雰囲気検索(voyage-search)の時は、意味的な近さ(similarity)だけで
+    // 並べる。タイトル一致やジャンル完全一致の概念が無いモードなので、
+    // 他の判定を混ぜない。
+    if(state.semanticMatches) return (state.semanticMatches.get(b.id) || 0) - (state.semanticMatches.get(a.id) || 0);
     const rankDiff = titleRelevanceRank(a) - titleRelevanceRank(b);
     if(rankDiff !== 0) return rankDiff;
     const availDiff = (hasJapanAvailabilitySignal(b) ? 1 : 0) - (hasJapanAvailabilitySignal(a) ? 1 : 0);
@@ -7917,7 +7953,7 @@ function renderResults(){
   // 1時間ごとに入れ替わるシードで、上位(愛度が高い)帯の中だけ並び順を
   // 散らす(全体をランダムにすると無名作品がいきなり先頭に出て一覧の質が
   // 落ちるため、帯の外=滅多に見られない下位はそのまま愛度順に残す)。
-  if(!q){
+  if(!q && !state.semanticMatches){
     const SHUFFLE_WINDOW = 150;
     const shuffleSalt = `search:${currentCatalogMode()}:${[...state.activeTags].sort().join(',')}:${[...state.activeGenres].sort().join(',')}:${[...state.activeCountries].sort().join(',')}:${state.decadeFilter}:${state.bookType || ''}`;
     const head = seededShuffleHourly(resultsFiltered.slice(0, SHUFFLE_WINDOW), shuffleSalt);
@@ -7929,7 +7965,7 @@ function renderResults(){
   // 直面したのと同じ問題)、アニメ・ドラマ・漫画・小説・音楽が下の方に
   // 埋もれてしまう。ホームモード・文字検索なしの時だけ、各媒体内の順位
   // 関係(愛度順)は保ったまま、媒体をまたいでラウンドロビンに混ぜ直す。
-  if(!q && state.homeLandingActive){
+  if(!q && state.homeLandingActive && !state.semanticMatches){
     const byType = {};
     resultsFiltered.forEach(m => {
       const mode = mediaTypeInfo(m).mode;
