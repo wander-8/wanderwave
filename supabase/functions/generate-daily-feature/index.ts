@@ -127,9 +127,10 @@ Deno.serve(async (req: Request) => {
           description: {
             type: "string",
             description:
-              "特集の紹介文。250〜400字程度の日本語。選ばれた作品群のあらすじ・ジャンルを実際に読み比べ、" +
-              "そこから見える共通点や並べた意図を、雑誌の特集前書きのような温かく誘うトーンで書く。" +
-              "断定的な決めつけ(「絶対に」等)や良い/悪いの評価は避ける。少なくとも3本のタイトルに触れる。",
+              "特集の紹介文。120〜160字程度の日本語、改行や段落分けはせず1つの流れる文章にする" +
+              "(短く・簡潔に、ホーム画面の小さなカード内に収まる分量)。選ばれた作品群のあらすじ・ジャンルを" +
+              "実際に読み比べ、そこから見える共通点を、雑誌の特集前書きのような温かく誘うトーンで一言で書く。" +
+              "断定的な決めつけ(「絶対に」等)や良い/悪いの評価は避ける。少なくとも2本のタイトルに触れる。",
           },
         },
         required: ["title", "description"],
@@ -179,7 +180,7 @@ Deno.serve(async (req: Request) => {
     }
 
     const title = String(toolUse.input?.title || "").trim().slice(0, 60);
-    const description = String(toolUse.input?.description || "").trim().slice(0, 800);
+    const description = String(toolUse.input?.description || "").trim().slice(0, 300);
     if (!title || !description) {
       return new Response(JSON.stringify({ error: "empty_diagnosis_output", raw: toolUse.input }), { status: 502, headers: jsonHeaders });
     }

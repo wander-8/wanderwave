@@ -120,6 +120,7 @@ Deno.serve(async (req: Request) => {
     for (const r of rows || []) {
       let caption: string | null = null;
       let matchedVia: string | null = null;
+      let isbnDebug: any = null;
 
       // ISBN(movies.isbnに本物のISBNが記録済みの行)があれば、そちらを先に
       // 試す。タイトル完全一致より信頼できる(ISBNは一意なので、全集・改版・
@@ -129,8 +130,10 @@ Deno.serve(async (req: Request) => {
       if (isRealIsbn(r.isbn)) {
         const isbnData: any = await rakutenFetch({ isbnjan: r.isbn, hits: "1" });
         await sleep(400);
+        isbnDebug = { error: isbnData?.error || false, status: isbnData?.status, itemCount: (isbnData?.Items || []).length };
         if (!isbnData?.error) {
           const item = ((isbnData?.Items || [])[0] || {}).Item;
+          isbnDebug.hasCaption = !!(item?.itemCaption || "").trim();
           const c = (item?.itemCaption || "").trim();
           if (c) {
             caption = trimToSentenceBoundaryJa(c, SYNOPSIS_MAX_LEN);
@@ -159,7 +162,7 @@ Deno.serve(async (req: Request) => {
         }
       }
 
-      results.push({ id: r.id, title: r.title, found: !!caption, synopsis: caption, matchedVia });
+      results.push({ id: r.id, title: r.title, found: !!caption, synopsis: caption, matchedVia, isbnDebug });
       if (caption && !dry_run) {
         const { error: updErr } = await supabase.from("movies").update({ synopsis: caption }).eq("id", r.id);
         if (updErr) throw updErr;
