@@ -3577,7 +3577,7 @@
         <div class="diagnosis-share-blurb" id="diagnosis-share-blurb"></div>
         <div class="diagnosis-share-movies" id="diagnosis-share-movies"></div>
         <div class="diagnosis-share-actions">
-          <button class="diagnosis-share-btn" onclick="shareDiagnosisCard()">
+          <button class="diagnosis-share-btn" id="diagnosis-share-btn" onclick="shareDiagnosisCard()">
             <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M4 12v7a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-7M16 6l-4-4-4 4M12 2v14"/></svg>
             シェアする
           </button>
@@ -6692,7 +6692,7 @@ function renderHomeGift(){
         </div>
       </div>
     </div>
-    ${homeGiftCandidates.length > 1 ? `<div class="gift-swipe-hint" onclick="onHomeGiftHintTap(event)">← タップ・スワイプでほかの候補も見られます →</div>` : ''}`;
+    ${homeGiftCandidates.length > 1 ? `<div class="gift-swipe-hint" onclick="onHomeGiftHintTap(event)">タップでほかの候補も見られます</div>` : ''}`;
   renderOmikujiCard(movieId, '-home');
   const cardEl = document.getElementById('omikuji-card-home');
   cardEl.addEventListener('pointerdown', onHomeGiftPointerDown);
@@ -9190,9 +9190,9 @@ async function togglePosterMusicPlayback(){
 const previewAudio = new Audio();
 // デフォルト(1.0=最大)のままだと、特に詳細ページを開いた瞬間に自動再生
 // (autoPlayAlbumPreview)される分、本人の意図より大きい音で急に鳴り始める
-// という指摘があった。根拠のある正確な数値ではなく、0.6でもまだ大きいとの
-// 報告を受けてさらに下げた、あくまで目安の値(今後も要望があれば調整する)。
-previewAudio.volume = 0.35;
+// という指摘があった。根拠のある正確な数値ではなく、0.6→0.35でもまだ
+// 大きいとの報告を受けてさらに下げた、あくまで目安の値(今後も要望があれば調整する)。
+previewAudio.volume = 0.2;
 // 30秒で単発停止すると「開いたらすぐ無音に戻る」体験になり寂しいため、
 // 同じ試聴区間をそのままループさせる(オーナーの要望)。loopがtrueの間は
 // 'ended'イベント自体が発火しない(ブラウザがループ再生する)ため、
@@ -14487,19 +14487,45 @@ function applyDiagnosisResultDisplay(historyEntry, isFresh){
 
 // Web Share API(スマホでよくある共有シート)が使えればそれを使い、
 // 使えない環境(主にPCブラウザ)ではクリップボードへのコピーにフォールバックする。
+// オーナー指摘:「診断のカードを共有するボタンを押して、ちゃんとカードが
+// 共有先で表示されるようにしてほしい」。以前はテキスト(タイプ名+リンク)
+// だけを共有しており、共有先には文章しか出ず、肝心の診断カード自体は
+// 見えていなかった。画像生成(renderDiagnosisCardToFile、html2canvas経由)に
+// 対応している環境では、文章と一緒にカード画像も添えて共有する。
 async function shareDiagnosisCard(){
   if(!currentDiagnosisShareState) return;
   // nameは実際に授かった名前(『』込み、ランダムに選ばれたバリアント)をそのまま使う。
   // topTagから再度引き直すと、人によって違う名前を選んだ意味が無くなってしまう。
   const shareText = `私のタイプは${currentDiagnosisShareState.name}でした。\n${window.location.origin}${window.location.pathname}`;
+  const btn = document.getElementById('diagnosis-share-btn');
+  if(btn) btn.disabled = true;
+
+  let file = null;
+  try{
+    file = await renderDiagnosisCardToFile();
+  }catch(err){
+    console.error('診断カードの画像化に失敗しました(テキストのみの共有にフォールバックします)', err);
+  }finally{
+    if(btn) btn.disabled = false;
+  }
+
+  if(file && navigator.canShare && navigator.canShare({ files: [file] })){
+    try{
+      await navigator.share({ text: shareText, files: [file] });
+      logPocketDiagnosisEvent('diagnosis_shared', null, currentMonthWindow().monthKey);
+    }catch(err){
+      // ユーザーがシェアシートをキャンセルしただけの場合もここに来るので、
+      // エラー扱いにはせず静かに終わる(計測もしない)。
+    }
+    return;
+  }
 
   if(navigator.share){
     try{
       await navigator.share({ text: shareText });
       logPocketDiagnosisEvent('diagnosis_shared', null, currentMonthWindow().monthKey);
     }catch(err){
-      // ユーザーがシェアシートをキャンセルしただけの場合もここに来るので、
-      // エラー扱いにはせず静かに終わる(計測もしない)。
+      // 同上、キャンセルはエラー扱いにしない。
     }
     return;
   }
@@ -14530,17 +14556,17 @@ function loadHtml2Canvas(){
   return html2canvasLoadPromise;
 }
 
-async function shareDiagnosisCardAsImage(){
-  if(!currentDiagnosisShareState) return;
-  const btn = document.getElementById('diagnosis-image-btn');
+// shareDiagnosisCard・shareDiagnosisCardAsImage共通:診断カードをPNG画像の
+// Fileに変換する(html2canvasで撮影)。
+async function renderDiagnosisCardToFile(){
+  if(!currentDiagnosisShareState) return null;
   const card = document.getElementById('diagnosis-share-card');
   const actions = card.querySelector('.diagnosis-share-actions');
-  if(btn){ btn.disabled = true; }
   const originalBackground = card.style.background;
+  await loadHtml2Canvas();
   try{
-    await loadHtml2Canvas();
     // ボタン行は画像に写り込ませたくないので、撮影の間だけ隠す。
-    actions.style.visibility = 'hidden';
+    if(actions) actions.style.visibility = 'hidden';
     // html2canvas(1.4.1)はrgba()を含む複数ストップのグラデーションを
     // パースできず(カンマをストップの区切りと誤認して位置がnullになり、
     // addColorStop()が例外を投げる・実機で確認済み)、カード画像の生成自体が
@@ -14552,13 +14578,23 @@ async function shareDiagnosisCardAsImage(){
       backgroundColor: null,
       useCORS: true,
     });
-    card.style.background = originalBackground;
-    actions.style.visibility = '';
-
     const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
-    if(!blob){ showToast('画像の作成に失敗しました'); return; }
+    if(!blob) return null;
     const fileName = `wander-${currentDiagnosisShareState.topTag}.png`;
-    const file = new File([blob], fileName, { type: 'image/png' });
+    return new File([blob], fileName, { type: 'image/png' });
+  }finally{
+    card.style.background = originalBackground;
+    if(actions) actions.style.visibility = '';
+  }
+}
+
+async function shareDiagnosisCardAsImage(){
+  if(!currentDiagnosisShareState) return;
+  const btn = document.getElementById('diagnosis-image-btn');
+  if(btn){ btn.disabled = true; }
+  try{
+    const file = await renderDiagnosisCardToFile();
+    if(!file){ showToast('画像の作成に失敗しました'); return; }
 
     // スマホ(主にiOS/Android)ではファイル付きの共有シートを直接開けるので
     // そちらを優先する。使えない環境(主にPCブラウザ)ではダウンロードに
@@ -14577,10 +14613,10 @@ async function shareDiagnosisCardAsImage(){
       }
     }
 
-    const url = URL.createObjectURL(blob);
+    const url = URL.createObjectURL(file);
     const a = document.createElement('a');
     a.href = url;
-    a.download = fileName;
+    a.download = file.name;
     document.body.appendChild(a);
     a.click();
     a.remove();
@@ -14591,8 +14627,6 @@ async function shareDiagnosisCardAsImage(){
     console.error('診断カードの画像化に失敗しました', err);
     showToast('画像の作成に失敗しました');
   }finally{
-    card.style.background = originalBackground;
-    if(actions) actions.style.visibility = '';
     if(btn){ btn.disabled = false; }
   }
 }
