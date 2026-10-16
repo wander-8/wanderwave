@@ -10227,6 +10227,7 @@ async function goDetail(id){
   renderWatchLinks(m);
   loadWatchLinksForMovie(id);
   loadFullSynopsisForMovie(id);
+  loadCastForMovie(id);
 
   editingMovieId = null;
   const textBox = document.getElementById('review-text');
@@ -11255,6 +11256,7 @@ const MOVIE_LIGHT_COLUMNS = 'id, title, release_year, emotion_tags, genre, direc
 const MOVIE_BIG_COLUMNS = 'id, synopsis:synopsis_excerpt, cast_members';
 const WATCH_LINK_COLUMNS = 'id, vod_flatrate, vod_watch_link, official_url, amazon_url';
 const FULL_SYNOPSIS_COLUMNS = 'id, synopsis';
+const CAST_COLUMNS = 'id, cast_members';
 
 // moviesの1行(DBのrow)+集計データから、アプリ内部で使う表示用オブジェクトを
 // 組み立てる。loadMovies()の初回取得と、オーナーのプレビュー用バックグラウンド
@@ -11426,6 +11428,32 @@ async function loadFullSynopsisForMovie(movieId){
     }
   }catch(err){
     console.error('あらすじ全文の取得に失敗しました', err);
+  }
+}
+
+// 主演(cast_members)は、配信リンク・あらすじ全文と違って詳細ページを開いた
+// 作品だけを単体取得する仕組みが無く、全件バックグラウンド取得
+// (loadMovieBigFieldsInBackground、数万件分を順番に処理する)が自分の番に
+// 来るまで「情報がまだありません」のまま表示され続けていた。DBの応答が
+// 重い時間帯には全件バックグラウンド取得自体が遅れるため、実際にはDBに
+// 主演データがある作品(例:スター・ウォーズ)でも無いように見えてしまう
+// 事故が起きていた(オーナー報告)。配信リンク・あらすじ全文と同じ考え方で、
+// この作品1件分だけをその場で取得する。
+async function loadCastForMovie(movieId){
+  const movie = MOVIES.find(m => m.id === movieId);
+  if(!movie || movie.isNovel || movie.isManga || movie.isMusic) return; // 主演欄自体が無い種別は取得不要
+  if(movie.cast && movie.cast.length > 0) return; // 既に(全件取得等で)分かっている場合は不要
+  try{
+    const { data, error } = await supabase.from('movies').select(CAST_COLUMNS).eq('id', movieId).single();
+    if(error) throw error;
+    const castArr = data.cast_members || undefined;
+    movie.cast = castArr;
+    movie.castNorm = castArr ? castArr.map(normalizeForSearch) : undefined;
+    if(state.currentMovieId === movieId && document.getElementById('view-detail').classList.contains('active')){
+      document.getElementById('d-cast').innerHTML = (movie.cast && movie.cast.length > 0) ? personLinksHTML(movie.cast) : '情報がまだありません';
+    }
+  }catch(err){
+    console.error('主演情報の取得に失敗しました', err);
   }
 }
 
