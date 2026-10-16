@@ -4655,6 +4655,37 @@ function escapeHtml(str){
     .replace(/'/g, '&#39;');
 }
 
+// movies.titleはescapeHtml()済みの状態でMOVIESに入っている(ingest時に
+// エスケープ、11200行付近)。タイトルを検索URLの材料にする箇所(元の
+// vodProviderLink)では、先にこのエスケープを戻してから使う必要がある
+// (戻さないと「&」を含むタイトルが"&amp;"のまま検索語に化けて、サービス側の
+// 検索結果が0件になる)。レビューで指摘された通り、vodProviderLinkだけが
+// このアンエスケープをしていて、新しく追加したrakutenBookSearchLinkが
+// 漏れていたため、両方から呼べる共通関数として切り出す。
+function plainTitle(title){
+  return String(title)
+    .replace(/&amp;/g, '&')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>');
+}
+
+// official_url(出版社・制作者が自分で入力できる列、movies_update_ownの
+// RLSで本人が書ける)をそのままhrefに使うと、escapeHtml()では"javascript:"
+// 等の危険なスキームは防げない(属性値の引用符エスケープはできても、
+// スキーム自体は素通りする)。http/https以外は空文字にして、リンク自体を
+// 出さないようにする(コードレビューで指摘、detail画面のrenderWatchLinksと
+// 新しいrenderWeeklyFeatureのCTAの両方に適用する)。
+function safeExternalUrl(url){
+  try{
+    const u = new URL(String(url), location.href);
+    return (u.protocol === 'http:' || u.protocol === 'https:') ? url : '';
+  }catch{
+    return '';
+  }
+}
+
 // MOVIES上のタイトルはinnerHTML挿入向けにescapeHtml済みのため、診断文言のように
 // textContentへそのまま差し込む(=プレーンテキストとして扱う)場所では、いったん
 // 元の文字に戻す必要がある。
@@ -5914,19 +5945,27 @@ function buildCardHTML(m, opts){
 // 4. 無ければofficialUrl
 // 5. どれも無ければCTA自体を出さない(空洞を作らない)
 function resolveFeatureCardCTA(m, watchData){
+  // コードレビューで指摘: 特集には複数作品が並ぶのに、CTAのラベルが
+  // 「Netflixで観る」のようにサービス名だけだと、どの作品へのリンクか
+  // 分からない(実データで確認: 4本中3本がリンク先と無関係な表示になる
+  // 事故が実際にあった)。必ず作品名を含める。m.titleは既にescapeHtml()
+  // 済みなので、plainTitle()で一度戻してから組み立てる(組み立てた文字列は
+  // 呼び出し側でescapeHtml()される前提)。
+  const name = plainTitle(m.title);
   const providers = (watchData && watchData.vodFlatrate) || [];
   if(providers.length){
     const canonical = canonicalVodProviderName(providers[0]);
-    return { label: `${canonical}で観る`, href: vodProviderLink(canonical, m.title) };
+    return { label: `「${name}」を${canonical}で観る`, href: vodProviderLink(canonical, m.title) };
   }
   if(watchData && watchData.amazonUrl){
-    return { label: 'Amazonで購入', href: withAmazonAffiliateTag(watchData.amazonUrl) };
+    return { label: `「${name}」をAmazonで購入`, href: withAmazonAffiliateTag(watchData.amazonUrl) };
   }
   if(m.isManga || m.isNovel){
-    return { label: '楽天ブックスで探す', href: rakutenBookSearchLink(m.title) };
+    return { label: `「${name}」を楽天ブックスで探す`, href: rakutenBookSearchLink(m.title) };
   }
-  if(watchData && watchData.officialUrl){
-    return { label: '公式サイトへ', href: watchData.officialUrl };
+  const safeOfficial = watchData && watchData.officialUrl ? safeExternalUrl(watchData.officialUrl) : '';
+  if(safeOfficial){
+    return { label: `「${name}」の公式サイトへ`, href: safeOfficial };
   }
   return null;
 }
@@ -6838,15 +6877,19 @@ function renderHomeLanding(){
   openHomeSceneId = null;
 }
 
-// 自動特集生成(オーナー指示書より):毎日夜間に1回だけAIが既存カタログから
-// 書く「今週の特集」(generate-daily-feature edge function、automated_features
-// テーブル)を、ホーム画面の一番上に出す。まだ1件も生成されていない場合は
-// 静かにセクションごと隠す(空状態を見せる必要はない、裏で勝手に増えていく
-// コンテンツのため)。
+// 自動特集生成(オーナー指示書より):毎週1回AIが既存カタログから書く
+// 「今週の特集」(generate-daily-feature edge function、automated_features
+// テーブル。週次化はコミットcfcf015参照)を、ホーム画面の一番上に出す。
+// まだ1件も生成されていない場合は静かにセクションごと隠す(空状態を見せる
+// 必要はない、裏で勝手に増えていくコンテンツのため)。
+// 呼び出しが重なった時に古いCTAを新しい表示へ書き込まないためのトークン
+// (openHomeSceneIdと同じ考え方)。
+let weeklyFeatureRenderToken = 0;
 async function renderWeeklyFeature(){
   const label = document.getElementById('weekly-feature-label');
   const area = document.getElementById('weekly-feature-area');
   if(!label || !area) return;
+  const myToken = ++weeklyFeatureRenderToken;
   try{
     const { data, error } = await supabase
       .from('automated_features')
@@ -6865,43 +6908,50 @@ async function renderWeeklyFeature(){
     if(!movies.length){ label.style.display = 'none'; area.innerHTML = ''; return; }
     const descFlat = (data.description || '').replace(/\n+/g, ' ').trim();
 
+    // コードレビューで指摘: CTAチップのためだけに2本目のクエリを待つと、
+    // セクション全体の初回表示がその分遅れる(セクションは元々display:noneで
+    // 隠れているため、DB側が重い時ほど「ホーム最上部が長く空白のまま」に
+    // なってしまう)。先にタイトル・紹介文・カード列だけで表示し、CTAは
+    // 取得できた時点で後から#weekly-feature-ctaに差し込む(2段階表示)。
+    label.style.display = '';
+    area.innerHTML = `
+      <div class="weekly-feature">
+        <div class="weekly-feature-title">${escapeHtml(data.title)}</div>
+        <div class="weekly-feature-desc">${escapeHtml(descFlat)}</div>
+        <div id="weekly-feature-cta"></div>
+        <div class="weekly-feature-row">${movies.map(m => buildCardHTML(m, { overlayTitle: true, showTypeBadge: true, lean: true, forceModeFn: (mm) => mediaTypeInfo(mm).mode })).join('')}</div>
+      </div>
+    `;
+
     // 収益化導線(オーナー要望)。見た目のリデザインは見送ったため、カード自体は
     // 変更せず、特集全体で1本だけ配信/購入CTAを出す(既存のdetail画面の
     // .watch-linkをそのまま再利用、新しいCSSは増やさない)。選ばれた4本の
     // うち、配信/購入リンクが解決できた最初の1本だけを対象にする(全件分の
     // WATCH_LINK_COLUMNSを毎回取りに行くのは軽いクエリだが、最初の1件が
     // 見つかれば十分なので早期終了でムダなループを避ける)。
-    let ctaHtml = '';
     try{
-      const { data: watchRows } = await supabase
+      const { data: watchRows, error: watchErr } = await supabase
         .from('movies')
         .select(WATCH_LINK_COLUMNS)
         .in('id', movies.map(m => m.id));
+      if(watchErr) throw watchErr;
       const watchById = new Map((watchRows || []).map(r => [r.id, {
         vodFlatrate: r.vod_flatrate || [],
         amazonUrl: r.amazon_url || null,
         officialUrl: r.official_url || null,
       }]));
+      let cta = null;
       for(const m of movies){
-        const cta = resolveFeatureCardCTA(m, watchById.get(m.id) || {});
-        if(cta){
-          ctaHtml = `<a class="watch-link" href="${escapeHtml(cta.href)}" target="_blank" rel="noopener"><span class="dot"></span>${escapeHtml(cta.label)}</a>`;
-          break;
-        }
+        cta = resolveFeatureCardCTA(m, watchById.get(m.id) || {});
+        if(cta) break;
+      }
+      if(cta && myToken === weeklyFeatureRenderToken){
+        const ctaEl = document.getElementById('weekly-feature-cta');
+        if(ctaEl) ctaEl.innerHTML = `<div style="margin-bottom:10px;"><a class="watch-link" href="${escapeHtml(cta.href)}" target="_blank" rel="noopener"><span class="dot"></span>${escapeHtml(cta.label)}</a></div>`;
       }
     }catch(watchErr){
       console.error('特集の配信/購入リンク取得に失敗しました(CTA無しで表示を続けます)', watchErr);
     }
-
-    label.style.display = '';
-    area.innerHTML = `
-      <div class="weekly-feature">
-        <div class="weekly-feature-title">${escapeHtml(data.title)}</div>
-        <div class="weekly-feature-desc">${escapeHtml(descFlat)}</div>
-        ${ctaHtml ? `<div style="margin-bottom:10px;">${ctaHtml}</div>` : ''}
-        <div class="weekly-feature-row">${movies.map(m => buildCardHTML(m, { overlayTitle: true, showTypeBadge: true, lean: true, forceModeFn: (mm) => mediaTypeInfo(mm).mode })).join('')}</div>
-      </div>
-    `;
   }catch(err){
     console.error('特集の読み込みに失敗しました', err);
     label.style.display = 'none';
@@ -10872,22 +10922,29 @@ function withAmazonAffiliateTag(url){
 // 未設定の間は非アフィリエイトの直接リンクのままでも機能自体は出し続ける
 // (AMAZON_ASSOCIATE_TAGと同じ「まずは直接リンクだけにする」方針)。
 const RAKUTEN_AFFILIATE_ID = '';
+// コードレビューで指摘: "?rafcid="はAmazonの"?tag="と違い楽天の実際の
+// アフィリエイト計測方式ではない(楽天は本来hb.afl.rakuten.co.jp経由の
+// ラッパーURLを使う)。このままIDだけ埋めると「動いているように見えて
+// 一切計測されない」事故になる。正式なラッパーURL構造は実際にアフィリエイト
+// 登録してダッシュボードで確認してから実装する必要があるため、登録が
+// 済むまでは(IDが入っていても)警告を出しつつ素のURLを返す — 「見た目は
+// 動いているが計測されていない」状態を作らないことを優先する。
 function withRakutenAffiliateTag(url){
-  if(!RAKUTEN_AFFILIATE_ID) return url;
-  // 楽天アフィリエイトのリンク変換は本来hb.afl.rakuten.co.jp経由のラッパーURLに
-  // なるが、正式なURL構造はID発行後に楽天側の管理画面で生成されるパターンに
-  // 合わせて再確認する(ここでは発行後に差し替える前提のプレースホルダー実装)。
-  const sep = url.includes('?') ? '&' : '?';
-  return `${url}${sep}rafcid=${encodeURIComponent(RAKUTEN_AFFILIATE_ID)}`;
+  if(RAKUTEN_AFFILIATE_ID){
+    console.warn('楽天アフィリエイトの正式なラッパーURL形式が未実装のため、計測無しの直接リンクのまま返します(hb.afl.rakuten.co.jp経由のURLを実装してください)');
+  }
+  return url;
 }
 
 // 漫画・小説の購入導線は現状amazon_url(Amazon検索リンク)しか無く、楽天への
 // 導線が存在しない(オーナー要望:「楽天...のアフィリエイト導線」)。楽天
 // ブックス自体の検索ページへの直接リンクを作品タイトルから生成する
 // (VOD_PROVIDER_LINKSと同じ「ディープリンクが取れないのでサービス自身の
-// 検索ページへ飛ばす」方式)。
+// 検索ページへ飛ばす」方式)。タイトルはplainTitle()でエスケープを戻して
+// から使う(戻さないと"&"等を含むタイトルの検索が0件になる、コードレビューで
+// 指摘)。
 function rakutenBookSearchLink(title){
-  return withRakutenAffiliateTag(`https://books.rakuten.co.jp/search?g=001&sitem=${encodeURIComponent(title)}`);
+  return withRakutenAffiliateTag(`https://books.rakuten.co.jp/search?g=001&sitem=${encodeURIComponent(plainTitle(title))}`);
 }
 
 // 以前はTMDb自身の視聴ページ(vodWatchLink)を全サービス共通のリンク先に
@@ -10913,7 +10970,7 @@ const VOD_PROVIDER_LINKS = {
   "FOD": (title) => `https://fod.fujitv.co.jp/s/?q=${encodeURIComponent(title)}`,
 };
 function vodProviderLink(canonicalName, title){
-  const plain = title.replace(/&amp;/g, '&').replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&lt;/g, '<').replace(/&gt;/g, '>');
+  const plain = plainTitle(title);
   return VOD_PROVIDER_LINKS[canonicalName]
     ? VOD_PROVIDER_LINKS[canonicalName](plain)
     : `https://www.google.com/search?q=${encodeURIComponent(plain + ' ' + canonicalName)}`;
@@ -10952,13 +11009,14 @@ function renderWatchLinks(m){
     const href = vodProviderLink(canonical, m.title);
     return `<a class="watch-link" href="${href}" target="_blank" rel="noopener"><span class="dot"></span>${escapeHtml(canonical)}</a>`;
   }).join('');
-  if(m.officialUrl){
-    chips += `<a class="watch-link" href="${escapeHtml(m.officialUrl)}" target="_blank" rel="noopener"><span class="dot"></span>公式サイト</a>`;
+  const safeOfficialUrl = m.officialUrl ? safeExternalUrl(m.officialUrl) : '';
+  if(safeOfficialUrl){
+    chips += `<a class="watch-link" href="${escapeHtml(safeOfficialUrl)}" target="_blank" rel="noopener"><span class="dot"></span>公式サイト</a>`;
   }
   if(m.amazonUrl){
     chips += `<a class="watch-link" href="${escapeHtml(withAmazonAffiliateTag(m.amazonUrl))}" target="_blank" rel="noopener"><span class="dot"></span>Amazonで購入</a>`;
   }
-  const hasBuyLink = !!(m.officialUrl || m.amazonUrl);
+  const hasBuyLink = !!(safeOfficialUrl || m.amazonUrl);
   // 別の作品の詳細ページに移動した時、前の作品で開いていた状態を
   // 持ち越さないようにする(resetEpisodesUI/resetTracksUIと同じ考え方)。
   watchSectionOpen = false;
