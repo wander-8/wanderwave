@@ -6183,6 +6183,27 @@ function isInCatalogMode(m, mode){
   return !m.isAnime && !m.isDrama && !m.isManga && !m.isNovel && !m.isMusic;
 }
 
+// 音楽モードだけの「こんな気分の日に」棚の語彙。感情タグ(ワクワク等、
+// 全メディア共通の10種)は曲の雰囲気を表すには粗すぎるため(オーナー指摘:
+// 「曲の感覚的な部分や実際の歌詞を見ながら当てはまる作品をまとめて欲しい」)、
+// 音楽専用に場面ベースの12分類を用意した。並び順は固定(件数順ではない)。
+// music-scene-classify edge functionと完全に同じ文字列を使う(どちらかだけ
+// 変えると棚のラベルと実際に付くタグがズレる)。
+const MUSIC_SCENES = [
+  "最高級の宝石を身に纏う夜",
+  "戦闘服を纏って出る時に聞きたい",
+  "深夜に足が攣る瞬間",
+  "お風呂に入るのもダルい夜",
+  "休日が楽しみな時の音楽",
+  "布団でぬくぬく丸まる時間",
+  "世界を旅したい時に聞きたい",
+  "チルに浸りたい時に聞きたい",
+  "時間がないときに聞きたい音楽",
+  "終末に聞きたい",
+  "甘いスイーツを食べる時に聞きたい",
+  "元気が欲しい時に聞きたい",
+];
+
 function renderHomeRows(){
   const root = document.getElementById('home-rows');
   if(MOVIES.length === 0){ root.innerHTML = ""; return; }
@@ -6219,9 +6240,17 @@ function renderHomeRows(){
 
   // タグごとの作品数を数えて、多い順に「気分の棚」として使う(件数が少なすぎて
   // 棚が成立しないタグは後段のif(list.length === 0)で自然に除外される)。
-  const tagCounts = {};
-  discoveryMovies.forEach(m => m.tags.forEach(t => { tagCounts[t] = (tagCounts[t] || 0) + 1; }));
-  const topTags = Object.keys(tagCounts).sort((a, b) => tagCounts[b] - tagCounts[a]);
+  // 音楽モードだけは感情タグではなくMUSIC_SCENES(場面ベース)を使う。
+  // こちらは固定の並び順のまま使う(件数順にすると「元気が欲しい時」の
+  // ような付きやすいタグばかり先頭に来て、「深夜に足が攣る瞬間」のような
+  // 狙って用意した珍しいタグが埋もれてしまうため)。
+  const topTags = (catalogMode === 'music')
+    ? MUSIC_SCENES
+    : (() => {
+        const tagCounts = {};
+        discoveryMovies.forEach(m => m.tags.forEach(t => { tagCounts[t] = (tagCounts[t] || 0) + 1; }));
+        return Object.keys(tagCounts).sort((a, b) => tagCounts[b] - tagCounts[a]);
+      })();
 
   let html = "";
 
@@ -6303,8 +6332,11 @@ function renderHomeRows(){
     }
   }
 
+  const moodRowKicker = (catalogMode === 'music') ? 'こんな場面で聴きたい' : 'こんな気分の日に';
   topTags.forEach(tag => {
-    const tagMovies = discoveryMovies.filter(m => m.tags.includes(tag));
+    const tagMovies = (catalogMode === 'music')
+      ? discoveryMovies.filter(m => m.musicScenes.includes(tag))
+      : discoveryMovies.filter(m => m.tags.includes(tag));
     // 有名な(=愛が集まっている、またはFAMOUS_*_HINTSに当たる)作品を
     // 軸にしつつ、上位勢だけで固めるといつも同じ顔ぶれで「見たことない
     // 作品」に出会えないという声を受け、まだ愛が集まっていない(=珍しい)
@@ -6318,7 +6350,7 @@ function renderHomeRows(){
     if(list.length === 0) return;
     html += `
       <div class="mood-row-header">
-        <div class="mood-row-kicker">こんな気分の日に</div>
+        <div class="mood-row-kicker">${moodRowKicker}</div>
         <div class="mood-row-tag" style="color:${tagColor(tag)}">${tag}</div>
       </div>
       <div class="results">${list.map(buildCardHTML).join('')}</div>
@@ -11240,7 +11272,7 @@ async function selectAllRows(table, columns, applyFilterFn, orderColumn = 'id', 
 // 遅くしている最大の要因だった。検索の根幹であるkeywordsは(サイトの
 // 存在意義に関わるため)初回取得に残したまま、この2つだけ後から
 // バックグラウンドで取得する(loadMovieBigFieldsInBackground参照)。
-const MOVIE_LIGHT_COLUMNS = 'id, title, release_year, emotion_tags, genre, director, country, poster_path, japan_release_date, keywords, series, trailer_key, media_type, is_anime, is_drama, is_manga, is_novel, is_music, volume_count, tmdb_vote_average, tmdb_vote_count';
+const MOVIE_LIGHT_COLUMNS = 'id, title, release_year, emotion_tags, genre, director, country, poster_path, japan_release_date, keywords, series, trailer_key, media_type, is_anime, is_drama, is_manga, is_novel, is_music, volume_count, tmdb_vote_average, tmdb_vote_count, music_scene_tags';
 // cast_membersは検索(termMatchesMovie)が全作品横断で参照するため、全件
 // バックグラウンド取得を続ける(配列でサイズも小さい)。synopsis(あらすじ)は
 // 全文だと転送量が重いため、全件一括取得は「先頭200文字の要約」
@@ -11332,6 +11364,10 @@ function buildMovieRecord(row, statsByMovie, estimatesByMovie){
     isManga: !!row.is_manga,
     isNovel: !!row.is_novel,
     isMusic: !!row.is_music,
+    // 音楽専用の「場面」タグ(オーナー要望:感情タグ(ワクワク等、全メディア
+    // 共通)ではなく音楽だけ場面ごとにまとめたい。music-scene-classify
+    // edge functionがAIで分類済み)。
+    musicScenes: row.music_scene_tags || [],
     // MOVIE_LIGHT_COLUMNSだけで取得した行はsynopsis/cast_membersを持たない
     // (取得していないので'in row'すらfalse)。loadMovieBigFieldsInBackground()
     // のapplyBigFieldsPatch()が届くまでの間、その事実を判別できるようにしておく。
