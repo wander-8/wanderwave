@@ -10801,6 +10801,31 @@ function withAmazonAffiliateTag(url){
   return `${url}${sep}tag=${encodeURIComponent(AMAZON_ASSOCIATE_TAG)}`;
 }
 
+// 楽天アフィリエイト(楽天アフィリエイトプログラム)のトラッキングID。
+// withAmazonAffiliateTagと同じ考え方: 登録・審査後にこの値を書き換える
+// だけで、楽天ブックスへの誘導リンク全てに自動で反映される。2026年時点では
+// まだ未取得のため空文字のままにしておく(登録: https://affiliate.rakuten.co.jp/ )。
+// 未設定の間は非アフィリエイトの直接リンクのままでも機能自体は出し続ける
+// (AMAZON_ASSOCIATE_TAGと同じ「まずは直接リンクだけにする」方針)。
+const RAKUTEN_AFFILIATE_ID = '';
+function withRakutenAffiliateTag(url){
+  if(!RAKUTEN_AFFILIATE_ID) return url;
+  // 楽天アフィリエイトのリンク変換は本来hb.afl.rakuten.co.jp経由のラッパーURLに
+  // なるが、正式なURL構造はID発行後に楽天側の管理画面で生成されるパターンに
+  // 合わせて再確認する(ここでは発行後に差し替える前提のプレースホルダー実装)。
+  const sep = url.includes('?') ? '&' : '?';
+  return `${url}${sep}rafcid=${encodeURIComponent(RAKUTEN_AFFILIATE_ID)}`;
+}
+
+// 漫画・小説の購入導線は現状amazon_url(Amazon検索リンク)しか無く、楽天への
+// 導線が存在しない(オーナー要望:「楽天...のアフィリエイト導線」)。楽天
+// ブックス自体の検索ページへの直接リンクを作品タイトルから生成する
+// (VOD_PROVIDER_LINKSと同じ「ディープリンクが取れないのでサービス自身の
+// 検索ページへ飛ばす」方式)。
+function rakutenBookSearchLink(title){
+  return withRakutenAffiliateTag(`https://books.rakuten.co.jp/search?g=001&sitem=${encodeURIComponent(title)}`);
+}
+
 // 以前はTMDb自身の視聴ページ(vodWatchLink)を全サービス共通のリンク先に
 // していたが、オーナー指摘:「見れる先がTMDBに行っちゃうから直接サイトに
 // 飛ばしてほしい」を受けて、各サービス自身の検索ページへ直接飛ばす方式に
