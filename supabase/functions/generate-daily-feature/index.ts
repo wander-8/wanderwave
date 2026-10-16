@@ -1,10 +1,12 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
 
-// オーナー指示書(自動化パック)より:「毎日夜間に1回だけ、既存の作品データと
-// 感情タグを組み合わせてAIに特集を書かせる」。AI呼び出しは1日1回だけに
-// 絞るため(コスト節約)、直近20時間以内に生成済みならAPIを呼ばずに終了する
-// (cronの実行時刻ズレ・手動の二重実行で無駄打ちしないためのガード)。
+// オーナー指示書(自動化パック)より:「既存の作品データと感情タグを
+// 組み合わせてAIに特集を書かせる」。元は日次だったが、「今週の特集」という
+// 見た目のラベルに合わせて週次に変更した(オーナー要望:「毎週新しい感情
+// テーマ」)。AI呼び出しは週1回だけに絞るため、直近6.5日以内に生成済みなら
+// APIを呼ばずに終了する(cronの実行時刻ズレ・手動の二重実行で無駄打ちしない
+// ためのガード)。
 // generate-diagnosis(診断機能)と同じ構成:Anthropic API、haikuモデル、
 // tool-useで構造化出力を強制する。
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
@@ -14,13 +16,16 @@ const ANTHROPIC_ENDPOINT = "https://api.anthropic.com/v1/messages";
 const MODEL = "claude-haiku-4-5-20251001";
 
 // index.html側のTAG_COLORS/TAG_FACT_PHRASEと同じ10種の感情タグ語彙。
-// 日替わりで巡回する(todaysGiftModeと同じ考え方)。
+// 1日単位の切り替えだと、見た目のラベル(index.html側で既に「今週の特集」)の
+// 「週替わり」感と合わなくなる(オーナー要望:「毎週新しい感情テーマ」)。
+// ISO週番号相当(epoch日数を7で割った週番号)で巡回する。年境界のズレは
+// 表示上「第N週」ラベルを出していないため実害が無い。
 const EMOTION_TAGS = ["楽しい", "感動", "リラックス", "ワクワク", "怖い", "美しい", "ドキドキ", "笑い", "悲しい", "考えさせられる"];
 const MEDIA_MODES = ["movie", "anime", "drama", "manga", "novel", "music"] as const;
 
-function todaysTag(): string {
-  const dayNum = Math.floor(Date.now() / 86400000);
-  return EMOTION_TAGS[dayNum % EMOTION_TAGS.length];
+function weekOfYearTag(): string {
+  const weekNum = Math.floor(Date.now() / (7 * 86400000));
+  return EMOTION_TAGS[weekNum % EMOTION_TAGS.length];
 }
 
 function modeOf(row: any): string {
@@ -52,14 +57,14 @@ Deno.serve(async (req: Request) => {
         .order("created_at", { ascending: false })
         .limit(1)
         .maybeSingle();
-      if (recent && Date.now() - new Date(recent.created_at).getTime() < 20 * 60 * 60 * 1000) {
+      if (recent && Date.now() - new Date(recent.created_at).getTime() < 6.5 * 24 * 60 * 60 * 1000) {
         return new Response(JSON.stringify({ skipped: true, reason: "already_generated_recently", last: recent.created_at }), {
           headers: jsonHeaders,
         });
       }
     }
 
-    const tag = todaysTag();
+    const tag = weekOfYearTag();
 
     // あらすじが無い行はAIが共通点を書けないため対象外にする(音楽はsynopsis
     // が実質プレースホルダーしか無く、この条件でほぼ自動的に除外される)。
