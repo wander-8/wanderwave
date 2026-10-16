@@ -1012,19 +1012,15 @@
   .section-sub{ font-size: 12px; color: var(--ink-soft); margin: 0 0 16px; }
 
   /* 自動特集生成(オーナー指示書より)。AIが毎日書く「今週の特集」を
-     ホームの一番上に出す。オーナー指摘:「大きすぎるのと、さっきまで
-     出てたものとかぶるのが気になる」→本文を3行クランプで短く見せ、
-     並べる作品数も4本までに絞って全体を小さく・他の棚との重複を
-     減らす。 */
-  .weekly-feature{
-    background: var(--surface); border-radius:16px; padding:14px;
-    margin-bottom:4px;
-  }
-  .weekly-feature-title{ font-size:15px; font-weight:800; margin-bottom:6px; line-height:1.4; }
-  .weekly-feature-desc{
-    font-size:12.5px; line-height:1.65; color:var(--ink-soft);
-    margin-bottom:10px;
-    display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; overflow:hidden;
+     ホームの一番上に出す。以前は最新1件だけをtitle+説明文+CTAの1枚板で
+     出していたが、オーナー指摘:「カードっぽくしていろんな特集にして
+     欲しいのと、これで見るっていうやつはいらないかな」で場面カード
+     (.scene-card)と同じ見た目・タップで結果を開く作りに統一した
+     (renderWeeklyFeature参照)。カード自体の専用CSSは場面カードを流用する
+     ため、AI生成の可変長な説明文が固定高さのカードを割らないための
+     クランプだけ追加する。 */
+  .feature-desc-clamp{
+    display:-webkit-box; -webkit-line-clamp:4; -webkit-box-orient:vertical; overflow:hidden;
   }
   .weekly-feature-row{ display:flex; gap:8px; overflow-x:auto; padding:2px 2px 4px; }
   .weekly-feature-row .result-card{ flex:0 0 92px; }
@@ -6075,47 +6071,6 @@ function buildCardHTML(m, opts){
   `;
 }
 
-// 特集カードは直接「観る/買う」に1タップで辿り着いてほしい(オーナー要望:
-// 収益化導線)。detail画面のrenderWatchLinksのような複数チップは小さな
-// カードには収まらないため、優先順位1つだけをCTAボタンにする:
-// 1. 見放題配信(vodFlatrate)があればその中の1社(最初の1件)
-// 2. 無ければAmazon購入リンク(amazonUrl)
-// 3. 書籍でamazonUrlもvodFlatrateも無い場合は楽天ブックス検索(タイトルから生成)
-// 4. 無ければofficialUrl
-// 5. どれも無ければCTA自体を出さない(空洞を作らない)
-function resolveFeatureCardCTA(m, watchData){
-  // コードレビューで指摘: 特集には複数作品が並ぶのに、CTAのラベルが
-  // 「Netflixで観る」のようにサービス名だけだと、どの作品へのリンクか
-  // 分からない(実データで確認: 4本中3本がリンク先と無関係な表示になる
-  // 事故が実際にあった)。必ず作品名を含める。m.titleは既にescapeHtml()
-  // 済みなので、plainTitle()で一度戻してから組み立てる(組み立てた文字列は
-  // 呼び出し側でescapeHtml()される前提)。
-  const name = plainTitle(m.title);
-  const providers = (watchData && watchData.vodFlatrate) || [];
-  if(providers.length){
-    const canonical = canonicalVodProviderName(providers[0]);
-    return { label: `「${name}」を${canonical}で観る`, href: vodProviderLink(canonical, m.title) };
-  }
-  if(watchData && watchData.amazonUrl){
-    return { label: `「${name}」をAmazonで購入`, href: withAmazonAffiliateTag(watchData.amazonUrl) };
-  }
-  if(m.isManga || m.isNovel){
-    return { label: `「${name}」を楽天ブックスで探す`, href: rakutenBookSearchLink(m.title) };
-  }
-  const safeOfficial = watchData && watchData.officialUrl ? safeExternalUrl(watchData.officialUrl) : '';
-  if(safeOfficial){
-    return { label: `「${name}」の公式サイトへ`, href: safeOfficial };
-  }
-  return null;
-}
-
-// オーナー判断: 見た目のリデザイン(レトロシネマ案)は今回は見送り、
-// カード自体は既存のbuildCardHTML(見た目は変更しない)のままにして、
-// 収益化導線は特集全体で1つだけのCTAチップとして追加する(既存の
-// detail画面の.watch-linkをそのまま再利用、新しいCSSは増やさない)。
-// resolveFeatureCardCTAは複数作品の中から最初に解決できた1件を選ぶために
-// そのまま使う(関数名はカード単位の名残りだが、呼び出し側でリストの
-// 先頭から順に試す使い方に変える)。
 
 // マイリストに1曲だけ追加した曲用のカード。track自体はカタログ
 // (MOVIES)に存在しないので、タップしたら元のアルバムの詳細ページへ
@@ -7101,79 +7056,71 @@ function renderHomeLanding(){
 // 必要はない、裏で勝手に増えていくコンテンツのため)。
 // 呼び出しが重なった時に古いCTAを新しい表示へ書き込まないためのトークン
 // (openHomeSceneIdと同じ考え方)。
-let weeklyFeatureRenderToken = 0;
+// オーナー指摘:「今週の特集、カードっぽくしていろんな特集にして欲しいのと、
+// これで見るっていうやつはいらないかな」。それまでは「最新1件だけを
+// title+説明文+CTAチップの1枚板」で出していたが、①カード化(場面カード
+// 〈#home-scene-row〉と全く同じ見た目・タップで下に結果が開く仕組みを
+// そのまま流用)、②最新1件固定ではなく直近分を複数並べて選べるようにする、
+// ③観る/買うのCTAチップ(resolveFeatureCardCTA)は撤去、の3点に作り直す。
+// top_tagはhomeMoodBlurHTML()にそのまま渡せる(場面カードのmoodTagsと
+// 同じ使い方)。
+let WEEKLY_FEATURES = [];
+let openWeeklyFeatureId = null;
+
 async function renderWeeklyFeature(){
   const label = document.getElementById('weekly-feature-label');
   const area = document.getElementById('weekly-feature-area');
   if(!label || !area) return;
-  const myToken = ++weeklyFeatureRenderToken;
+  openWeeklyFeatureId = null;
   try{
     const { data, error } = await supabase
       .from('automated_features')
-      .select('title, description, selected_movie_ids')
+      .select('id, title, description, top_tag, selected_movie_ids')
       .order('created_at', { ascending: false })
-      .limit(1)
-      .maybeSingle();
-    if(error || !data){ label.style.display = 'none'; area.innerHTML = ''; return; }
-    // オーナー指摘:「大きすぎるのと、さっきまで出てたものとかぶるのが
-    // 気になる」。本文は段落の改行(\n\n)を活かさず1本の流れる文に戻し
-    // (CSS側の3行クランプで切る)、並べる作品も4本までに絞って小さくする。
-    const movies = (data.selected_movie_ids || [])
-      .map(id => MOVIES.find(m => m.id === Number(id)))
-      .filter(Boolean)
-      .slice(0, 4);
-    if(!movies.length){ label.style.display = 'none'; area.innerHTML = ''; return; }
-    const descFlat = (data.description || '').replace(/\n+/g, ' ').trim();
+      .limit(6);
+    if(error || !data || !data.length){ label.style.display = 'none'; area.innerHTML = ''; WEEKLY_FEATURES = []; return; }
 
-    // コードレビューで指摘: CTAチップのためだけに2本目のクエリを待つと、
-    // セクション全体の初回表示がその分遅れる(セクションは元々display:noneで
-    // 隠れているため、DB側が重い時ほど「ホーム最上部が長く空白のまま」に
-    // なってしまう)。先にタイトル・紹介文・カード列だけで表示し、CTAは
-    // 取得できた時点で後から#weekly-feature-ctaに差し込む(2段階表示)。
+    WEEKLY_FEATURES = data;
     label.style.display = '';
     area.innerHTML = `
-      <div class="weekly-feature">
-        <div class="weekly-feature-title">${escapeHtml(data.title)}</div>
-        <div class="weekly-feature-desc">${escapeHtml(descFlat)}</div>
-        <div id="weekly-feature-cta"></div>
-        <div class="weekly-feature-row">${movies.map(m => buildCardHTML(m, { overlayTitle: true, showTypeBadge: true, lean: true, forceModeFn: (mm) => mediaTypeInfo(mm).mode })).join('')}</div>
+      <div class="section-sub">タップすると、その特集に選ばれた作品が見つかります</div>
+      <div class="scene-row" id="weekly-feature-row">${data.map(f => `
+        <div class="scene-card" data-id="${f.id}" onclick="openWeeklyFeature(${f.id})">
+          ${homeMoodBlurHTML([f.top_tag].filter(Boolean))}
+          <div class="scene-title">${escapeHtml(f.title)}</div>
+          <div class="scene-desc feature-desc-clamp">${escapeHtml((f.description || '').replace(/\n+/g, ' ').trim())}</div>
+        </div>
+      `).join('')}</div>
+      <div class="scene-results" id="weekly-feature-results">
+        <div class="scene-results-label" id="weekly-feature-results-label"></div>
+        <div id="weekly-feature-results-list"></div>
       </div>
     `;
-
-    // 収益化導線(オーナー要望)。見た目のリデザインは見送ったため、カード自体は
-    // 変更せず、特集全体で1本だけ配信/購入CTAを出す(既存のdetail画面の
-    // .watch-linkをそのまま再利用、新しいCSSは増やさない)。選ばれた4本の
-    // うち、配信/購入リンクが解決できた最初の1本だけを対象にする(全件分の
-    // WATCH_LINK_COLUMNSを毎回取りに行くのは軽いクエリだが、最初の1件が
-    // 見つかれば十分なので早期終了でムダなループを避ける)。
-    try{
-      const { data: watchRows, error: watchErr } = await supabase
-        .from('movies')
-        .select(WATCH_LINK_COLUMNS)
-        .in('id', movies.map(m => m.id));
-      if(watchErr) throw watchErr;
-      const watchById = new Map((watchRows || []).map(r => [r.id, {
-        vodFlatrate: r.vod_flatrate || [],
-        amazonUrl: r.amazon_url || null,
-        officialUrl: r.official_url || null,
-      }]));
-      let cta = null;
-      for(const m of movies){
-        cta = resolveFeatureCardCTA(m, watchById.get(m.id) || {});
-        if(cta) break;
-      }
-      if(cta && myToken === weeklyFeatureRenderToken){
-        const ctaEl = document.getElementById('weekly-feature-cta');
-        if(ctaEl) ctaEl.innerHTML = `<div style="margin-bottom:10px;"><a class="watch-link" href="${escapeHtml(cta.href)}" target="_blank" rel="noopener"><span class="dot"></span>${escapeHtml(cta.label)}</a></div>`;
-      }
-    }catch(watchErr){
-      console.error('特集の配信/購入リンク取得に失敗しました(CTA無しで表示を続けます)', watchErr);
-    }
   }catch(err){
     console.error('特集の読み込みに失敗しました', err);
     label.style.display = 'none';
     area.innerHTML = '';
+    WEEKLY_FEATURES = [];
   }
+}
+
+// 場面カード(openHomeScene)と同じ「タップで下に結果を開く」操作感に揃える。
+// 特集の対象作品は生成時点で既に選ばれている(selected_movie_ids)ので、
+// 場面カードと違いスコアリングや配信確認の非同期取得は不要で即座に描画できる。
+function openWeeklyFeature(id){
+  const feature = WEEKLY_FEATURES.find(f => f.id === id);
+  if(!feature) return;
+  openWeeklyFeatureId = id;
+  document.querySelectorAll('#weekly-feature-row .scene-card').forEach(el => el.classList.toggle('active', Number(el.dataset.id) === id));
+  const panel = document.getElementById('weekly-feature-results');
+  panel.classList.add('open');
+  document.getElementById('weekly-feature-results-label').textContent = feature.title;
+  const movies = (feature.selected_movie_ids || []).map(id2 => MOVIES.find(m => m.id === Number(id2))).filter(Boolean);
+  const listEl = document.getElementById('weekly-feature-results-list');
+  listEl.innerHTML = movies.length
+    ? `<div class="weekly-feature-row">${movies.map(m => buildCardHTML(m, { overlayTitle: true, showTypeBadge: true, lean: true, forceModeFn: (mm) => mediaTypeInfo(mm).mode })).join('')}</div>`
+    : `<p style="font-size:12.5px; color:var(--ink-soft);">対象の作品がまだ読み込まれていません。</p>`;
+  panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
 
 // 「みんなの声」は自動で流れ続けつつ、指でドラッグ/スワイプして自分でも
