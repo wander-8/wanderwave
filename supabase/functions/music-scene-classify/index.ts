@@ -27,7 +27,7 @@ const MUSIC_SCENES: { name: string; hint: string }[] = [
   { name: "お風呂に入るのもダルい夜", hint: "脱力・疲労感、何もしたくない気分に寄り添う、気怠い曲。" },
   { name: "休日が楽しみな時の音楽", hint: "高揚感、わくわくする前向きな楽しさがある曲。" },
   { name: "布団でぬくぬく丸まる時間", hint: "安心感、暖かく優しい、守られているような曲。" },
-  { name: "世界を旅したい時に聞きたい", hint: "伝統音楽・異国情緒、旅情を誘うワールドミュージック的な曲。" },
+  { name: "世界を旅したい時に聞きたい", hint: "歌詞やタイトルが「旅」をテーマにしているだけのJ-POP/K-POPではなく、民族楽器や現地の歌唱法など、サウンドそのものが伝統音楽・ワールドミュージック的な曲、または特定の国/地域の空気感がサウンドから伝わる曲に限る。" },
   { name: "チルに浸りたい時に聞きたい", hint: "リラックス、ゆったりとした落ち着いた曲。" },
   { name: "時間がないときに聞きたい音楽", hint: "スピード感、テンポが速くせかされるような曲。" },
   { name: "終末に聞きたい", hint: "重厚感と終末感、荘厳で少し絶望的・運命的な曲。" },
@@ -135,11 +135,16 @@ Deno.serve(async (req: Request) => {
             }),
           });
           if (!res.ok) {
+            // 2026-10-16: 原因調査済み(Anthropicのクレジット残高切れ、402/400)。
+            // 再発時に再び切り分けられるよう、デバッグ用のstatus/bodyは
+            // サーバー側ログにだけ残す(呼び出し元のレスポンスには含めない)。
+            console.error(`Anthropic API error for movie ${m.id}: ${res.status} ${await res.text()}`);
             return { movie_id: m.id, title: m.title, transientError: true };
           }
           const data = await res.json();
           const toolUse = (data?.content || []).find((c: any) => c.type === "tool_use" && c.name === "classify_music_scene");
           if (!toolUse) {
+            console.error(`No tool_use in Anthropic response for movie ${m.id}: ${JSON.stringify(data).slice(0, 300)}`);
             return { movie_id: m.id, title: m.title, transientError: true };
           }
           const scenes: string[] = (toolUse.input?.scenes || []).filter((s: string) => MUSIC_SCENE_NAMES.includes(s));

@@ -313,6 +313,22 @@
     font-size: 11.5px; color: var(--ink-soft);
     margin-top: 8px;
   }
+  /* 色・表情ともにriskCategoryFace()が組み立てるSVG(塗りつぶし円+白い目・口の
+     線画)側で完結するため、ここはそのSVGを置くだけの器。絵文字もテキストの
+     顔文字も却下され、オーナー提示の参考画像(色別に表情が変わる評価アイコン)
+     に合わせた作り。 */
+  .intensity-face{
+    display:inline-flex; align-items:center; justify-content:center;
+    width: 30px; height: 30px;
+    margin-left: 8px; vertical-align: middle;
+  }
+  .intensity-face svg{ width:100%; height:100%; display:block; }
+  .intensity-face.pop{ animation: intensityFacePop .32s cubic-bezier(.22,.8,.32,1); }
+  @keyframes intensityFacePop{
+    0%{ transform: scale(1); }
+    50%{ transform: scale(1.22); }
+    100%{ transform: scale(1); }
+  }
 
   .filter-disclosure-btn{
     width:100%;
@@ -471,6 +487,28 @@
     position:static; min-width:96px;
   }
 
+  /* 「ホーム」は他の6種類(映画/アニメ/ドラマ/漫画/本/音楽)と違い、絞り込み
+     モードの一つではなく別の画面(特集・気分別の棚があるダッシュボード)
+     なので、枠線なしの塗り背景+アイコン+太字で見た目を分け、区切り線で
+     6種類をグループ化する(オーナー指摘:「ホーム画面と他の画面を差を
+     出したい」)。インライン版(PC)・ドロワー版(アプリ)の両方で共通して
+     使うが、padding/font-sizeだけは各版の.catalog-mode-menu-item/
+     .catalog-mode-drawer-itemに合わせて個別に上書きする(共通値のままだと
+     ホームだけ高さ・文字サイズが違って見える、とオーナー指摘)。 */
+  .catalog-mode-home-item{
+    display:flex; align-items:center; gap:7px;
+    background: rgba(125,95,214,0.14); border:none; border-radius:9px;
+    color:var(--ink); font-weight:700;
+    text-align:left; cursor:pointer; font-family:inherit;
+  }
+  .catalog-mode-home-item:hover{ background: rgba(125,95,214,0.22); }
+  .catalog-mode-home-item.active{ background: var(--plum-btn); color:#fff; }
+  .catalog-mode-home-icon{ width:15px; height:15px; flex-shrink:0; color: var(--plum-deep); }
+  .catalog-mode-home-item.active .catalog-mode-home-icon{ color:#fff; }
+  .catalog-mode-inline-list .catalog-mode-home-item{ padding:8px 10px; font-size:12.5px; border-radius:8px; }
+  .catalog-mode-drawer .catalog-mode-home-item{ padding:13px 14px; font-size:14px; border-radius:12px; }
+  .catalog-mode-section-divider{ height:1px; background: var(--line); }
+
   /* アプリ版: ヘッダーの小さいハンバーガーアイコンと、そこから左に
      出てくるドロワー(ラン)。触ってから選択肢が展開されるまでの
      見た目を、ページ本体とは別レイヤーとしてはっきり分ける。 */
@@ -501,9 +539,6 @@
     box-shadow: 12px 0 30px rgba(0,0,0,0.35);
   }
   .catalog-mode-drawer.open{ transform: translateX(0); }
-  .catalog-mode-drawer-heading{
-    font-size:12.5px; color: var(--ink-soft); margin-bottom:2px; letter-spacing:.03em;
-  }
   .catalog-mode-drawer-item{
     background:none; border:1px solid var(--line); border-radius:12px;
     padding:13px 14px; color:var(--ink-soft); font-size:14px; text-align:left;
@@ -1708,6 +1743,16 @@
   .post-block-label{
     font-size: 12.5px; color: var(--ink-soft); font-weight:600; margin-bottom: 8px;
   }
+  .post-block-label-row{
+    display:flex; align-items:center; justify-content:space-between;
+    gap: 8px; flex-wrap:wrap; margin-bottom: 8px;
+  }
+  .post-block-label-row .post-block-label{ margin-bottom: 0; }
+  /* 選んでいない状態でもテラコッタ色で目立たせる(他の灰色チップに埋もれて
+     気づかれないのを防ぐ)。選択中は.tagchip.activeの塗りつぶしに委ねる。 */
+  .spoiler-flag-chip{
+    border-color: var(--unsafe); color: var(--unsafe);
+  }
   .post-kicker{
     font-size: 10.5px; color: var(--plum); font-weight:700;
     text-transform: uppercase; letter-spacing: 0.03em;
@@ -1867,6 +1912,28 @@
   .reason-breakdown-title{
     font-size: 12px; color: var(--ink-soft); font-weight:600; margin-bottom: 8px;
   }
+  /* 「投稿する」パネル(.post-panel-toggle、縁取りなしの見出し行)とは
+     見た目をはっきり分ける(オーナー指摘:「ここでみる、レビューとは
+     デザイン切り替えて欲しい」)。みんなの集計を覗くだけの軽い操作だと
+     伝わるよう、角丸の塗りピルボタンにする。 */
+  .expr-breakdown-toggle{
+    display:inline-flex; align-items:center; gap:6px;
+    margin-top: 10px; padding: 7px 14px;
+    background: var(--surface); border:1px solid var(--line);
+    border-radius: 999px;
+    font-size: 12.5px; font-weight:600; color: var(--ink-soft);
+    cursor:pointer; font-family:inherit;
+  }
+  .expr-breakdown-chev{
+    font-size: 10px; display:inline-block;
+    transition: transform .25s cubic-bezier(.22,.8,.32,1);
+  }
+  .expr-breakdown-toggle.open .expr-breakdown-chev{ transform: rotate(180deg); }
+  .expr-breakdown-body{
+    max-height: 0; overflow:hidden; opacity: 0;
+    transition: max-height .3s cubic-bezier(.22,.8,.32,1), opacity .22s ease;
+  }
+  .expr-breakdown-body.open{ max-height: 300px; opacity: 1; }
   .reason-bar-row{
     display:flex; align-items:center; gap:8px;
     margin-bottom: 6px; white-space: nowrap;
@@ -2852,7 +2919,11 @@
        そのまま常時表示する(catalog-mode-inline-listが.catalog-mode-menuの
        display:none/絶対配置を上書きする)。 -->
   <div class="catalog-mode-menu catalog-mode-inline-list" id="catalog-mode-menu-side">
-    <button class="catalog-mode-menu-item" id="catalog-mode-btn-home-side" onclick="showHomeLanding()">ホーム</button>
+    <button class="catalog-mode-home-item" id="catalog-mode-btn-home-side" onclick="showHomeLanding()">
+      <svg class="catalog-mode-home-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 11.5 12 4l8 7.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M6.5 10v9h11v-9" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      ホーム
+    </button>
+    <div class="catalog-mode-section-divider"></div>
     <button class="catalog-mode-menu-item active" id="catalog-mode-btn-movie-side" onclick="setCatalogMode('movie')">映画</button>
     <button class="catalog-mode-menu-item" id="catalog-mode-btn-anime-side" onclick="setCatalogMode('anime')">アニメ</button>
     <button class="catalog-mode-menu-item" id="catalog-mode-btn-drama-side" onclick="setCatalogMode('drama')">ドラマ</button>
@@ -2868,8 +2939,11 @@
      問題を避けている。 -->
 <div class="catalog-mode-drawer-backdrop" id="catalog-mode-drawer-backdrop" onclick="closeCatalogModeMenu()"></div>
 <div class="catalog-mode-drawer" id="catalog-mode-drawer">
-  <div class="catalog-mode-drawer-heading">表示を選ぶ</div>
-  <button class="catalog-mode-drawer-item" id="catalog-mode-btn-home" onclick="showHomeLanding()">ホーム</button>
+  <button class="catalog-mode-home-item" id="catalog-mode-btn-home" onclick="showHomeLanding()">
+    <svg class="catalog-mode-home-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 11.5 12 4l8 7.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M6.5 10v9h11v-9" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    ホーム
+  </button>
+  <div class="catalog-mode-section-divider"></div>
   <button class="catalog-mode-drawer-item active" id="catalog-mode-btn-movie" onclick="setCatalogMode('movie')">映画</button>
   <button class="catalog-mode-drawer-item" id="catalog-mode-btn-anime" onclick="setCatalogMode('anime')">アニメ</button>
   <button class="catalog-mode-drawer-item" id="catalog-mode-btn-drama" onclick="setCatalogMode('drama')">ドラマ</button>
@@ -2937,6 +3011,7 @@
       <div class="intensity-filter" id="intensity-filter" style="display:none;">
         <div class="intensity-filter-label-row">
           <div class="intensity-filter-label">表現度: <span id="intensity-filter-value">こだわらない</span></div>
+          <span class="intensity-face" id="intensity-filter-face"></span>
         </div>
         <input type="range" id="intensity-filter-slider" class="risk-slider" min="0" max="100" step="25" value="0"
                oninput="onIntensityFilterInput(this.value)">
@@ -3220,15 +3295,17 @@
       <div id="post-panel-body" style="display:none;">
         <div class="post-block">
           <div class="post-kicker">レビュー</div>
-          <div class="post-block-label">ひとこと感想(任意)</div>
+          <!-- 書く前の時点で目に入るよう、入力欄の真上・ラベルの横に置く
+               (オーナー指摘:「ネタバレ書く人がちゃんと気づいてタップ
+               してもらえる仕組みにしたい」。以前は入力欄の下だった)。
+               絵文字・アイコンは付けず、常時テラコッタ色の枠線+文字色で
+               目立たせることで気づきやすくする。 -->
+          <div class="post-block-label-row">
+            <div class="post-block-label">ひとこと感想(任意)</div>
+            <div class="tagchip spoiler-flag-chip" id="spoiler-toggle-btn" onclick="toggleSpoilerFlag()">ネタバレを含む</div>
+          </div>
           <textarea id="review-text" rows="3" placeholder="文字数の制限はありません・感情タグや表現度だけでもOK(例: 泣けるけど元気が出る話でした)"></textarea>
           <div class="slider-value" id="review-count">0 / 200</div>
-          <!-- 書いた本人が「ネタバレを含む」と申告するためのトグル。
-               オーナー指摘:「レビューにネタバレする人はユーザーが見たいと
-               思ったら開けるようにしてほしい」。一覧側ではこのフラグが
-               立っているレビューをぼかして隠し、タップした人だけに見せる
-               (renderVisibleReviews参照)。 -->
-          <div class="tagchip" id="spoiler-toggle-btn" onclick="toggleSpoilerFlag()" style="margin-top:8px; width:fit-content;">⚠️ ネタバレを含む</div>
         </div>
 
         <div class="post-divider"></div>
@@ -3245,6 +3322,7 @@
           <div class="post-kicker">表現度</div>
           <div class="risk-vote-label-row">
             <div class="risk-vote-label">刺激の強さを評価する: <span id="intensity-live-label">-</span></div>
+            <span class="intensity-face" id="intensity-live-face"></span>
           </div>
           <div id="intensity-slider-wrap" style="position:relative;">
             <input type="range" id="intensity-slider" class="risk-slider" min="0" max="100" value="0"
@@ -3734,7 +3812,7 @@
       </div>
 
       <div class="field">
-        <label>刺激の強さ: <span id="ml-intensity-live-label">控えめ(0%)</span></label>
+        <label>刺激の強さ: <span id="ml-intensity-live-label">控えめ(0%)</span> <span class="intensity-face" id="ml-intensity-live-face"></span></label>
         <input type="range" id="ml-intensity-slider" class="risk-slider" min="0" max="100" value="0" oninput="onMlIntensityInput(this.value)">
         <div class="reason-reveal" id="ml-reason-reveal" style="margin-top:10px;">
           <div class="post-block-label">その時に当てはまるものは?(任意・複数選択可)</div>
@@ -5122,6 +5200,65 @@ function riskCategoryColor(v){
   return "#b8536a";
 }
 
+// 表現度の4段階(控えめ/軽度/やや強い/強い)に合わせて表情が変わるアイコン。
+// 絵文字(環境依存で見た目が揃わない)も自作の顔文字(テキストで安っぽく
+// 見える)も却下され、オーナーが市販の「色別に表情が変わる評価アイコン」の
+// 参考画像を提示(塗りつぶし円+白い目・口の線画だけのフラットな作り)。
+// それに合わせて同じ構造のSVGをその場で組み立てる:口の曲がり具合(curve、
+// +で笑顔に・-で困り顔に曲がる)と、最も強い帯だけ眉を付けて心配顔にする。
+function moodFaceSvg(color, curve, worried, weight){
+  weight = weight || 2;
+  const mouth = `<path d="M11 19.5 Q16 ${(19.5 + curve).toFixed(1)} 21 19.5" stroke="#fff" stroke-width="${weight}" stroke-linecap="round" fill="none"/>`;
+  // 眉は内側(中央寄り)を高く・外側を低くすると「困り眉」(心配・動揺)になり、
+  // 逆向き(内側が低い)だと「怒り眉」になる。最初は後者で描いてしまい
+  // 「表現度が強いと怒り顔に見えて嫌」とオーナー指摘があったため、向きを
+  // 困り眉側に直した(怒りではなく心配・警戒を表したい)。
+  const browWeight = weight + 0.4;
+  const brows = worried
+    ? `<path d="M7.5 13 L12.8 9.4" stroke="#fff" stroke-width="${browWeight}" stroke-linecap="round"/><path d="M24.5 13 L19.2 9.4" stroke="#fff" stroke-width="${browWeight}" stroke-linecap="round"/>`
+    : '';
+  return `<svg viewBox="0 0 32 32" aria-hidden="true" focusable="false"><circle cx="16" cy="16" r="15" fill="${color}"/>${brows}<circle cx="11" cy="14" r="1.7" fill="#fff"/><circle cx="21" cy="14" r="1.7" fill="#fff"/>${mouth}</svg>`;
+}
+// 控えめ(曲線+4)と軽度(+1)がどちらも「弱い笑み」止まりで、小さいアイコン
+// だと見分けがつかないとオーナー指摘。曲がり具合の強弱だけで段階を作るのを
+// やめ、各帯が別の形(にっこり/まっすぐ/への字/への字+眉)になるよう曲線の
+// 符号自体を切り替える。やや強い・強いは「もう少し見たい(もっとはっきり
+// 見えてほしい)」と指摘があったため、曲がり幅と線の太さを他の帯より
+// 一段強めにして、小さいアイコンでも表情の変化が読み取れるようにする。
+function riskCategoryFace(v, color){
+  if(v <= 25) return moodFaceSvg(color, 6, false);          // 控えめ: はっきりにっこり
+  if(v <= 50) return moodFaceSvg(color, 0, false);          // 軽度: まっすぐ(真顔)
+  if(v <= 75) return moodFaceSvg(color, -6, false, 2.4);    // やや強い: くっきりへの字
+  return moodFaceSvg(color, -9, true, 2.6);                 // 強い: より深いへの字+太い眉
+}
+function intensityOffFaceSvg(color){ return moodFaceSvg(color, 0, false); } // こだわらない: 真顔
+const INTENSITY_OFF_FACE = intensityOffFaceSvg('var(--plum-btn)');
+
+// 「ネタバレを含む」トグルは一度アイコン化したが、オーナー指摘で撤回
+// (「絵文字外してほしい」)。気づきやすさは絵文字ではなく、入力欄のすぐ
+// 上・ラベルの横という配置と、常時テラコッタ色で目立たせることで確保する
+// (「ネタバレ書く人がちゃんと気づいてタップしてもらえる仕組みにしたい」)。
+function updateSpoilerToggleUI(){
+  const btn = document.getElementById('spoiler-toggle-btn');
+  if(!btn) return;
+  btn.classList.toggle('active', pendingSpoilerFlag);
+}
+
+// 表情アイコン(.intensity-face)の中身を更新する。帯が実際に切り替わった
+// 時だけポップするアニメーションを付け直す(ドラッグ中に値が細かく動いても、
+// 表情が変わらない限りは静かなまま)。
+function setIntensityFace(face, html){
+  if(!face) return;
+  const changed = face.dataset.faceState !== html;
+  face.innerHTML = html;
+  face.dataset.faceState = html;
+  if(changed){
+    face.classList.remove('pop');
+    void face.offsetWidth;
+    face.classList.add('pop');
+  }
+}
+
 // 表現度スライダーはoninputがドラッグ中ずっと連発されるので、値が変わる
 // たびに鳴らすと音が洪水になる。「控えめ/軽度/やや強い/強い」の帯を
 // またいだ瞬間だけ、強さに応じて音程が上がる短い音を鳴らす。
@@ -5600,6 +5737,8 @@ function updateIntensityFilterDisplay(){
   label.textContent = off ? 'こだわらない' : riskLabel(state.intensityFilter);
   label.style.color = color;
   document.getElementById('intensity-filter-slider').style.accentColor = color;
+
+  setIntensityFace(document.getElementById('intensity-filter-face'), off ? INTENSITY_OFF_FACE : riskCategoryFace(state.intensityFilter, color));
 
   const caption = document.getElementById('intensity-filter-caption');
   caption.textContent = off
@@ -6586,6 +6725,30 @@ async function getHomeSceneResults(scene, limit){
   return seededShuffle(wide, `home-scene:${scene.id}`).slice(0, limit);
 }
 
+// オーナー指摘:「(場面カードを)すぐにその中身の作品が出て来ないんだよね」。
+// 原因はopenHomeScene()が、タップした瞬間に初めてfilterByRealAvailability()
+// 経由でSupabaseへ配信/購入データを問い合わせていたこと(初回タップは
+// ネットワーク往復を待つことになる)。ホーム画面を開いた時点で裏から6枚
+// ぶん同じ処理を先に1回ずつ流しておき、結果は使わずキャッシュ(m.vodFlatrate
+// 等、filterByRealAvailability側で書き込まれる)だけを温めておく。実際に
+// タップする頃にはほぼキャッシュ済みになり、即座に表示できる。6件を並列で
+// 投げるとanonロールのstatement_timeout(3秒)に同時アクセスで引っかかった
+// 実績があるため、1件ずつ順番に流す。
+let homeScenePrefetchRunning = false;
+async function prefetchHomeSceneAvailability(){
+  if(homeScenePrefetchRunning) return;
+  homeScenePrefetchRunning = true;
+  try{
+    for(const scene of HOME_SCENES){
+      await getHomeSceneResults(scene, 3);
+    }
+  }catch(err){
+    console.error('場面カードの先読みに失敗しました', err);
+  }finally{
+    homeScenePrefetchRunning = false;
+  }
+}
+
 let openHomeSceneId = null;
 
 async function openHomeScene(id){
@@ -6926,6 +7089,9 @@ function renderHomeLanding(){
   renderHomeMarquees();
   renderHomeGift();
   openHomeSceneId = null;
+  // ホーム表示の初期描画と競合しないよう少し遅らせてから裏で先読みする
+  // (prefetchHomeSceneAvailability参照)。
+  setTimeout(prefetchHomeSceneAvailability, 600);
 }
 
 // 自動特集生成(オーナー指示書より):毎週1回AIが既存カタログから書く
@@ -8891,6 +9057,14 @@ function renderIntensityGauge(m){
   const pct = reasonPercentages(m);
   const showBreakdown = m.intensityCount > 0 || m.expressionEstimated;
 
+  const breakdownBars = m.isMusic
+    ? `<div class="reason-bar-row"><span class="reason-bar-label">露骨な表現</span><div class="reason-bar-track"><div class="reason-bar-fill" style="width:${pct.explicit}%; background:#b98aa6;"></div></div><span class="reason-bar-pct">${pct.explicit}%</span></div>`
+    : `
+        <div class="reason-bar-row"><span class="reason-bar-label">暴力</span><div class="reason-bar-track"><div class="reason-bar-fill" style="width:${pct.violence}%; background:#d9836a;"></div></div><span class="reason-bar-pct">${pct.violence}%</span></div>
+        <div class="reason-bar-row"><span class="reason-bar-label">性的</span><div class="reason-bar-track"><div class="reason-bar-fill" style="width:${pct.sexual}%; background:#b98aa6;"></div></div><span class="reason-bar-pct">${pct.sexual}%</span></div>
+        <div class="reason-bar-row"><span class="reason-bar-label">恐怖</span><div class="reason-bar-track"><div class="reason-bar-fill" style="width:${pct.fear}%; background:#6b8cae;"></div></div><span class="reason-bar-pct">${pct.fear}%</span></div>
+      `;
+
   root.innerHTML = `
     ${m.expressionEstimated ? `
       <div class="low-confidence-warning">
@@ -8901,20 +9075,28 @@ function renderIntensityGauge(m){
     <div class="risk-legend"><span>控えめ</span><span>軽度</span><span>やや強い</span><span>強い</span></div>
     <div class="expr-axis-count">${m.intensityCount > 0 ? `${m.intensityCount}人が評価しています` : (m.expressionEstimated ? '推定値を表示しています(投票はまだありません)' : 'まだ誰も評価していません')}</div>
 
-    ${showBreakdown ? (m.isMusic ? `
-      <div class="reason-breakdown">
-        <div class="reason-breakdown-title">当てはまる表現の内訳</div>
-        <div class="reason-bar-row"><span class="reason-bar-label">露骨な表現</span><div class="reason-bar-track"><div class="reason-bar-fill" style="width:${pct.explicit}%; background:#b98aa6;"></div></div><span class="reason-bar-pct">${pct.explicit}%</span></div>
+    ${showBreakdown ? `
+      <button class="expr-breakdown-toggle" id="expr-breakdown-toggle" onclick="toggleExprBreakdown()">
+        <span>当てはまる表現の内訳を見る</span>
+        <span class="expr-breakdown-chev">⌄</span>
+      </button>
+      <div class="expr-breakdown-body" id="expr-breakdown-body">
+        <div class="reason-breakdown">${breakdownBars}</div>
       </div>
-    ` : `
-      <div class="reason-breakdown">
-        <div class="reason-breakdown-title">当てはまる表現の内訳</div>
-        <div class="reason-bar-row"><span class="reason-bar-label">暴力</span><div class="reason-bar-track"><div class="reason-bar-fill" style="width:${pct.violence}%; background:#d9836a;"></div></div><span class="reason-bar-pct">${pct.violence}%</span></div>
-        <div class="reason-bar-row"><span class="reason-bar-label">性的</span><div class="reason-bar-track"><div class="reason-bar-fill" style="width:${pct.sexual}%; background:#b98aa6;"></div></div><span class="reason-bar-pct">${pct.sexual}%</span></div>
-        <div class="reason-bar-row"><span class="reason-bar-label">恐怖</span><div class="reason-bar-track"><div class="reason-bar-fill" style="width:${pct.fear}%; background:#6b8cae;"></div></div><span class="reason-bar-pct">${pct.fear}%</span></div>
-      </div>
-    `) : ''}
+    ` : ''}
   `;
+}
+
+// 「当てはまる表現の内訳」は以前は常時展開していたが、押した時だけ
+// モーション付きで開くように変更(オーナー指摘)。renderIntensityGauge()が
+// 呼ばれるたび(詳細を開く・投票後の再描画)に閉じた状態へリセットされる。
+function toggleExprBreakdown(){
+  const btn = document.getElementById('expr-breakdown-toggle');
+  const body = document.getElementById('expr-breakdown-body');
+  if(!btn || !body) return;
+  const open = !btn.classList.contains('open');
+  btn.classList.toggle('open', open);
+  body.classList.toggle('open', open);
 }
 
 // 表現度スライダー・「当てはまるもの」タグ・感情タグは、以前はそれぞれ触った
@@ -8930,7 +9112,7 @@ let pendingMoodTags = new Set();
 let pendingSpoilerFlag = false;
 function toggleSpoilerFlag(){
   pendingSpoilerFlag = !pendingSpoilerFlag;
-  document.getElementById('spoiler-toggle-btn').classList.toggle('active', pendingSpoilerFlag);
+  updateSpoilerToggleUI();
 }
 
 function updateIntensityDisplay(value){
@@ -8939,6 +9121,7 @@ function updateIntensityDisplay(value){
   label.textContent = `${riskLabel(value)}(${value}%)`;
   label.style.color = color;
   document.getElementById('intensity-slider').style.accentColor = color;
+  setIntensityFace(document.getElementById('intensity-live-face'), riskCategoryFace(value, color));
   // 「控えめ」を選んでいる間は、暴力・性的・恐怖といった当てはまるものを
   // 聞かれてもピンと来ないことが多いので、控えめより上を選んだ時だけ出す。
   document.getElementById('reason-reveal').style.display = value > 25 ? 'block' : 'none';
@@ -10228,7 +10411,7 @@ async function goDetail(id){
   // ネタバレトグルの実際の値(編集対象レビューがあれば既存のhas_spoiler)は
   // loadMovieReviews側で判明するので、ここでは一旦falseに戻すだけにする。
   pendingSpoilerFlag = false;
-  document.getElementById('spoiler-toggle-btn').classList.remove('active');
+  updateSpoilerToggleUI();
 
   renderIntensityGauge(m);
   renderReasonChips(m);
@@ -10409,7 +10592,7 @@ async function loadMovieReviews(m){
       document.getElementById('review-submit-btn').textContent = '投稿する';
       document.getElementById('review-delete-btn').style.display = 'none';
     }
-    document.getElementById('spoiler-toggle-btn').classList.toggle('active', pendingSpoilerFlag);
+    updateSpoilerToggleUI();
     updateReviewCount();
   }catch(err){
     console.error('レビューの読み込みに失敗しました', err);
@@ -11801,6 +11984,15 @@ async function loadNonMovieCatalogInBackground(statsByMovie, estimatesByMovie){
   // 「今日の贈り物」の日替わり先がたまたま音楽の日に、ポケットの贈り物が
   // 消えて見えた→実際はMOVIESに音楽が1件も読み込めていなかった)。1種ずつ
   // 順番に待ち、かつ1種類の失敗が他の種類を巻き込まないようにする。
+  //
+  // 以前は「最初の500件→(500件埋まっていたら)残り全件」を種類ごとに
+  // 完了させてから次の種類に進んでいたため、先に並ぶ種類(アニメ)の残り
+  // 全件取得(数千件)が終わるまで、後ろの種類(本・音楽)は最初の500件すら
+  // 画面に出なかった(オーナー指摘:「映画アニメ以外の項目がやっぱ読み込み
+  // 遅すぎる」)。まずフェーズ1で5種類ぶんの最初の500件だけを先に一巡させ、
+  // どのタブに切り替えてもすぐ何か出る状態を作ってから、フェーズ2で残り
+  // 全件を順番に埋める。
+  const needsBackfill = [];
   for(let i = 0; i < NON_MOVIE_TYPE_FLAGS.length; i++){
     const flag = NON_MOVIE_TYPE_FLAGS[i];
     try{
@@ -11819,18 +12011,24 @@ async function loadNonMovieCatalogInBackground(statsByMovie, estimatesByMovie){
       const firstPageRows = firstPageData || [];
       MOVIES = MOVIES.concat(firstPageRows.map(row => buildMovieRecord(row, statsByMovie, estimatesByMovie)));
       rerenderIfNeeded();
-
-      if(firstPageRows.length === PER_TYPE_FIRST_PAGE_SIZE){
-        const restRows = await selectAllRows('movies', MOVIE_LIGHT_COLUMNS, (q) => q.eq(flag, true), 'id', 1500, PER_TYPE_FIRST_PAGE_SIZE);
-        const existingIds = new Set(MOVIES.map(m => m.id));
-        const newRecords = restRows.filter(row => !existingIds.has(row.id)).map(row => buildMovieRecord(row, statsByMovie, estimatesByMovie));
-        MOVIES = MOVIES.concat(newRecords);
-        rerenderIfNeeded();
-      }
+      if(firstPageRows.length === PER_TYPE_FIRST_PAGE_SIZE) needsBackfill.push(flag);
     }catch(err){
       console.error(`${flag}のカタログ読み込みに失敗しました(他の種別には影響させず続行)`, err);
     }
   }
+
+  for(const flag of needsBackfill){
+    try{
+      const restRows = await selectAllRows('movies', MOVIE_LIGHT_COLUMNS, (q) => q.eq(flag, true), 'id', 1500, PER_TYPE_FIRST_PAGE_SIZE);
+      const existingIds = new Set(MOVIES.map(m => m.id));
+      const newRecords = restRows.filter(row => !existingIds.has(row.id)).map(row => buildMovieRecord(row, statsByMovie, estimatesByMovie));
+      MOVIES = MOVIES.concat(newRecords);
+      rerenderIfNeeded();
+    }catch(err){
+      console.error(`${flag}の残りカタログ読み込みに失敗しました(他の種別には影響させず続行)`, err);
+    }
+  }
+
   nonMovieCatalogLoaded = true;
 }
 
@@ -12953,6 +13151,7 @@ function onMlIntensityInput(value){
   label.textContent = `${riskLabel(value)}(${value}%)`;
   label.style.color = color;
   document.getElementById('ml-intensity-slider').style.accentColor = color;
+  setIntensityFace(document.getElementById('ml-intensity-live-face'), riskCategoryFace(value, color));
   document.getElementById('ml-reason-reveal').style.display = value > 25 ? 'block' : 'none';
   feedbackIntensityBand(value, 'mylog');
 }
