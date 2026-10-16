@@ -5931,22 +5931,13 @@ function resolveFeatureCardCTA(m, watchData){
   return null;
 }
 
-// 特集スライダー専用のカード。既存buildCardHTMLは他の全ての一覧(検索結果・
-// マイリスト等)で使われており、ここだけの都合(CTAボタン)で変更すると
-// 影響範囲が広すぎるため、別関数として用意する。
-function buildFeatureCardHTML(m, watchData){
-  const cta = resolveFeatureCardCTA(m, watchData);
-  const hasPoster = !!m.posterUrl;
-  const posterImg = hasPoster ? `<img src="${m.posterUrl}" alt="" loading="lazy" decoding="async">` : '';
-  const initial = hasPoster ? '' : `<span class="poster-thumb-initial">${escapeHtml(m.title.charAt(0))}</span>`;
-  return `
-    <div class="feature-card" onclick="goDetailWithMode(${m.id}, '${mediaTypeInfo(m).mode}')">
-      <div class="feature-card-poster" style="background:${m.posterColor}">${posterImg}${initial}</div>
-      <div class="feature-card-title">${escapeHtml(m.title)}</div>
-      ${cta ? `<a class="feature-card-cta" href="${escapeHtml(cta.href)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">${escapeHtml(cta.label)}</a>` : ''}
-    </div>
-  `;
-}
+// オーナー判断: 見た目のリデザイン(レトロシネマ案)は今回は見送り、
+// カード自体は既存のbuildCardHTML(見た目は変更しない)のままにして、
+// 収益化導線は特集全体で1つだけのCTAチップとして追加する(既存の
+// detail画面の.watch-linkをそのまま再利用、新しいCSSは増やさない)。
+// resolveFeatureCardCTAは複数作品の中から最初に解決できた1件を選ぶために
+// そのまま使う(関数名はカード単位の名残りだが、呼び出し側でリストの
+// 先頭から順に試す使い方に変える)。
 
 // マイリストに1曲だけ追加した曲用のカード。track自体はカタログ
 // (MOVIES)に存在しないので、タップしたら元のアルバムの詳細ページへ
@@ -6873,11 +6864,41 @@ async function renderWeeklyFeature(){
       .slice(0, 4);
     if(!movies.length){ label.style.display = 'none'; area.innerHTML = ''; return; }
     const descFlat = (data.description || '').replace(/\n+/g, ' ').trim();
+
+    // 収益化導線(オーナー要望)。見た目のリデザインは見送ったため、カード自体は
+    // 変更せず、特集全体で1本だけ配信/購入CTAを出す(既存のdetail画面の
+    // .watch-linkをそのまま再利用、新しいCSSは増やさない)。選ばれた4本の
+    // うち、配信/購入リンクが解決できた最初の1本だけを対象にする(全件分の
+    // WATCH_LINK_COLUMNSを毎回取りに行くのは軽いクエリだが、最初の1件が
+    // 見つかれば十分なので早期終了でムダなループを避ける)。
+    let ctaHtml = '';
+    try{
+      const { data: watchRows } = await supabase
+        .from('movies')
+        .select(WATCH_LINK_COLUMNS)
+        .in('id', movies.map(m => m.id));
+      const watchById = new Map((watchRows || []).map(r => [r.id, {
+        vodFlatrate: r.vod_flatrate || [],
+        amazonUrl: r.amazon_url || null,
+        officialUrl: r.official_url || null,
+      }]));
+      for(const m of movies){
+        const cta = resolveFeatureCardCTA(m, watchById.get(m.id) || {});
+        if(cta){
+          ctaHtml = `<a class="watch-link" href="${escapeHtml(cta.href)}" target="_blank" rel="noopener"><span class="dot"></span>${escapeHtml(cta.label)}</a>`;
+          break;
+        }
+      }
+    }catch(watchErr){
+      console.error('特集の配信/購入リンク取得に失敗しました(CTA無しで表示を続けます)', watchErr);
+    }
+
     label.style.display = '';
     area.innerHTML = `
       <div class="weekly-feature">
         <div class="weekly-feature-title">${escapeHtml(data.title)}</div>
         <div class="weekly-feature-desc">${escapeHtml(descFlat)}</div>
+        ${ctaHtml ? `<div style="margin-bottom:10px;">${ctaHtml}</div>` : ''}
         <div class="weekly-feature-row">${movies.map(m => buildCardHTML(m, { overlayTitle: true, showTypeBadge: true, lean: true, forceModeFn: (mm) => mediaTypeInfo(mm).mode })).join('')}</div>
       </div>
     `;
