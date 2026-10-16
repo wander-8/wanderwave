@@ -6675,6 +6675,25 @@ function pickHomeMoodTags(){
 
 function renderHomeMarquees(){
   const root = document.getElementById('home-marquee-group');
+  // 「気分を変える」で選ばれるタグが変わるたびにroot.innerHTMLを丸ごと
+  // 差し替えるため、前回表示していたhome-mq-*のマーキーDOMは全て消える。
+  // しかしinitAutoScrollMarquee()のRAFループはDOM要素をクロージャで
+  // 持っているだけで、取り除かれたことを自分では検知できないため、今回
+  // 選ばれなかったタグのループが、もう存在しない要素に対して永遠に
+  // requestAnimationFrameを呼び続ける「ゾンビ」になってしまっていた
+  // (オーナー報告「自動で流れる部分が止まったり」の原因調査で発覚。実測:
+  // 「気分を変える」を5回押すとautoScrollRAFsが4件→10件に増え、うち6件が
+  // 参照先の要素が既に無い状態で動き続けていた)。描画し直す前に、前回ぶんの
+  // home-mq-*ループを全部明示的に止める(次のinitAutoScrollMarquee呼び出し
+  // 自体も同じidの時だけ止める作りなので、これだけでは今回選ばれなかった
+  // タグまでは拾えない)。
+  Object.keys(autoScrollRAFs)
+    .filter(id => id.startsWith('home-mq-'))
+    .forEach(id => {
+      cancelAnimationFrame(autoScrollRAFs[id]);
+      delete autoScrollRAFs[id];
+    });
+
   const tags = pickHomeMoodTags();
 
   let html = '';
