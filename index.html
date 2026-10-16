@@ -5905,6 +5905,49 @@ function buildCardHTML(m, opts){
   `;
 }
 
+// 特集カードは直接「観る/買う」に1タップで辿り着いてほしい(オーナー要望:
+// 収益化導線)。detail画面のrenderWatchLinksのような複数チップは小さな
+// カードには収まらないため、優先順位1つだけをCTAボタンにする:
+// 1. 見放題配信(vodFlatrate)があればその中の1社(最初の1件)
+// 2. 無ければAmazon購入リンク(amazonUrl)
+// 3. 書籍でamazonUrlもvodFlatrateも無い場合は楽天ブックス検索(タイトルから生成)
+// 4. 無ければofficialUrl
+// 5. どれも無ければCTA自体を出さない(空洞を作らない)
+function resolveFeatureCardCTA(m, watchData){
+  const providers = (watchData && watchData.vodFlatrate) || [];
+  if(providers.length){
+    const canonical = canonicalVodProviderName(providers[0]);
+    return { label: `${canonical}で観る`, href: vodProviderLink(canonical, m.title) };
+  }
+  if(watchData && watchData.amazonUrl){
+    return { label: 'Amazonで購入', href: withAmazonAffiliateTag(watchData.amazonUrl) };
+  }
+  if(m.isManga || m.isNovel){
+    return { label: '楽天ブックスで探す', href: rakutenBookSearchLink(m.title) };
+  }
+  if(watchData && watchData.officialUrl){
+    return { label: '公式サイトへ', href: watchData.officialUrl };
+  }
+  return null;
+}
+
+// 特集スライダー専用のカード。既存buildCardHTMLは他の全ての一覧(検索結果・
+// マイリスト等)で使われており、ここだけの都合(CTAボタン)で変更すると
+// 影響範囲が広すぎるため、別関数として用意する。
+function buildFeatureCardHTML(m, watchData){
+  const cta = resolveFeatureCardCTA(m, watchData);
+  const hasPoster = !!m.posterUrl;
+  const posterImg = hasPoster ? `<img src="${m.posterUrl}" alt="" loading="lazy" decoding="async">` : '';
+  const initial = hasPoster ? '' : `<span class="poster-thumb-initial">${escapeHtml(m.title.charAt(0))}</span>`;
+  return `
+    <div class="feature-card" onclick="goDetailWithMode(${m.id}, '${mediaTypeInfo(m).mode}')">
+      <div class="feature-card-poster" style="background:${m.posterColor}">${posterImg}${initial}</div>
+      <div class="feature-card-title">${escapeHtml(m.title)}</div>
+      ${cta ? `<a class="feature-card-cta" href="${escapeHtml(cta.href)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">${escapeHtml(cta.label)}</a>` : ''}
+    </div>
+  `;
+}
+
 // マイリストに1曲だけ追加した曲用のカード。track自体はカタログ
 // (MOVIES)に存在しないので、タップしたら元のアルバムの詳細ページへ
 // 飛ばす(曲単体の詳細ページは無いため)。.result-cardを使い回すことで
