@@ -1012,18 +1012,57 @@
   .section-sub{ font-size: 12px; color: var(--ink-soft); margin: 0 0 16px; }
 
   /* 自動特集生成(オーナー指示書より)。AIが毎日書く「今週の特集」を
-     ホームの一番上に出す。以前は最新1件だけをtitle+説明文+CTAの1枚板で
-     出していたが、オーナー指摘:「カードっぽくしていろんな特集にして
-     欲しいのと、これで見るっていうやつはいらないかな」で場面カード
-     (.scene-card)と同じ見た目・タップで結果を開く作りに統一した
-     (renderWeeklyFeature参照)。カード自体の専用CSSは場面カードを流用する
-     ため、AI生成の可変長な説明文が固定高さのカードを割らないための
-     クランプだけ追加する。 */
-  .feature-desc-clamp{
-    display:-webkit-box; -webkit-line-clamp:4; -webkit-box-orient:vertical; overflow:hidden;
+     ホームの一番上に出す。
+     1回目: 場面カード(.scene-card)と全く同じ見た目に揃えた
+     →オーナー指摘:「場面カードとほぼ一緒なのが気になるかな」
+     2回目: 縦長のポスター背景+グラデーション+文字乗せ(雑誌の表紙風)に
+     作り直した
+     →オーナー指摘:「もっと記事を横長にしてそこに作品のポスター一枚選んで
+     くるとかしてほしい。説明は記事タップして作品の上あたりに記事の内容を
+     書いて欲しい」
+     3回目(今回): 横長の記事見出し風カードに変更。ポスターは背景全面では
+     なく左側の小さいサムネイルにして、カード自体にはタイトルだけを置く。
+     説明文(description)はカードから外し、タップして開いた結果欄の、
+     作品一覧の上に表示する(renderWeeklyFeature/openWeeklyFeature参照)。 */
+  .feature-row{
+    display:flex; gap: 10px; overflow-x:auto; padding: 2px 2px 10px;
+    scroll-snap-type: x proximity; -webkit-overflow-scrolling: touch;
   }
-  .weekly-feature-row{ display:flex; gap:8px; overflow-x:auto; padding:2px 2px 4px; }
-  .weekly-feature-row .result-card{ flex:0 0 92px; }
+  .feature-row::-webkit-scrollbar{ height:5px; }
+  .feature-row::-webkit-scrollbar-thumb{ background: var(--line); border-radius:3px; }
+  .feature-card{
+    flex: 0 0 300px; scroll-snap-align: start; height: 104px;
+    border-radius: 14px; cursor: pointer;
+    position:relative; overflow:hidden; background: var(--surface);
+    display:flex; align-items:stretch;
+    transition: transform .15s cubic-bezier(.22,.8,.32,1), box-shadow .2s ease;
+  }
+  .feature-card:active{ transform: scale(0.97); }
+  .feature-card.active{ box-shadow: 0 0 0 2px #fff inset; }
+  .feature-card-poster{
+    flex: 0 0 78px; background: var(--line); position:relative; overflow:hidden;
+  }
+  .feature-card-poster img{
+    width:100%; height:100%; object-fit:cover; display:block;
+  }
+  .feature-card-poster .scene-mood-blur{ inset:-30%; }
+  .feature-card-info{
+    flex:1; min-width:0; padding: 12px 14px;
+    display:flex; flex-direction:column; justify-content:center; gap:6px;
+  }
+  .feature-card-kicker{
+    font-size: 10px; color: var(--love); font-weight:700;
+    background: rgba(125,95,214,0.14); display:inline-block;
+    padding: 3px 9px; border-radius:999px; width:fit-content;
+  }
+  .feature-card-title{
+    font-size: 14.5px; font-weight:800; line-height:1.35; color: var(--ink);
+    display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden;
+  }
+  .feature-results-desc{
+    font-size: 12.5px; line-height:1.7; color: var(--ink-soft);
+    margin-bottom: 16px;
+  }
 
   .scene-row{
     display:flex; gap: 10px; overflow-x:auto; padding: 2px 2px 10px;
@@ -4614,7 +4653,23 @@ const TAG_COLORS = {
   "ドキドキ": "#d9836a",
   "笑い": "#f0d264",
   "悲しい": "#6b8cae",
-  "考えさせられる": "#9b8bb4"
+  "考えさせられる": "#9b8bb4",
+  // 音楽モードの場面カード(MUSIC_SCENES)専用の色。tagColor()・
+  // homeMoodBlurHTML()をそのまま使い回すため、感情タグと同じ
+  // オブジェクトにまとめて登録する(ここに無いと灰色のフォールバックに
+  // なり12枚とも同じ色になってしまう)。
+  "最高級の宝石を身に纏う夜": "#c9a24d",
+  "戦闘服を纏って出る時に聞きたい": "#d9583f",
+  "深夜に足が攣る瞬間": "#7a5c8e",
+  "お風呂に入るのもダルい夜": "#6b8cae",
+  "休日が楽しみな時の音楽": "#e0ac4f",
+  "布団でぬくぬく丸まる時間": "#4f9d89",
+  "世界を旅したい時に聞きたい": "#7fb3d5",
+  "チルに浸りたい時に聞きたい": "#8bb48b",
+  "時間がないときに聞きたい音楽": "#f2924a",
+  "終末に聞きたい": "#5a5a8e",
+  "甘いスイーツを食べる時に聞きたい": "#e2899e",
+  "元気が欲しい時に聞きたい": "#f0d264"
 };
 
 // 「詳しく絞り込む」に出すジャンル・国の候補。moviesテーブル全体を集計した際に
@@ -5071,10 +5126,24 @@ function loveLabel(avg, hasBasis){
   return "殿堂入り級の愛";
 }
 
-// 「N人が愛を送っています」は実際にWanderでタップした人数だけを指す
-// (TMDBの票数で水増ししない。スコアはTMDBを初期値として混ぜるが、
-// 「人が愛を送っています」という文言は実在のタップを表すため、ここだけは
-// 常にm.loveCount=実数のまま扱う)。
+// 以前は「N人が愛を送っています」を実際にWanderでタップした人数だけに
+// 限定していた(TMDBの票数で水増ししない方針だった)。ただしオーナー指摘:
+// 「ハートを押すと一人目と言われるけどtmdbの情報などもあるし」で、TMDB側に
+// 実績がある作品でも人数表示だけが「1人目」のままなのは変、との判断になり、
+// TMDBの票数も人数表示に混ぜる方針に変更した。
+// TMDBの票数はそのまま足すと数万件規模になり実際のWander実績が埋もれる上、
+// 「愛を送った人数」として嘘になってしまうため、TMDB_COUNT_DAMPINGで大きく
+// 割り引いた「規模感」として加える(この割引率はデータに基づくものではない
+// 運用上の仮の値)。TMDB分が混ざっている時は文言も「愛を送っています」から
+// 「規模で愛されています」に変え、実際のタップそのものではないことが伝わる
+// ようにする。
+const TMDB_COUNT_DAMPING = 150;
+function tmdbCountContribution(m){
+  return m.tmdbVoteCount ? Math.round(m.tmdbVoteCount / TMDB_COUNT_DAMPING) : 0;
+}
+function loveCountBlended(m){
+  return m.loveCount + tmdbCountContribution(m);
+}
 // 「0人が愛を送っています」とそのまま出すと、その作品(というよりサイト全体)が
 // 閑散として見えてしまう。空白を「まだ誰も来ていない寂しい場所」ではなく
 // 「一番乗りできる場所」として見せることで、実際の人数を偽らずに前向きな
@@ -5083,7 +5152,10 @@ function loveLabel(avg, hasBasis){
 // 強調してしまい寂しく見えるとのことなので、0件の時は何も表示しない
 // (ハートのスコア表示側は既に「-」表記になっている)。
 function loveCountText(m){
-  return m.loveCount > 0 ? `${m.loveCount}人が愛を送っています` : '';
+  const tmdbPart = tmdbCountContribution(m);
+  const total = m.loveCount + tmdbPart;
+  if(total <= 0) return '';
+  return tmdbPart > 0 ? `${total}人規模で愛されています` : `${total}人が愛を送っています`;
 }
 
 // 一覧カードでは、1〜49人のような小さい人数もむしろ寂しく見える(0人を隠した
@@ -5091,7 +5163,7 @@ function loveCountText(m){
 // 詳細ページ(loveCountTextをそのまま使う側)は、自分がまさに投票しようとしている
 // 作品向けの表示なので「一番乗り」的な少人数表示のままにしておく。
 function loveCountTextForCard(m){
-  return m.loveCount >= 50 ? loveCountText(m) : '';
+  return loveCountBlended(m) >= 50 ? loveCountText(m) : '';
 }
 
 // 数字の「0.0」も「0人」と同じくらい寂しく見えるので、評価の根拠(実際の
@@ -5170,6 +5242,20 @@ function shouldHidePosterForIntensity(m, opts){
   if(!hasStrongExplicitContent(m)) return false;
   if(opts && opts.forcePosterHide) return true;
   return state.intensityFilter !== 100;
+}
+
+// 公式設定資料集・画集・図録・ガイドブックのような「作品の周辺グッズ」を
+// タイトルから検出する。検索や通常のカタログ閲覧では今まで通り出て良いが、
+// 「今、愛されている作品」のような受動的に流れてくる棚に紛れ込むと、
+// 原作ではなく周辺グッズが代表作のように見えてしまう
+// (オーナー指摘:「ファンブック今愛されてる作品に置かないでほしい」)。
+const FANBOOK_TITLE_PATTERN = /(公式)?ファンブック|設定資料集|(公式)?アートブック|画集|図録|(公式)?ガイドブック|パーフェクトガイド|ビジュアルガイド|完全ガイド|攻略本|設定集/;
+// 「黒い画集」(松本清張の代表的な短編集シリーズ)はタイトルにたまたま
+// 「画集」を含むだけの、れっきとした小説・映画作品なので誤検出から救済する。
+const FANBOOK_PATTERN_FALSE_POSITIVE_IDS = new Set([34635, 65583]);
+function isFanbookLikeItem(m){
+  if(FANBOOK_PATTERN_FALSE_POSITIVE_IDS.has(m.id)) return false;
+  return FANBOOK_TITLE_PATTERN.test(m.title || '');
 }
 
 let state = { query: "", queryKeywords: [], activeTags: new Set(), currentMovieId: null, hasReviewed: {}, myReviewsById: {}, myReviewRows: [], myReviewRowsLoaded: false, myLove: {}, myIntensity: {}, myReason: {}, myTagVotes: {}, myWatchLater: {}, myPocket: [], myPocketAddedAt: {}, myLists: [], currentListId: null, profile: null, profileLoaded: false, myLogs: [], myLogsLoaded: false, mySubmittedMovieIds: [], mySubmittedMovies: [], mySubmittedMoviesLoaded: false, lastSubmissionDate: null, todaySubmissionCount: 0, intensityFilter: 0, decadeFilter: 0, diagnosisHistory: [], activeGenres: new Set(), activeCountries: new Set(), catalogMode: 'movie', bookType: null, crossMediaSearch: false, pendingTrackAdd: null, homeLandingActive: false, semanticMatches: null };
@@ -6334,17 +6420,16 @@ function renderHomeRows(){
 
   // タグごとの作品数を数えて、多い順に「気分の棚」として使う(件数が少なすぎて
   // 棚が成立しないタグは後段のif(list.length === 0)で自然に除外される)。
-  // 音楽モードだけは感情タグではなくMUSIC_SCENES(場面ベース)を使う。
-  // こちらは固定の並び順のまま使う(件数順にすると「元気が欲しい時」の
-  // ような付きやすいタグばかり先頭に来て、「深夜に足が攣る瞬間」のような
-  // 狙って用意した珍しいタグが埋もれてしまうため)。
-  const topTags = (catalogMode === 'music')
-    ? MUSIC_SCENES
-    : (() => {
-        const tagCounts = {};
-        discoveryMovies.forEach(m => m.tags.forEach(t => { tagCounts[t] = (tagCounts[t] || 0) + 1; }));
-        return Object.keys(tagCounts).sort((a, b) => tagCounts[b] - tagCounts[a]);
-      })();
+  // 以前は音楽モードだけMUSIC_SCENES(場面ベース)をここに割り込ませていたが、
+  // オーナー指摘:「音楽のところだけ...場面カードにし...今ある部分には
+  // こんな気分の時に聞きたいってやつに変えてほしい」を受け、MUSIC_SCENESは
+  // 場面カード形式の専用セクション(このすぐ下、renderMusicSceneCardsHTML)に
+  // 移し、ここは全モード共通で感情タグを使う元の形に戻す。
+  const topTags = (() => {
+    const tagCounts = {};
+    discoveryMovies.forEach(m => m.tags.forEach(t => { tagCounts[t] = (tagCounts[t] || 0) + 1; }));
+    return Object.keys(tagCounts).sort((a, b) => tagCounts[b] - tagCounts[a]);
+  })();
 
   let html = "";
 
@@ -6426,11 +6511,30 @@ function renderHomeRows(){
     }
   }
 
-  const moodRowKicker = (catalogMode === 'music') ? 'こんな場面で聴きたい' : 'こんな気分の日に';
+  // 「こんな場面で聴きたい」(MUSIC_SCENES)は、オーナー指摘:「音楽のところ
+  // だけ...場面カードにし、押すとタイトルに合った作品が出るようにして
+  // 欲しい」を受けてここに移した。場面カード(.scene-card、ホームの
+  // HOME_SCENESと同じ見た目・タップで結果を開く操作感)の音楽モード専用版。
+  if(catalogMode === 'music'){
+    html += `
+      <div class="section-label">こんな場面で聴きたい</div>
+      <div class="section-sub">タップすると、その場面に近い曲が見つかります</div>
+      <div class="scene-row" id="music-scene-row">${MUSIC_SCENES.map(scene => `
+        <div class="scene-card" data-scene="${escapeHtml(scene)}" onclick="openMusicScene('${escapeHtml(scene).replace(/'/g, "\\'")}')">
+          ${homeMoodBlurHTML([scene])}
+          <div class="scene-title">${escapeHtml(scene)}</div>
+        </div>
+      `).join('')}</div>
+      <div class="scene-results" id="music-scene-results">
+        <div class="scene-results-label" id="music-scene-results-label"></div>
+        <div id="music-scene-results-list"></div>
+      </div>
+    `;
+  }
+
+  const moodRowKicker = 'こんな気分の日に';
   topTags.forEach(tag => {
-    const tagMovies = (catalogMode === 'music')
-      ? discoveryMovies.filter(m => m.musicScenes.includes(tag))
-      : discoveryMovies.filter(m => m.tags.includes(tag));
+    const tagMovies = discoveryMovies.filter(m => m.tags.includes(tag));
     // 有名な(=愛が集まっている、またはFAMOUS_*_HINTSに当たる)作品を
     // 軸にしつつ、上位勢だけで固めるといつも同じ顔ぶれで「見たことない
     // 作品」に出会えないという声を受け、まだ愛が集まっていない(=珍しい)
@@ -6566,6 +6670,30 @@ function renderHomeRows(){
     applyAvatarPhoto(el, el.dataset.photo, 50, 50, 100);
   });
   initAutoScrollMarquee('review-feed-marquee', 'review-feed-track');
+}
+
+// 音楽モードの「こんな場面で聴きたい」場面カードをタップした時の処理。
+// ホームの場面カード(openHomeScene)と同じ操作感(タップで下に結果を開く)
+// だが、こちらはスコアリングや配信確認が不要で、m.musicScenesに場面名が
+// 含まれる曲をその場で絞り込むだけなので即座に描画できる。
+function openMusicScene(scene){
+  document.querySelectorAll('#music-scene-row .scene-card').forEach(el => el.classList.toggle('active', el.dataset.scene === scene));
+  const panel = document.getElementById('music-scene-results');
+  if(!panel) return;
+  panel.classList.add('open');
+  document.getElementById('music-scene-results-label').textContent = `「${scene}」に近い曲`;
+  const catalogMode = currentCatalogMode();
+  const visibleMovies = bookTypeNarrowedPool(
+    MOVIES.filter(m => !matchesExcludedWord(m) && isInCatalogMode(m, catalogMode)),
+    catalogMode
+  );
+  const matches = visibleMovies.filter(m => (m.musicScenes || []).includes(scene));
+  const list = seededShuffle(matches, `music-scene:${scene}`).slice(0, 24);
+  const listEl = document.getElementById('music-scene-results-list');
+  listEl.innerHTML = list.length
+    ? `<div class="results">${list.map(m => buildCardHTML(m)).join('')}</div>`
+    : `<p style="font-size:12.5px; color:var(--ink-soft);">対象の曲がまだ見つかりませんでした。</p>`;
+  panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
 
 // ============================================================
@@ -7083,16 +7211,24 @@ async function renderWeeklyFeature(){
     WEEKLY_FEATURES = data;
     label.style.display = '';
     area.innerHTML = `
-      <div class="section-sub">タップすると、その特集に選ばれた作品が見つかります</div>
-      <div class="scene-row" id="weekly-feature-row">${data.map(f => `
-        <div class="scene-card" data-id="${f.id}" onclick="openWeeklyFeature(${f.id})">
-          ${homeMoodBlurHTML([f.top_tag].filter(Boolean))}
-          <div class="scene-title">${escapeHtml(f.title)}</div>
-          <div class="scene-desc feature-desc-clamp">${escapeHtml((f.description || '').replace(/\n+/g, ' ').trim())}</div>
+      <div class="section-sub">タップすると、その特集の紹介文と選ばれた作品が見つかります</div>
+      <div class="feature-row" id="weekly-feature-row">${data.map(f => {
+        const firstId = (f.selected_movie_ids || [])[0];
+        const firstMovie = firstId != null ? MOVIES.find(m => m.id === Number(firstId)) : null;
+        const hasPoster = !!(firstMovie && firstMovie.posterUrl);
+        const posterInner = hasPoster ? `<img src="${firstMovie.posterUrl}" alt="" loading="lazy" decoding="async">` : homeMoodBlurHTML([f.top_tag].filter(Boolean));
+        return `
+        <div class="feature-card" data-id="${f.id}" onclick="openWeeklyFeature(${f.id})">
+          <div class="feature-card-poster">${posterInner}</div>
+          <div class="feature-card-info">
+            <div class="feature-card-kicker">今週の特集</div>
+            <div class="feature-card-title">${escapeHtml(f.title)}</div>
+          </div>
         </div>
-      `).join('')}</div>
+      `;}).join('')}</div>
       <div class="scene-results" id="weekly-feature-results">
         <div class="scene-results-label" id="weekly-feature-results-label"></div>
+        <div class="feature-results-desc" id="weekly-feature-results-desc"></div>
         <div id="weekly-feature-results-list"></div>
       </div>
     `;
@@ -7111,14 +7247,21 @@ function openWeeklyFeature(id){
   const feature = WEEKLY_FEATURES.find(f => f.id === id);
   if(!feature) return;
   openWeeklyFeatureId = id;
-  document.querySelectorAll('#weekly-feature-row .scene-card').forEach(el => el.classList.toggle('active', Number(el.dataset.id) === id));
+  document.querySelectorAll('#weekly-feature-row .feature-card').forEach(el => el.classList.toggle('active', Number(el.dataset.id) === id));
   const panel = document.getElementById('weekly-feature-results');
   panel.classList.add('open');
   document.getElementById('weekly-feature-results-label').textContent = feature.title;
+  // オーナー指摘:「説明は記事タップして作品の上あたりに記事の内容を書いて
+  // 欲しい」。カード自体にはタイトルだけを置き、紹介文(description)は
+  // タップして開いたここ(作品一覧のすぐ上)に表示する。
+  document.getElementById('weekly-feature-results-desc').textContent = (feature.description || '').replace(/\n+/g, ' ').trim();
   const movies = (feature.selected_movie_ids || []).map(id2 => MOVIES.find(m => m.id === Number(id2))).filter(Boolean);
   const listEl = document.getElementById('weekly-feature-results-list');
+  // オーナー指摘:「簡単な説明も加えてほしい」。ポスターだけの小さいカード
+  // (buildCardHTML)ではなく、場面カードの結果欄と同じ行リスト
+  // (buildHomeSceneResultItemHTML、あらすじ付き)を流用する。
   listEl.innerHTML = movies.length
-    ? `<div class="weekly-feature-row">${movies.map(m => buildCardHTML(m, { overlayTitle: true, showTypeBadge: true, lean: true, forceModeFn: (mm) => mediaTypeInfo(mm).mode })).join('')}</div>`
+    ? movies.map(m => buildHomeSceneResultItemHTML(m)).join('')
     : `<p style="font-size:12.5px; color:var(--ink-soft);">対象の作品がまだ読み込まれていません。</p>`;
   panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
@@ -7203,7 +7346,7 @@ function renderFeaturedBanner(){
   // 「ホーム」モード中は特定のメディア種別に絞らない(オーナー指摘:「今一番
   // 愛されてる作品が映画のみなのが気になる」)。他の6モードでは今まで通り
   // そのモードの作品だけに絞る。
-  const eligibleMovies = MOVIES.filter(m => !matchesExcludedWord(m) && (state.homeLandingActive || isInCatalogMode(m, catalogMode)));
+  const eligibleMovies = MOVIES.filter(m => !matchesExcludedWord(m) && !isFanbookLikeItem(m) && (state.homeLandingActive || isInCatalogMode(m, catalogMode)));
   const lovedPool = eligibleMovies.filter(m => hasLoveBasis(m))
     .sort((a, b) => loveAverage(b) - loveAverage(a))
     .slice(0, 30);
