@@ -5138,8 +5138,18 @@ function loveLabel(avg, hasBasis){
 // 「規模で愛されています」に変え、実際のタップそのものではないことが伝わる
 // ようにする。
 const TMDB_COUNT_DAMPING = 150;
+// 書籍(小説・漫画)にはTMDBの票数が無いため、人数表示がいつまでも「1人目」の
+// ままになっていた(オーナー指摘:「ハートの数気になってるんだよね。どうやって
+// 組み込むか」)。楽天ブックスのレビュー数(reviewCount)がTMDB票数と同じ役割を
+// 果たせることを実データで確認済み(例: 実在書籍でレビュー102〜548件、映画の
+// TMDB票数と近い桁数)。同じ割引の考え方を流用し、割引率もTMDBと同じ値を
+// 据え置く(こちらも実データに基づく厳密な値ではなく運用上の仮の値)。
+// 1冊がTMDB票数とレビュー数の両方を持つことは無い(映画は前者だけ、書籍は
+// 後者だけ)ので、単純にどちらか存在する方を使えばよい。
 function tmdbCountContribution(m){
-  return m.tmdbVoteCount ? Math.round(m.tmdbVoteCount / TMDB_COUNT_DAMPING) : 0;
+  if(m.tmdbVoteCount) return Math.round(m.tmdbVoteCount / TMDB_COUNT_DAMPING);
+  if(m.rakutenReviewCount) return Math.round(m.rakutenReviewCount / TMDB_COUNT_DAMPING);
+  return 0;
 }
 function loveCountBlended(m){
   return m.loveCount + tmdbCountContribution(m);
@@ -11560,7 +11570,7 @@ async function selectAllRows(table, columns, applyFilterFn, orderColumn = 'id', 
 // 遅くしている最大の要因だった。検索の根幹であるkeywordsは(サイトの
 // 存在意義に関わるため)初回取得に残したまま、この2つだけ後から
 // バックグラウンドで取得する(loadMovieBigFieldsInBackground参照)。
-const MOVIE_LIGHT_COLUMNS = 'id, title, release_year, emotion_tags, genre, director, country, poster_path, japan_release_date, keywords, series, trailer_key, media_type, is_anime, is_drama, is_manga, is_novel, is_music, volume_count, tmdb_vote_average, tmdb_vote_count, music_scene_tags';
+const MOVIE_LIGHT_COLUMNS = 'id, title, release_year, emotion_tags, genre, director, country, poster_path, japan_release_date, keywords, series, trailer_key, media_type, is_anime, is_drama, is_manga, is_novel, is_music, volume_count, tmdb_vote_average, tmdb_vote_count, rakuten_review_count, music_scene_tags';
 // cast_membersは検索(termMatchesMovie)が全作品横断で参照するため、全件
 // バックグラウンド取得を続ける(配列でサイズも小さい)。synopsis(あらすじ)は
 // 全文だと転送量が重いため、全件一括取得は「先頭200文字の要約」
@@ -11642,6 +11652,10 @@ function buildMovieRecord(row, statsByMovie, estimatesByMovie){
     // 保存されるので、ここでは単純にrowの値をそのまま使えばよい)。
     tmdbVoteAverage: row.tmdb_vote_average != null ? Number(row.tmdb_vote_average) : undefined,
     tmdbVoteCount: row.tmdb_vote_count || undefined,
+    // 書籍(小説・漫画)にはTMDBの票数が無いため、愛度の人数表示に混ぜる
+    // 「人気の下地」が無かった(オーナー指摘:「ハートの数気になってるんだよね」)。
+    // 楽天ブックスのレビュー数を同じ役割で使う(loveCountText参照)。
+    rakutenReviewCount: row.rakuten_review_count || undefined,
     vodFlatrate: row.vod_flatrate || undefined,
     vodWatchLink: row.vod_watch_link || undefined,
     officialUrl: row.official_url || undefined,
