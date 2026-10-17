@@ -5843,6 +5843,10 @@ function updateIntensityFilterDisplay(){
 function onIntensityFilterInput(value){
   state.intensityFilter = parseInt(value, 10);
   updateIntensityFilterDisplay();
+  // 「こだわらない」から具体的な度合いへ切り替えた瞬間だけ、表現度の全件
+  // データが要る(movieIntensityBand参照)。全件取得は一度だけ・初めて
+  // 絞り込みが使われた時に限定する(ensureFullExpressionEstimatesLoaded参照)。
+  if(state.intensityFilter !== 0) ensureFullExpressionEstimatesLoaded();
   renderResults();
 }
 
@@ -10587,6 +10591,7 @@ async function goDetail(id){
   loadWatchLinksForMovie(id);
   loadFullSynopsisForMovie(id);
   loadCastForMovie(id);
+  loadExpressionEstimateForMovie(id);
 
   editingMovieId = null;
   const textBox = document.getElementById('review-text');
@@ -11623,7 +11628,12 @@ const CAST_COLUMNS = 'id, cast_members';
 function buildMovieRecord(row, statsByMovie, estimatesByMovie){
   const s = statsByMovie[row.id];
   const intensityCount = s ? Number(s.intensity_count) : 0;
-  const estimate = estimatesByMovie[row.id];
+  // 呼び出し元がestimatesByMovieを渡さない(通常の一覧読み込み経路。
+  // 表現度推定は詳細ページを開いた時/表現度フィルターを使った時にだけ
+  // 遅延取得する方針に変更した、下のensureFullExpressionEstimatesLoaded参照)
+  // 場合でも、ユーザーが表現度フィルターを一度でも使って全件取得済みなら
+  // fullExpressionEstimatesByMovieから拾えるようにしておく。
+  const estimate = (estimatesByMovie && estimatesByMovie[row.id]) || (fullExpressionEstimatesByMovie && fullExpressionEstimatesByMovie[row.id]);
   // 実際の投票が1件もない映画は、公式レーティング等をもとにした推定値
   // (movie_expression_estimates)を表示のフォールバックとして使う。
   // 実際の投票が集まった時点で、通常通りその集計が優先される。
@@ -11827,6 +11837,79 @@ async function loadCastForMovie(movieId){
 let nonMovieCatalogLoaded = false;
 let movieBigFieldsLoaded = false;
 
+// 表現度(内容の強さ)の推定値(movie_expression_estimates)は、以前は
+// カタログ読み込みのたびに全件(9万行超・30往復以上)先読みしていたが、
+// 実際に使うのは①詳細ページの表現度ゲージ、②表現度フィルターで絞り込んだ
+// 時、の2箇所だけだったため、通常の閲覧には一切使われない大量の通信が
+// 常に発生していた(オーナー指摘:「サイトがあんまりスピードが速くない」)。
+// null=未取得、取得後はmovie_id→行のマップになる。buildMovieRecord()が
+// フォールバックとして参照する(上記参照)ため、一度取得すればそれ以降に
+// 組み立てられる行にも自動的に反映される。
+let fullExpressionEstimatesByMovie = null;
+let expressionEstimatesLoadStarted = false;
+async function ensureFullExpressionEstimatesLoaded(){
+  if(expressionEstimatesLoadStarted) return;
+  expressionEstimatesLoadStarted = true;
+  try{
+    // movie_expression_estimatesはmovie_idを主キーとしており、id列を持たない
+    // (他のselectAllRows呼び出しと違い、並び替え列を明示的に指定する必要がある)。
+    const rows = await selectAllRows('movie_expression_estimates', 'movie_id, expression_level, reason_tags', null, 'movie_id');
+    const map = {};
+    rows.forEach(e => { map[e.movie_id] = e; });
+    fullExpressionEstimatesByMovie = map;
+    // 既にMOVIESへ組み立て済みの行にも反映する(実投票が無い作品だけ、
+    // buildMovieRecord()と同じロジックで推定値を書き足す)。
+    MOVIES.forEach(m => {
+      if(m.intensityCount > 0 || m.expressionEstimated) return;
+      const estimate = map[m.id];
+      if(!estimate) return;
+      m.intensitySum = estimate.expression_level;
+      m.intensityWeight = 1;
+      m.expressionEstimated = true;
+      m.reasonVotes = {
+        violence: (estimate.reason_tags || []).includes('violence') ? 1 : 0,
+        sexual: (estimate.reason_tags || []).includes('sexual') ? 1 : 0,
+        fear: (estimate.reason_tags || []).includes('fear') ? 1 : 0,
+        explicit: (estimate.reason_tags || []).includes('explicit') ? 1 : 0
+      };
+    });
+    renderResults();
+  }catch(err){
+    console.error('表現度の全件取得に失敗しました', err);
+    expressionEstimatesLoadStarted = false; // 失敗時は次回また試せるようにする
+  }
+}
+
+// 表現度の推定値を、詳細ページを開いた作品1件分だけその場で取得する
+// (loadWatchLinksForMovie等と同じ考え方)。実投票が既にある、または
+// 既に推定値を取得済みの場合は何もしない。
+async function loadExpressionEstimateForMovie(movieId){
+  const m = MOVIES.find(x => x.id === movieId);
+  if(!m || m.intensityCount > 0 || m.expressionEstimated) return;
+  try{
+    const { data, error } = await supabase.from('movie_expression_estimates').select('expression_level, reason_tags').eq('movie_id', movieId).maybeSingle();
+    if(error) throw error;
+    if(!data) return;
+    m.intensitySum = data.expression_level;
+    m.intensityWeight = 1;
+    m.expressionEstimated = true;
+    m.reasonVotes = {
+      violence: (data.reason_tags || []).includes('violence') ? 1 : 0,
+      sexual: (data.reason_tags || []).includes('sexual') ? 1 : 0,
+      fear: (data.reason_tags || []).includes('fear') ? 1 : 0,
+      explicit: (data.reason_tags || []).includes('explicit') ? 1 : 0
+    };
+    // 取得が終わる前に他の作品の詳細ページへ移動していた場合は、
+    // 今表示中の画面を誤って書き換えないようにする。
+    if(state.currentMovieId === movieId){
+      renderIntensityGauge(m);
+      renderReasonChips(m);
+    }
+  }catch(err){
+    console.error('表現度の取得に失敗しました', err);
+  }
+}
+
 // 1ページ目(映画のみ・FIRST_PAGE_SIZE件)をブラウザに保存しておき、
 // 次回アクセス時はネットワークを待たずにそこから即座に描画する
 // (「2回目以降をほぼ待ち時間なしにしたい」というオーナーの要望)。
@@ -12000,23 +12083,26 @@ async function fetchFreshCatalogAndContinue(FIRST_PAGE_SIZE, plainMovieFilter){
   });
 }
 
-// review_stats/expression_estimates の全件版(映画以外のメディア種別も含む)を
-// 裏で取得する。loadMovies()の1ページ目表示はこれを待たない(範囲限定版を
-// 使う)が、残りの映画(loadRemainingMoviesInBackground)と他メディア種別
+// review_statsの全件版(映画以外のメディア種別も含む)を裏で取得する。
+// loadMovies()の1ページ目表示はこれを待たない(範囲限定版を使う)が、
+// 残りの映画(loadRemainingMoviesInBackground)と他メディア種別
 // (loadNonMovieCatalogInBackground)はこの全件版が必要なため、ここで1回だけ
 // 取得して両方に使い回す。
+// 以前はここでmovie_expression_estimates(表現度の推定値)も全件(9万行超、
+// 3000件ずつ30往復以上)取得していたが、この値は①詳細ページを開いた作品の
+// 表現度ゲージ表示、②表現度フィルターで実際に絞り込んだ時、にしか使わない
+// (通常のカタログ一覧表示・検索では一切参照しない)のに、ページを開く
+// たびに無条件で全件先読みしていたせいで、他の表示・操作がもたつく体感に
+// つながっていた(オーナー指摘:「サイトがあんまりスピードが速くない」)。
+// loadWatchLinksForMovie等と同じ「使う時にその場で取る」方針に合わせ、
+// ここでは取得をやめ、goDetail()でのその場取得(loadExpressionEstimateForMovie)と
+// 表現度フィルター初回使用時の全件取得(ensureFullExpressionEstimatesLoaded)に分離した。
 async function loadFullStatsAndEstimates(){
-  const [statsRes, estimatesData] = await Promise.all([
-    supabase.from('movie_review_stats').select('*'),
-    // movie_expression_estimatesはmovie_idを主キーとしており、id列を持たない
-    // (他のselectAllRows呼び出しと違い、並び替え列を明示的に指定する必要がある)。
-    selectAllRows('movie_expression_estimates', 'movie_id, expression_level, reason_tags', null, 'movie_id')
-  ]);
+  const statsRes = await supabase.from('movie_review_stats').select('*');
   if(statsRes.error) throw statsRes.error;
   const statsByMovie = {};
   (statsRes.data || []).forEach(s => { statsByMovie[s.movie_id] = s; });
   const estimatesByMovie = {};
-  estimatesData.forEach(e => { estimatesByMovie[e.movie_id] = e; });
   return { statsByMovie, estimatesByMovie };
 }
 
