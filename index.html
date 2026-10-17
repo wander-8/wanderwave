@@ -5461,7 +5461,7 @@ function bookTypeNarrowedPool(pool, mode){
 }
 function availableGenres(){
   const mode = currentCatalogMode();
-  const pool = bookTypeNarrowedPool(MOVIES.filter(m => isInCatalogMode(m, mode)), mode);
+  const pool = bookTypeNarrowedPool(MOVIES.filter(m => !matchesExcludedWord(m) && isInCatalogMode(m, mode)), mode);
   const set = new Set();
   pool.forEach(m => (m.genre || []).forEach(g => set.add(g)));
   return FILTER_GENRES.filter(g => set.has(g));
@@ -5491,7 +5491,9 @@ function availableCountries(){
 // 美術のような編集フォーマットの違いではなく美術の中の主題に過ぎないとの
 // 指摘を受け、美術のサブジャンル(ART_GENRE_NAMES)に戻した(オーナー指摘:
 // 「写真と建築ってどうなの？違うでしょ」)。
-const BOOK_TYPES = ['新書', '児童書', '美術'];
+// '美術'は一旦非表示にしている(isHiddenNonNarrativeBook参照)ため、選んでも
+// 何も出ない空タブになるのを避けて外してある。復活させたくなったら戻す。
+const BOOK_TYPES = ['新書', '児童書'];
 function selectBookType(value){
   state.bookType = value;
   renderTagCloud();
@@ -12425,7 +12427,19 @@ async function removeExcludedWord(word){
   renderResults();
 }
 
+// 美術・陶芸・書道・骨董・染織漆・技法書等(ART_GENRE_NAMES、isArtItem参照)、
+// 物語性の無い参考書・技法書のジャンルを一旦非表示にする(オーナー指摘:
+// これらは「今の気分で選ぶ」物語コンテンツと違い、感情タグが中身を
+// 反映できておらず(技法書の説明文に気分を示す語がほぼ出てこないため、
+// 常にジャンル既定の2タグに落ちてしまう)、気分検索・自分自身を理解する
+// 診断のコンセプトのどちらとも噛み合わない。削除ではなく非表示に留める
+// (「一旦非表示にしてみようか(取り出すタイミングあるかわからないけど)」)
+// — 復活させたくなったらこのisHiddenNonNarrativeBook()を元に戻すだけでよい。
+function isHiddenNonNarrativeBook(m){
+  return isArtItem(m);
+}
 function matchesExcludedWord(m){
+  if(isHiddenNonNarrativeBook(m)) return true;
   const words = (state.profile && state.profile.excludedWords) || [];
   if(words.length === 0) return false;
   // m.excludedWordHaystackは読み込み時に一度だけ正規化済み(タイトル・あらすじ・
