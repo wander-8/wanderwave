@@ -9838,7 +9838,14 @@ async function toggleCardPreview(movieId, btnEl){
   btnEl.textContent = '⏸';
   btnEl.classList.add('is-playing');
   previewAudio.play().catch(() => {
-    if(playingCardMovieId === movieId) stopCardPreview();
+    // 再生に失敗しても(切れたURL・配信元の問題等)ボタンが▶に戻るだけで、
+    // なぜ鳴らなかったのか一切フィードバックが無かった(オーナー指摘:
+    // 「音が出てなかったりするのも気になる」)。何も起きなかったように
+    // 見えて実は失敗していた、という無言の失敗を無くすためトーストを出す。
+    if(playingCardMovieId === movieId){
+      stopCardPreview();
+      showToast('この曲は再生できませんでした');
+    }
   });
 }
 
@@ -9857,7 +9864,13 @@ function toggleTrackPreview(index, url){
     // play()が拒否された場合(壊れたURL・通信エラー等)、ボタンが
     // 「再生中(⏸)」表示のまま固まって二度と反応しなくなっていたのを修正。
     // 再生開始に失敗したことが分かるよう、必ず▶表示に戻す。
-    if(playingTrackIndex === index) stopTrackPreview();
+    // ただしボタンが戻るだけでは「なぜ鳴らなかったか」が伝わらず、押しても
+    // 無言で何も起きないように見えていた(オーナー指摘:「音が出てなかったり
+    // するのも気になる」)ため、トーストで失敗したことを明示する。
+    if(playingTrackIndex === index){
+      stopTrackPreview();
+      showToast('この曲は再生できませんでした');
+    }
   });
 }
 
