@@ -9780,6 +9780,36 @@ let playingTrackIndex = null;
 // ボタンが「再生中」表示のまま固まらないようにする(ended と同じ扱いで復帰)
 previewAudio.addEventListener('error', () => stopTrackPreview());
 
+let currentPreviewBlobUrl = null;
+function revokeCurrentPreviewBlobUrl(){
+  if(currentPreviewBlobUrl){ URL.revokeObjectURL(currentPreviewBlobUrl); currentPreviewBlobUrl = null; }
+}
+// iTunesのプレビューCDNは、ファイル自体は普通に再生できるAACなのに
+// Content-Type: audio/x-m4p(本来DRM保護ファイル用のMIMEタイプ)を返してくる
+// ことがある(curlで直接確認済み: HTTP 200・正常なファイルサイズで取得できる
+// のに、このヘッダだけが"保護されたファイル"を指していた)。ブラウザによっては
+// この誤ったContent-Typeだけを見て再生そのものを拒否するため、直接URLを
+// <audio>にそのまま渡さず、一度fetchしてバイト列を取り出し、正しいMIME
+// タイプ(audio/mp4)を明示したBlobとして再生する(オーナー指摘:「音が出てな
+// かったりするのも気になる」「やっぱ音が出てない」)。fetch自体に失敗した
+// 場合(オフライン等)だけ、元のURLへの直接再生にフォールバックする。
+async function playPreviewAudio(url){
+  revokeCurrentPreviewBlobUrl();
+  let playUrl = url;
+  try{
+    const res = await fetch(url);
+    if(res.ok){
+      const bytes = await res.arrayBuffer();
+      currentPreviewBlobUrl = URL.createObjectURL(new Blob([bytes], { type: 'audio/mp4' }));
+      playUrl = currentPreviewBlobUrl;
+    }
+  }catch{
+    // fetchに失敗した場合は元のURLへの直接再生を試みる(完全に諦めるよりはまし)。
+  }
+  previewAudio.src = playUrl;
+  await previewAudio.play();
+}
+
 // ポスター上の試聴タップ領域に、今の再生状態を'playing'クラスとして
 // 反映しておく(見た目のアイコンはもう無いが、再生中かどうかをCSS側で
 // 参照したくなった時のための状態フラグとして残す)。収録曲欄のミニ
@@ -9794,6 +9824,7 @@ function updatePosterPlayButton(){
 
 function stopTrackPreview(){
   previewAudio.pause();
+  revokeCurrentPreviewBlobUrl();
   if(playingTrackIndex != null){
     const prevBtn = document.getElementById(`track-play-${playingTrackIndex}`);
     if(prevBtn) prevBtn.textContent = '▶';
@@ -9843,11 +9874,10 @@ async function toggleCardPreview(movieId, btnEl){
   if(!url){ showToast('試聴できる曲が見つかりませんでした'); return; }
   // 詳細ページ本体・別のカードのどちらが再生中でも、必ず1つだけに絞る
   stopTrackPreview();
-  previewAudio.src = url;
   playingCardMovieId = movieId;
   btnEl.textContent = '⏸';
   btnEl.classList.add('is-playing');
-  previewAudio.play().catch(() => {
+  playPreviewAudio(url).catch(() => {
     // 再生に失敗しても(切れたURL・配信元の問題等)ボタンが▶に戻るだけで、
     // なぜ鳴らなかったのか一切フィードバックが無かった(オーナー指摘:
     // 「音が出てなかったりするのも気になる」)。何も起きなかったように
@@ -9866,11 +9896,10 @@ function toggleTrackPreview(index, url){
     return;
   }
   stopTrackPreview();
-  previewAudio.src = url;
   playingTrackIndex = index;
   if(btn) btn.textContent = '⏸';
   updatePosterPlayButton();
-  previewAudio.play().catch(() => {
+  playPreviewAudio(url).catch(() => {
     // play()が拒否された場合(壊れたURL・通信エラー等)、ボタンが
     // 「再生中(⏸)」表示のまま固まって二度と反応しなくなっていたのを修正。
     // 再生開始に失敗したことが分かるよう、必ず▶表示に戻す。
