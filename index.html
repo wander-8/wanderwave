@@ -5121,8 +5121,18 @@ const FAMOUS_ARTIST_HINTS = [
   '椎名林檎', 'AKB48', '嵐', 'Perfume', 'サザンオールスターズ', 'B\'z', 'ミスターチルドレン',
   'Mr.Children', 'スピッツ', 'いきものがかり', 'back number', 'LiSA', 'YOASOBI',
 ];
+// オーナー指摘(2026-10-21):「ドラえもんの科学系の漫画が漫画の項目に並ぶ
+// ことが多いんだけど少し引っ込めていて欲しい」。isFamousHintは単純に
+// タイトルへの部分一致なので、FAMOUS_WORK_HINTSの「ドラえもん」に本編も
+// 学習まんがの派生シリーズ(科学ワールド/学びワールド/探究ワールド/
+// 社会ワールド、DB調査で26件)も区別なく一致し、ホームの「気分の棚」
+// 「場面カード」でそればかり famous 枠を占めていた。本編・大長編(映画化
+// 作品)は国民的作品として famous のままにし、学習まんがの派生シリーズ
+// だけ対象から外す(削除ではなく、通常の評価順にフォールバックするだけ)。
+const DORAEMON_EDU_SPINOFF_PATTERN = /科学ワールド|学びワールド|探究ワールド|社会ワールド/;
 function isFamousHint(m){
   if(m.isMusic) return FAMOUS_ARTIST_HINTS.some(h => (m.director || '').includes(h));
+  if(DORAEMON_EDU_SPINOFF_PATTERN.test(m.title || '')) return false;
   return FAMOUS_WORK_HINTS.some(h => (m.title || '').includes(h));
 }
 // 「有名優先」と「loveAverage優先」を両方満たすソート関数。famousヒントに
