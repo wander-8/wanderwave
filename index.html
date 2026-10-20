@@ -5055,11 +5055,25 @@ const TMDB_SEED_WEIGHT = 5;
 // 1冊がTMDBの票とレビュー平均の両方を持つことは無いので、どちらか
 // 存在する方を使えばよい(tmdbCountContributionと同じ考え方)。音楽は
 // iTunes Search APIにレビュー評価そのものが存在しないため対象外のまま。
+// オーナー指摘(2026-10-21):「本も漫画も作品のほとんどがハートが5.0なの
+// ちょっと信頼に欠けるかな」。実データで確認: レビュー件数1〜2件の作品は
+// 「ほぼ満点(4.8以上)」が漫画48%・小説38%にもなるが、3〜4件まで増えると
+// 22%/14%まで急落し、以降は緩やかに下がるだけ(5件以上では18%/9%程度で
+// 安定)。つまり1〜2件は「たまたま一人の熱心なレビュアーが満点を付けた」
+// だけの、実態を反映しない値になりやすいとデータ上はっきり分かる。この
+// 層だけ種(seed)として使わず、hasLoveBasisがfalseに戻って「まだ評価なし」
+// 表示にフォールバックするようにする(件数に応じて平均を補正する、という
+// やり方もあるが、補正の重み自体は実データの根拠が無い運用値になって
+// しまうため、今回は「信頼できる最低件数に達するまで出さない」という
+// 元々の表示方針にそのまま合わせた)。
+const RAKUTEN_REVIEW_MIN_COUNT_FOR_SEED = 3;
 function tmdbSeedOnLoveScale(m){
   // TMDBは0〜10、楽天ブックスは0〜5、Wander内部の愛度は0〜3段階(タップ)の
   // スケールなので揃える。
   if(m.tmdbVoteAverage != null) return (m.tmdbVoteAverage / 10) * 3;
-  if(m.rakutenReviewAverage != null) return (m.rakutenReviewAverage / 5) * 3;
+  if(m.rakutenReviewAverage != null && (m.rakutenReviewCount || 0) >= RAKUTEN_REVIEW_MIN_COUNT_FOR_SEED){
+    return (m.rakutenReviewAverage / 5) * 3;
+  }
   return null;
 }
 function hasLoveBasis(m){
