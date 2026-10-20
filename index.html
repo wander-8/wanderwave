@@ -1009,27 +1009,6 @@
      ==================================================================== */
   .section-sub{ font-size: 12px; color: var(--ink-soft); margin: 0 0 16px; }
 
-  /* 検索・絞り込み結果にも「みんなの声」の手応えを(buildMiniVoicesHTML参照)。
-     ホームのマーキー版とは違い静止表示で、結果グリッドの隅に小さく収まる
-     チップの集まりにする(件数が少ないので派手にしすぎない)。 */
-  .mini-voices{
-    grid-column: 1/-1;
-    display:flex; flex-wrap:wrap; gap:8px;
-    margin-bottom: 4px;
-  }
-  .mini-voices-label{
-    flex-basis:100%; font-size:11px; color:var(--ink-soft); opacity:.7;
-    letter-spacing:.04em; margin-bottom:2px;
-  }
-  .mini-voice-chip{
-    flex: 1 1 220px; max-width: 320px; cursor:pointer;
-    background: var(--surface); border:1px solid var(--line);
-    border-radius: 12px; padding: 10px 12px;
-  }
-  .mini-voice-title{ font-size:11px; font-weight:700; color:var(--love); margin-bottom:3px; }
-  .mini-voice-body{ font-size:12.5px; line-height:1.6; color:var(--ink-soft); }
-  .mini-voice-name{ font-size:11px; color:var(--ink-soft); opacity:.65; margin-left:2px; }
-
   /* 自動特集生成(オーナー指示書より)。AIが毎日書く「今週の特集」を
      ホームの一番上に出す。
      1回目: 場面カード(.scene-card)と全く同じ見た目に揃えた
@@ -4846,40 +4825,12 @@ let MOVIES = [];
 let RECENT_REVIEWS = [];
 // 「みんなの声」欄では、この名前のアカウントだけ投稿内容はそのまま出しつつ
 // 名前の表示だけ伏せる(オーナー指摘: 投稿ごと除外ではなく名前だけ)。
-// renderHomeRows()のホーム版・検索結果に差し込むミニ版の両方で使うため、
-// モジュール直下に出しておく。
+// renderHomeRows()のホーム版で使うため、モジュール直下に出しておく。
+// (検索結果側に差し込んでいたミニ版は、オーナー指摘2026-10-20:「みんなの
+// 声からっていう、検索の下にあるものはやめてほしい」を受けて撤去した。
+// ホーム版(「みんなの声」の横スクロール、renderHomeRows参照)は対象外。)
 const REVIEW_NAME_HIDDEN = new Set(['そうやわ']);
 
-// 検索・タグ絞り込みの結果画面でも、ホームの「みんなの声」と同じ「実際に
-// 人が書いた感想がある」という手応えを感じられるようにする(オーナー方針:
-// 数字のバッジで賑わいを誇張するより、本物の声の方が今の規模感に誠実、
-// という判断)。RECENT_REVIEWSの直近分から、除外ワードに一致しない作品の
-// 感想を数件だけ拾う(タグそのものには絞り込まない。母数が少なく、
-// 絞り込むとほぼ毎回0件になってしまうため)。
-function buildMiniVoicesHTML(){
-  const items = RECENT_REVIEWS
-    .map(r => ({ r, m: MOVIES.find(x => x.id === r.movie_id) }))
-    .filter(({ r, m }) => m && r.review_text && !matchesExcludedWord(m))
-    .slice(0, 3)
-    .map(({ r, m }) => {
-      const snippet = r.review_text.length > 36 ? r.review_text.slice(0, 36) + '…' : r.review_text;
-      const rawName = (r.profiles && r.profiles.user_name) || 'ゲスト';
-      const displayName = REVIEW_NAME_HIDDEN.has(rawName) ? 'ゲスト' : rawName;
-      return `
-        <div class="mini-voice-chip" onclick="goDetail(${m.id})">
-          <div class="mini-voice-title">${escapeHtml(m.title)}</div>
-          <div class="mini-voice-body">「${escapeHtml(snippet)}」<span class="mini-voice-name">ー${escapeHtml(displayName)}</span></div>
-        </div>
-      `;
-    });
-  if(items.length === 0) return '';
-  return `
-    <div class="mini-voices">
-      <div class="mini-voices-label">みんなの声から</div>
-      ${items.join('')}
-    </div>
-  `;
-}
 // マイケル・ジャクソンのように、映画/ドラマ/アニメ側はカタカナ表記
 // (TMDbのja-JP名)、音楽側はiTunesの英語表記のままと、同一人物でも
 // メディア種別をまたぐと表記が揺れることがある(オーナー指摘)。
@@ -6697,7 +6648,7 @@ function renderHomeRows(){
   // 「映画を問わず」の通り、今見ているカタログモードに関係なく全種別から
   // 拾う(以前はvisibleMoviesで絞ってしまっており、現在のモード以外の
   // 感想が実質常に空になっていた)。
-  // REVIEW_NAME_HIDDENはモジュール直下で定義済み(buildMiniVoicesHTML参照)。
+  // REVIEW_NAME_HIDDENはモジュール直下で定義済み。
   const reviewCards = RECENT_REVIEWS
     .map(r => {
       const m = MOVIES.find(x => x.id === r.movie_id);
@@ -8555,17 +8506,6 @@ function renderVisibleResults(){
     ? { showTypeBadge: true, forceModeFn: (m) => mediaTypeInfo(m).mode, inlinePreview: true }
     : { inlinePreview: true };
   renderMovieCards(root, visible, `条件に合う${modeLabel}が見つかりませんでした。タグを減らすか、表現度の絞り込みを外してみましょう。`, cardOpts);
-
-  // ホーム以外の検索結果画面にも「みんなの声」の手応えを足す(buildMiniVoicesHTML
-  // 参照、数字のバッジで賑わいを誇張しない方針)。renderResults()は
-  // isActiveSearchがtrueの時しかrenderVisibleResults()を呼ばないため、
-  // ここは毎回「何かしら絞り込み・検索をしている」状態のはずで、
-  // 条件分岐なしで出してよい。
-  // (以前はここに気分タグ1個の紹介文(TAG_DESCRIPTIONS)も出していたが、
-  // オーナー指摘2026-10-20:「検索でこの白いところ見つけたんだけど...
-  // ユーザーが検索する際使いにくいと思うから消して欲しい」を受けて撤去)
-  let prefixHTML = buildMiniVoicesHTML();
-  if(prefixHTML) root.insertAdjacentHTML('afterbegin', prefixHTML);
 
   const remaining = resultsFiltered.length - visible.length;
   if(remaining <= 0) return;
