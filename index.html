@@ -14119,10 +14119,14 @@ function pickOmikujiCandidates(mode, topTag, secondTag, excludeIds, count){
 
 // 2026-10-20: オーナー訂正「ポケットからユーザーの選んだ作品の表現度や
 // 選ばれる感情タグの数値を調べてその数値に近い作品を出してほしかった」。
-// embedding類似度ではなく、診断対象だった作品の実際の数値指標
-// ①感情タグ(ALL_TAGS)の出現頻度分布 ②表現度(intensityAverage、実投票
-// ベースのみ)に近い作品を選ぶ。どちらも既にMOVIES内のデータだけで計算
-// でき、通信・追加コストは一切発生しない。
+// さらに訂正:「優先順位はユーザーのものにして、そこから実際に扱われる
+// 作品の題名もしくはポスターの表現度、そこから先はAI判定にする仕組み」。
+// 感情タグ(ALL_TAGS)の出現頻度分布と、3段階の優先順位で解決した表現度
+// ①実投票(movie_review_stats、MOVIESに既に載っている) ②ポスター/題名の
+// AI判定(movies.poster_expression_level、「必要になった時だけ」計算して
+// キャッシュする。このブロックでは既に計算済みの値を読むだけ) ③公式
+// レーティングベースのAI推定(movie_expression_estimates、既存)に近い
+// 作品を選ぶ。
 function pocketTagProfile(sourceMovies){
   const counts = {};
   ALL_TAGS.forEach(t => { counts[t] = 0; });
@@ -14132,40 +14136,96 @@ function pocketTagProfile(sourceMovies){
   return counts;
 }
 
-// 推定値(expressionEstimated、実投票0件のフォールバック)しか無い作品は
-// 目安にならないため、実投票があるもの(intensityWeight>0)だけを対象に
-// 平均する。実投票が1件も無ければnull(=表現度では絞らない)を返す。
-function pocketIntensityTarget(sourceMovies){
-  const withData = sourceMovies.filter(m => m.intensityWeight > 0 && !m.expressionEstimated);
-  if(!withData.length) return null;
-  const sum = withData.reduce((s, m) => s + intensityAverage(m), 0);
-  return sum / withData.length;
-}
+// 表現度を優先順位①②③で解決する。①はMOVIES内のintensityAverageで
+// 即座に分かるのでDBを引かない。②③が必要なid(①が無いもの)だけ、
+// まとめて2本の小さなクエリで取得する(対象は呼び出し元が渡した候補id
+// だけ、カタログ全件は絶対に読まない)。戻り値はMap<id, {level, tier}>
+// (level0〜100、tierは1/2/3。どの階層にも値が無ければMapに入らない)。
+async function resolveIntensityByTier(movieIds){
+  const resolved = new Map();
+  const needLookup = [];
+  movieIds.forEach(id => {
+    const m = MOVIES.find(x => x.id === id);
+    if(m && m.intensityWeight > 0 && !m.expressionEstimated){
+      resolved.set(id, { level: intensityAverage(m), tier: 1 });
+    }else{
+      needLookup.push(id);
+    }
+  });
+  if(!needLookup.length) return resolved;
 
-function scoreCandidateByPocketProfile(m, tagProfile, intensityTarget){
-  let score = 0;
-  (m.tags || []).forEach(t => { score += tagProfile[t] || 0; });
-  if(intensityTarget != null && m.intensityWeight > 0 && !m.expressionEstimated){
-    // 表現度は0〜4程度のスケール。差が小さいほど加点し、タグ一致点数
-    // (整数カウント)と釣り合う程度(最大2点)に収める。
-    const diff = Math.abs(intensityAverage(m) - intensityTarget);
-    score += Math.max(0, 2 - diff);
+  try{
+    const [posterRes, officialRes] = await Promise.all([
+      supabase.from('movies').select('id, poster_expression_level').in('id', needLookup).not('poster_expression_level', 'is', null),
+      supabase.from('movie_expression_estimates').select('movie_id, expression_level').in('movie_id', needLookup)
+    ]);
+    if(posterRes.error) throw posterRes.error;
+    if(officialRes.error) throw officialRes.error;
+    const posterById = {};
+    (posterRes.data || []).forEach(r => { posterById[r.id] = r.poster_expression_level; });
+    const officialById = {};
+    (officialRes.data || []).forEach(r => { officialById[r.movie_id] = r.expression_level; });
+    needLookup.forEach(id => {
+      if(posterById[id] != null) resolved.set(id, { level: posterById[id], tier: 2 });
+      else if(officialById[id] != null) resolved.set(id, { level: officialById[id], tier: 3 });
+    });
+  }catch(err){
+    console.error('表現度の階層的な取得に失敗しました(タグ一致のみで続行します)', err);
   }
-  return score;
+  return resolved;
 }
 
-function pickOmikujiCandidatesByProfile(mode, sourceMovies, excludeIds, count){
+// どの階層にも表現度が無かった作品id群を、ポスター/題名からAIに判定
+// させてキャッシュする(poster-expression-estimate edge function)。
+// 「必要になった時だけ」計算する方式のため、ここでは実際に候補として
+// 扱われたid(呼び出し元で絞り込み済み)だけを渡す。表示をブロックしない
+// ようawaitせず投げっぱなしにする。
+function requestPosterExpressionBackfill(movieIds){
+  if(!movieIds.length) return;
+  supabase.functions.invoke('poster-expression-estimate', { body: { movie_ids: movieIds } })
+    .catch(err => console.error('ポスター表現度の推定リクエストに失敗しました', err));
+}
+
+async function pickOmikujiCandidatesByProfile(mode, sourceMovies, excludeIds, count){
   const tagProfile = pocketTagProfile(sourceMovies);
   const hasTagSignal = Object.values(tagProfile).some(v => v > 0);
-  const intensityTarget = pocketIntensityTarget(sourceMovies);
+
+  const sourceIds = sourceMovies.map(m => m.id);
+  const sourceIntensity = await resolveIntensityByTier(sourceIds);
+  const intensityValues = sourceIds.map(id => sourceIntensity.get(id)).filter(Boolean).map(x => x.level);
+  const intensityTarget = intensityValues.length
+    ? intensityValues.reduce((a, b) => a + b, 0) / intensityValues.length
+    : null;
+  requestPosterExpressionBackfill(sourceIds.filter(id => !sourceIntensity.has(id)));
+
   if(!hasTagSignal && intensityTarget == null) return [];
 
-  const scored = MOVIES
+  // まずタグだけで荒く絞る(DB不要、無料)。表現度の階層を引くのは、この
+  // 絞り込み後の候補だけに限定してコストを最小化する。
+  const tagScored = MOVIES
     .filter(m => !excludeIds.includes(m.id) && isInCatalogMode(m, mode))
-    .map(m => ({ m, score: scoreCandidateByPocketProfile(m, tagProfile, intensityTarget) }))
-    .filter(x => x.score > 0)
-    .sort((a, b) => b.score - a.score);
-  if(!scored.length) return [];
+    .map(m => ({ m, tagScore: (m.tags || []).reduce((s, t) => s + (tagProfile[t] || 0), 0) }))
+    .filter(x => x.tagScore > 0)
+    .sort((a, b) => b.tagScore - a.tagScore);
+  if(!tagScored.length) return [];
+  const prelimPool = tagScored.slice(0, Math.max(count * 6, 30));
+
+  let intensityById = new Map();
+  if(intensityTarget != null){
+    intensityById = await resolveIntensityByTier(prelimPool.map(x => x.m.id));
+  }
+
+  const scored = prelimPool.map(x => {
+    let score = x.tagScore;
+    const found = intensityById.get(x.m.id);
+    if(intensityTarget != null && found){
+      // 表現度は0〜100スケール。差50でボーナス0、差0でタグ一致1個分(+2)
+      // 相当になるよう単純な線形減衰にする。
+      const diff = Math.abs(found.level - intensityTarget);
+      score += 2 * Math.max(0, 1 - diff / 50);
+    }
+    return { m: x.m, score };
+  }).sort((a, b) => b.score - a.score);
 
   // タグ一致数は整数のため同点が並びやすい。上位を広めに取ってから日付
   // シードで選ぶことで、「今日の贈り物」らしい日替わり感を保ちつつ常に
@@ -14184,6 +14244,9 @@ function pickOmikujiCandidatesByProfile(mode, sourceMovies, excludeIds, count){
     usedIdx.add(idx);
     picked.push(topPool[idx]);
   }
+  if(intensityTarget != null){
+    requestPosterExpressionBackfill(picked.filter(id => !intensityById.has(id)));
+  }
   return picked;
 }
 
@@ -14195,7 +14258,7 @@ function pickOmikujiCandidatesByProfile(mode, sourceMovies, excludeIds, count){
 async function pickSmartOmikujiCandidates(mode, topTag, sourceIds, count){
   const sourceMovies = sourceIds.map(id => MOVIES.find(m => m.id === id)).filter(Boolean);
 
-  const profilePicks = pickOmikujiCandidatesByProfile(mode, sourceMovies, sourceIds, count);
+  const profilePicks = await pickOmikujiCandidatesByProfile(mode, sourceMovies, sourceIds, count);
   if(profilePicks.length) return profilePicks;
 
   try{
