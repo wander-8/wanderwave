@@ -32,11 +32,15 @@ type RequestBody = {
   usualTopTagLabel?: string;
 };
 
+// 2026-10-20: オーナー指摘「もっと診断らしく(文章の中身の深さ・具体性)」。
+// 呼び出し元(index.html側generateMonthlyDiagnosis)が、要約(先頭200文字)
+// ではなく本文のあらすじ全文を直接取得して渡すようになったため、AIが
+// 使える材料そのものを増やす(280文字→600文字)。
 function buildMovieBlock(m: MovieInput, idx: number): string {
   const lines = [`${idx + 1}. 「${(m.title || "").slice(0, 60)}」(${m.mediaTypeLabel || "作品"})`];
   if (m.genre && m.genre.length) lines.push(`   ジャンル: ${m.genre.slice(0, 5).join("、")}`);
   if (m.emotionTags && m.emotionTags.length) lines.push(`   雰囲気タグ: ${m.emotionTags.slice(0, 4).join("、")}`);
-  if (m.synopsis) lines.push(`   あらすじ: ${m.synopsis.slice(0, 280)}`);
+  if (m.synopsis) lines.push(`   あらすじ: ${m.synopsis.slice(0, 600)}`);
   if (m.keywords && m.keywords.length) lines.push(`   キーワード: ${m.keywords.slice(0, 8).join("、")}`);
   return lines.join("\n");
 }
@@ -76,14 +80,23 @@ Deno.serve(async (req: Request) => {
           body: {
             type: "string",
             description:
-              "診断本文。350〜550字程度の日本語。選ばれた作品の『あらすじ・ジャンル・雰囲気タグ』を" +
-              "実際に読み比べ、そこから見つかる具体的な共通点(例:主人公が一人で何かと向き合う話が" +
-              "多い、喪失や別れの後の再生を描く作品が多い、閉ざされた場所や関係からの脱出が繰り返し" +
-              "出てくる、等)を根拠にして、性格診断テストのような温かい語り口で書く。『あなたは〜な" +
-              "人なのかもしれません』のように余白を残す言い回しにする。良い/悪いの価値判断の言葉、" +
-              "および『データ・分析・傾向・パターン・構造』のような分析用語は使わない。作品名を" +
-              "そのまま並べるだけの要約にはせず、必ず具体的な共通点の指摘を含める。選ばれた作品の" +
-              "うち少なくとも2本のタイトルに触れる。",
+              "診断本文。600〜900字程度の日本語。選ばれた作品の『あらすじ・ジャンル・雰囲気タグ』を" +
+              "実際に読み比べ、そこから見つかる具体的な共通点を根拠にして、性格診断テストのような" +
+              "温かい語り口で書く。『あなたは〜な人なのかもしれません』のように余白を残す言い回しに" +
+              "する。良い/悪いの価値判断の言葉、および『データ・分析・傾向・パターン・構造』のような" +
+              "分析用語は使わない。\n" +
+              "具体性の基準(これを満たさない場合は書き直すこと):\n" +
+              "・『感動する作品が多い』『優しい話が多い』のようなジャンル/タグの言い換えに過ぎない" +
+              "一文だけで終わらせない。なぜそう感じるのか、あらすじのどの場面・どの人物の状況が" +
+              "それを生んでいるのかまで踏み込む(例:単に『別れを描く作品』ではなく『主人公が別れの" +
+              "理由を相手に告げないまま去っていく場面が繰り返される』のように、具体的な出来事の型を" +
+              "指摘する)。\n" +
+              "・共通点は1つだけでなく、性質の異なる2つ以上を見つける(例:①物語の構造や展開の型、" +
+              "②登場人物の立場や心情の型、の両方など)。\n" +
+              "・少なくとも3本のタイトルに触れ、それぞれどの場面・設定が根拠になっているか分かる" +
+              "形で書く(タイトルを並べるだけの要約や、1本だけへの言及で終わらせない)。\n" +
+              "・あらすじが無い/薄い作品しか無かった場合のみ、ジャンルや雰囲気タグから分かる範囲で" +
+              "書いてよい(無理に捏造しない)。",
           },
         },
         required: ["themeTitle", "body"],
@@ -96,8 +109,10 @@ Deno.serve(async (req: Request) => {
       "見えてこない『作品の内容や雰囲気から見つかる共通点』を性格診断テストのような形で",
       "書いてください。思想・世界観・物語の構造・登場人物の在り方などから、できるだけ具体的な",
       "共通点を見つけること(単に『感動する作品が多い』で終わらせず、なぜ感動するのか・",
-      "どんな状況の人物が描かれがちか、まで踏み込む)。",
-      "write_diagnosisツールを必ず1回呼んでください。",
+      "どんな状況の人物が描かれがちか、まで踏み込む)。渡されたあらすじは要約ではなく全文なので、",
+      "固有の場面・設定・人物関係まで具体的に読み取って使ってよい。",
+      "write_diagnosisツールを必ず1回呼んでください。ツールのbodyの説明にある具体性の基準を",
+      "満たしていない内容は出力しないこと。",
       milestone === 10 ? "今月ポケットが10本埋まった、今月最後の診断です。少し締めくくりらしい言葉を添えてよいです。" : "",
     ].filter(Boolean).join("\n");
 
@@ -116,7 +131,7 @@ Deno.serve(async (req: Request) => {
       },
       body: JSON.stringify({
         model: MODEL,
-        max_tokens: 700,
+        max_tokens: 1100,
         system: systemPrompt,
         messages: [{ role: "user", content: userContent }],
         tools: [tool],
@@ -146,7 +161,7 @@ Deno.serve(async (req: Request) => {
 
     const input = toolUse.input || {};
     const themeTitle = typeof input.themeTitle === "string" ? input.themeTitle.trim().slice(0, 60) : "";
-    const diagnosisBody = typeof input.body === "string" ? input.body.trim().slice(0, 1000) : "";
+    const diagnosisBody = typeof input.body === "string" ? input.body.trim().slice(0, 1400) : "";
 
     if (!themeTitle || !diagnosisBody) {
       return new Response(JSON.stringify({ error: "empty_diagnosis_output", raw: input }), {

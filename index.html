@@ -14024,7 +14024,31 @@ async function generateMonthlyDiagnosis(monthMovies, allPocketMovies, milestone)
   const omikujiMovieId = pickOmikujiMovie(todaysGiftMode(allPocketMovies), monthTopTag, usualTopTag, pickedIds);
 
   try{
-    const payloadMovies = monthMovies.slice(0, 10).map(m => ({
+    const diagnosisTargets = monthMovies.slice(0, 10);
+    // 2026-10-20: オーナー指摘「もっと診断らしく(文章の中身の深さ・具体性)」。
+    // MOVIESにはあらすじの要約(synopsis_excerpt、検索用に先頭200文字だけ)
+    // しか無いことが多く、特にアニメ・ドラマ・漫画・小説・音楽はこの要約
+    // 自体すら遅延読み込み(loadNonMovieBigFieldsInBackground)でまだ届いて
+    // いないことがある。診断対象として実際に選ばれたこの最大10件だけ、
+    // ここで本文のあらすじ全文を直接取りに行き、AIに渡す材料を確実に
+    // 用意する(音楽はあらすじ欄自体を使わないため対象外)。
+    const needFullSynopsisIds = diagnosisTargets.filter(m => !m.isMusic).map(m => m.id);
+    if(needFullSynopsisIds.length){
+      try{
+        const { data: synopsisRows, error: synopsisError } = await supabase
+          .from('movies').select(FULL_SYNOPSIS_COLUMNS).in('id', needFullSynopsisIds);
+        if(synopsisError) throw synopsisError;
+        const synopsisById = {};
+        (synopsisRows || []).forEach(r => { synopsisById[r.id] = r.synopsis; });
+        diagnosisTargets.forEach(m => {
+          if(synopsisById[m.id]) m.synopsis = synopsisById[m.id];
+        });
+      }catch(err){
+        console.error('診断対象作品のあらすじ全文取得に失敗しました(要約のまま続行します)', err);
+      }
+    }
+
+    const payloadMovies = diagnosisTargets.map(m => ({
       title: unescapeHtml(m.title),
       mediaTypeLabel: mediaTypeInfo(m).label,
       synopsis: m.synopsis || '',
@@ -14032,12 +14056,30 @@ async function generateMonthlyDiagnosis(monthMovies, allPocketMovies, milestone)
       keywords: m.keywords || [],
       emotionTags: m.tags || []
     }));
-    const { data, error } = await supabase.functions.invoke('generate-diagnosis', {
-      body: { movies: payloadMovies, milestone, usualTopTagLabel: usualTopTag }
-    });
-    if(error) throw error;
-    if(data?.error) throw new Error(data.error);
-    if(!data?.themeTitle || !data?.body) throw new Error('empty_ai_diagnosis_output');
+    // 実測で、同じ呼び出しを間を置いて単発で試すと成功するのに、カタログの
+    // 裏読み込みが同時に走っている状況だとこの1回だけのinvokeが失敗し、
+    // 毎回テンプレート文章にフォールバックしてしまう事故を確認した(接続の
+    // 混雑による一時的な失敗とみられる)。月1回あるかないかの重要な処理
+    // なので、最大3回まで短い間隔を置いて取り直してからフォールバックする。
+    let data = null;
+    let lastErr = null;
+    for(let attempt = 0; attempt < 3; attempt++){
+      if(attempt > 0) await new Promise(r => setTimeout(r, 800));
+      try{
+        const res = await supabase.functions.invoke('generate-diagnosis', {
+          body: { movies: payloadMovies, milestone, usualTopTagLabel: usualTopTag }
+        });
+        if(res.error) throw res.error;
+        if(res.data?.error) throw new Error(res.data.error);
+        if(!res.data?.themeTitle || !res.data?.body) throw new Error('empty_ai_diagnosis_output');
+        data = res.data;
+        lastErr = null;
+        break;
+      }catch(err){
+        lastErr = err;
+      }
+    }
+    if(lastErr) throw lastErr;
 
     const usualLine2 = `これまでにポケットへ入れた作品は、合わせて${allPocketMovies.length}件になりました。`;
     return {
