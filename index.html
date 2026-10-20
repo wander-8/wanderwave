@@ -14117,16 +14117,87 @@ function pickOmikujiCandidates(mode, topTag, secondTag, excludeIds, count){
   return picked;
 }
 
-// 2026-10-20: オーナー指摘「ポケットで診断したのに、そこから診断された
-// 作品とは思えない」。従来はタグ1個(トップの感情タグ)の一致だけで
-// カタログ全体から選んでおり、実際に診断対象だった作品そのものとの
-// 繋がりが薄かった。movies.embedding(voyage-embed-backfillで既に計算済み)
-// を使い、診断対象だった作品群(sourceIds)の平均ベクトルに近い作品から
-// 選ぶように強化する。match_movies_by_pocket RPCは既存の値を読むだけで
-// 新たにVoyage APIを呼ばないため、コスト増にはならない。embeddingの
-// バックフィルがまだ届いていない作品が対象だと候補0件になるため、その
-// 場合は従来のタグ一致(pickOmikujiCandidates)に静かにフォールバックする。
+// 2026-10-20: オーナー訂正「ポケットからユーザーの選んだ作品の表現度や
+// 選ばれる感情タグの数値を調べてその数値に近い作品を出してほしかった」。
+// embedding類似度ではなく、診断対象だった作品の実際の数値指標
+// ①感情タグ(ALL_TAGS)の出現頻度分布 ②表現度(intensityAverage、実投票
+// ベースのみ)に近い作品を選ぶ。どちらも既にMOVIES内のデータだけで計算
+// でき、通信・追加コストは一切発生しない。
+function pocketTagProfile(sourceMovies){
+  const counts = {};
+  ALL_TAGS.forEach(t => { counts[t] = 0; });
+  sourceMovies.forEach(m => (m.tags || []).forEach(t => {
+    if(t in counts) counts[t] += 1;
+  }));
+  return counts;
+}
+
+// 推定値(expressionEstimated、実投票0件のフォールバック)しか無い作品は
+// 目安にならないため、実投票があるもの(intensityWeight>0)だけを対象に
+// 平均する。実投票が1件も無ければnull(=表現度では絞らない)を返す。
+function pocketIntensityTarget(sourceMovies){
+  const withData = sourceMovies.filter(m => m.intensityWeight > 0 && !m.expressionEstimated);
+  if(!withData.length) return null;
+  const sum = withData.reduce((s, m) => s + intensityAverage(m), 0);
+  return sum / withData.length;
+}
+
+function scoreCandidateByPocketProfile(m, tagProfile, intensityTarget){
+  let score = 0;
+  (m.tags || []).forEach(t => { score += tagProfile[t] || 0; });
+  if(intensityTarget != null && m.intensityWeight > 0 && !m.expressionEstimated){
+    // 表現度は0〜4程度のスケール。差が小さいほど加点し、タグ一致点数
+    // (整数カウント)と釣り合う程度(最大2点)に収める。
+    const diff = Math.abs(intensityAverage(m) - intensityTarget);
+    score += Math.max(0, 2 - diff);
+  }
+  return score;
+}
+
+function pickOmikujiCandidatesByProfile(mode, sourceMovies, excludeIds, count){
+  const tagProfile = pocketTagProfile(sourceMovies);
+  const hasTagSignal = Object.values(tagProfile).some(v => v > 0);
+  const intensityTarget = pocketIntensityTarget(sourceMovies);
+  if(!hasTagSignal && intensityTarget == null) return [];
+
+  const scored = MOVIES
+    .filter(m => !excludeIds.includes(m.id) && isInCatalogMode(m, mode))
+    .map(m => ({ m, score: scoreCandidateByPocketProfile(m, tagProfile, intensityTarget) }))
+    .filter(x => x.score > 0)
+    .sort((a, b) => b.score - a.score);
+  if(!scored.length) return [];
+
+  // タグ一致数は整数のため同点が並びやすい。上位を広めに取ってから日付
+  // シードで選ぶことで、「今日の贈り物」らしい日替わり感を保ちつつ常に
+  // 数値が近い範囲からだけ選ぶ。
+  const topPool = scored.slice(0, Math.max(count * 4, 20)).map(x => x.m.id);
+  const seedKey = `movie-omikuji-profile:${excludeIds.slice().sort((a, b) => a - b).join(',')}`;
+  const rand = mulberry32(todaySeed(seedKey));
+  const picked = [];
+  const usedIdx = new Set();
+  const maxTries = topPool.length * 3;
+  let tries = 0;
+  while(picked.length < Math.min(count, topPool.length) && tries < maxTries){
+    const idx = Math.floor(rand() * topPool.length);
+    tries++;
+    if(usedIdx.has(idx)) continue;
+    usedIdx.add(idx);
+    picked.push(topPool[idx]);
+  }
+  return picked;
+}
+
+// 上の数値ベースの選び方(1順位)で候補が1件も無かった場合だけ、意味的な
+// 近さ(movies.embedding、2順位)→トップタグ1個の一致(3順位、最終手段)の
+// 順でフォールバックする。embeddingはvoyage-embed-backfillで既に計算済みの
+// 値を読むだけで新たにVoyage APIを呼ばないため、どちらの経路でも追加の
+// API課金は発生しない。
 async function pickSmartOmikujiCandidates(mode, topTag, sourceIds, count){
+  const sourceMovies = sourceIds.map(id => MOVIES.find(m => m.id === id)).filter(Boolean);
+
+  const profilePicks = pickOmikujiCandidatesByProfile(mode, sourceMovies, sourceIds, count);
+  if(profilePicks.length) return profilePicks;
+
   try{
     const { data, error } = await supabase.rpc('match_movies_by_pocket', {
       source_ids: sourceIds,
@@ -14139,7 +14210,7 @@ async function pickSmartOmikujiCandidates(mode, topTag, sourceIds, count){
       .filter(m => m && isInCatalogMode(m, mode));
     if(ranked.length) return ranked.slice(0, count).map(m => m.id);
   }catch(err){
-    console.error('ポケットに近い作品の検索に失敗しました(タグ一致にフォールバックします)', err);
+    console.error('ポケットに近い作品の検索(embedding)に失敗しました(タグ一致にフォールバックします)', err);
   }
   return pickOmikujiCandidates(mode, topTag, null, sourceIds, count);
 }
