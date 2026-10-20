@@ -5113,6 +5113,18 @@ function tmdbSeedOnLoveScale(m){
 function hasLoveBasis(m){
   return m.loveCount > 0 || tmdbSeedOnLoveScale(m) != null;
 }
+// 2026-10-20: オーナー判断「音楽のハート、今だけ消しておく?」。音楽は
+// TMDB/楽天のような外部評価の種が無く(MusicBrainzのレーティングも実際の
+// カタログで試したところカバー率25%・投票数2〜4件程度と薄すぎて採用を
+// 見送った)、実際のタップがある作品だけまばらにハートが出て、一覧の
+// 見た目がちぐはぐになっていた。良い代わりのデータが見つかるまでの間、
+// 一覧・カード系の表示(buildCardHTML/buildHomeSceneResultItemHTML)だけで
+// 音楽のハートを一律非表示にする。hasLoveBasis自体は変えないので、
+// 詳細ページ・並び替え・「今愛されている作品」等、実データをそのまま
+// 使いたい箇所には影響しない。
+function showLoveInCard(m){
+  return !m.isMusic && hasLoveBasis(m);
+}
 function loveAverage(m){
   const seed = tmdbSeedOnLoveScale(m);
   if(seed == null) return m.loveCount === 0 ? 0 : m.loveSum / m.loveCount;
@@ -6226,7 +6238,7 @@ function buildCardHTML(m, opts){
       ${isLean ? '' : `
       <div class="result-year">${m.year}</div>
       ${reasonHTML}
-      ${hasLoveBasis(m) ? `
+      ${showLoveInCard(m) ? `
       <div class="interest-row">
         <div class="interest-bar-track"><div class="interest-bar-fill" style="width:${(avg/5)*100}%"></div></div>
         <span class="interest-pct">${HEART_ICON} ${loveScoreText(m)}</span>
@@ -6925,7 +6937,7 @@ function buildHomeSceneResultItemHTML(m){
   // オーナー指摘:「ハートの数だけタイトルの下に置いて欲しかった。あらすじは
   // 右に置いて欲しかった。棒線はいらない」。バー(.interest-bar-track)や
   // 件数の文(.interest-count)は出さず、ハート+スコアだけの最小表示にする。
-  const loveHTML = hasLoveBasis(m) ? `<div class="result-love-row">${HEART_ICON} ${loveScoreText(m)}</div>` : '';
+  const loveHTML = showLoveInCard(m) ? `<div class="result-love-row">${HEART_ICON} ${loveScoreText(m)}</div>` : '';
   // オーナー指摘:「場面カードの作品、その作品の詳細まで飛べるように」。
   // 以前はポスター画像(.result-poster)だけがタップ対象だったが、行全体
   // (.result-item)をタップ対象にして、タイトル・あらすじ側を押しても
