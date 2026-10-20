@@ -1211,10 +1211,6 @@
   .interest-pct{ font-size: 13px; font-weight:600; color: var(--love); white-space:nowrap; display:inline-flex; align-items:center; gap:3px; }
   .interest-pct .heart-icon{ width: 12px; height: 11px; }
   .interest-count{ font-size: 11.5px; color: var(--ink-soft); }
-  /* 「ポケットから見えた、あなた向けの○○」棚の一言理由(オーナー要望:
-     「ポイントも簡略的に書いてほしい」)。result-year/interest-countと
-     同じ控えめなキャプション扱いにする。 */
-  .pocket-reason-text{ font-size: 11px; color: var(--ink-soft); margin-bottom: 4px; line-height:1.3; }
 
   .meter-row{ display:flex; gap: 22px; margin: 10px 0 12px; }
   .meter{ flex:1; }
@@ -6183,17 +6179,12 @@ function buildCardHTML(m, opts){
   // 「音楽が他の項目と一緒にされてないのが気になる」)、埋もれて見えなく
   // ならないようポスターに縁取りを付けるだけの控えめな強調。
   const musicHighlightClass = (opts && opts.highlightMusic && m.isMusic) ? ' home-mood-music-highlight' : '';
-  // opts.reasonText: 「ポケットから見えた、あなた向けの○○」棚だけで使う、
-  // この作品が選ばれた理由の一言(オーナー要望:「ポイントも簡略的に
-  // 書いてほしい」)。呼び出し元で既にエスケープ済みの短い文字列を渡す。
-  const reasonHTML = (opts && opts.reasonText) ? `<div class="pocket-reason-text">${opts.reasonText}</div>` : '';
   return `
     <div class="result-card${musicHighlightClass}" onclick="${clickHandler}">
       <div class="poster-thumb" style="background:${m.posterColor}">${posterImg}${initialOrTitle}${typeBadge}${removeBtn}${playBtn}</div>
       ${overlayTitle ? '' : `<div class="result-title">${m.title}</div>`}
       ${isLean ? '' : `
       <div class="result-year">${m.year}</div>
-      ${reasonHTML}
       ${showLoveInCard(m) ? `
       <div class="interest-row">
         <div class="interest-bar-track"><div class="interest-bar-fill" style="width:${(avg/5)*100}%"></div></div>
@@ -6508,23 +6499,10 @@ function renderHomeRows(){
       const pocketIds = new Set(pocketMovies.map(m => m.id));
       const candidatePool = discoveryMovies.filter(m => isInCatalogMode(m, catalogMode) && !pocketIds.has(m.id));
       const scored = candidatePool.map(m => {
-        // オーナー要望:「ポイントも簡略的に書いてほしい」。一番点数に
-        // 効いた手がかり(監督/作者/アーティストの一致 > ジャンルの一致 >
-        // 感情タグの一致、の順)を、カード下の一言理由として残しておく。
-        const matchedGenres = (m.genre || []).filter(g => genreWeights[g] > 0).sort((a, b) => genreWeights[b] - genreWeights[a]);
-        const matchedTags = m.tags.filter(t => tagWeights[t] > 0).sort((a, b) => tagWeights[b] - tagWeights[a]);
-        const creatorMatch = pocketCreators.has(m.director);
-        const tagScore = matchedTags.reduce((sum, t) => sum + tagWeights[t], 0);
-        const genreScore = matchedGenres.reduce((sum, g) => sum + genreWeights[g], 0) * 2;
-        const artistScore = creatorMatch ? 5 : 0;
-        const reasonText = creatorMatch
-          ? `よく選ぶ${CATALOG_MODE_CREATOR_LABEL[catalogMode] || '制作者'}、${escapeHtml(m.director)}の作品`
-          : matchedGenres.length
-          ? `「${escapeHtml(matchedGenres[0])}」が好みに近い作品`
-          : matchedTags.length
-          ? `「${matchedTags[0]}」の雰囲気が近い作品`
-          : '';
-        return { m, score: tagScore + genreScore + artistScore, reasonText };
+        const tagScore = m.tags.reduce((sum, t) => sum + (tagWeights[t] || 0), 0);
+        const genreScore = (m.genre || []).reduce((sum, g) => sum + (genreWeights[g] || 0), 0) * 2;
+        const artistScore = pocketCreators.has(m.director) ? 5 : 0;
+        return { m, score: tagScore + genreScore + artistScore };
       })
         .filter(x => x.score > 0)
         .sort((a, b) => b.score - a.score || (loveAverage(b.m) - loveAverage(a.m)));
@@ -6532,15 +6510,19 @@ function renderHomeRows(){
       const personalPicks = seededShuffle(widePool, `pocket-personal:${catalogMode}`).slice(0, 14);
       if(personalPicks.length){
         const modeLabel = (CATALOG_MODES.find(([mode]) => mode === catalogMode) || [])[1] || '';
-        // オーナー要望:「あなたのポケットから見たのおすすめ理由ざっくりと
-        // タイトルの隣におこうかな。ボタンを置いてタップすると見えるように」。
-        // 他のⓘボタン(愛度・表現度)と同じshowInfo()の仕組みをそのまま使う。
+        // 2026-10-20訂正: オーナー「ボタンを置いてもらったポケットから見えた
+        // おすすめの欄の説明の方に、ユーザーのポケットの中身から分析した
+        // おすすめの理由置いて欲しかった。作品の下にはいらない」。カード
+        // 個別の理由表示(.pocket-reason-text)はやめ、ⓘボタンの説明文を
+        // 固定の一般論ではなく、実際にこのユーザーのポケットから集計した
+        // タグ・ジャンル・作り手の分析結果にする(buildPocketAnalysisSummary)。
+        const summary = buildPocketAnalysisSummary(tagWeights, genreWeights, pocketCreators, catalogMode);
         html += `
           <div class="section-label-row">
             <div class="section-label">ポケットから見えた、あなた向けの${modeLabel}</div>
-            <button class="info-icon" onclick="showInfo('この棚について', 'ポケットに入れた作品の感情タグやジャンル、よく選ぶ監督・作者・アーティストから、好みに近い作品をざっくり選んでいます。各カードの下にも、一番の決め手になった理由を短く添えています。')">ⓘ</button>
+            <button class="info-icon" data-summary="${escapeHtml(summary)}" onclick="showInfo('この棚について', this.dataset.summary)">ⓘ</button>
           </div>
-          <div class="results">${personalPicks.map(x => buildCardHTML(x.m, { reasonText: x.reasonText })).join('')}</div>
+          <div class="results">${personalPicks.map(x => buildCardHTML(x.m)).join('')}</div>
         `;
       }
     }
@@ -10401,6 +10383,26 @@ const CATALOG_MODES = [
 const CATALOG_MODE_CREATOR_LABEL = {
   movie: '監督', anime: '監督', drama: '監督', manga: '作者', novel: '作者', music: 'アーティスト'
 };
+// 2026-10-20: オーナー「ポケットから見えたおすすめの欄の説明の方に、
+// ユーザーのポケットの中身から分析したおすすめの理由置いて欲しかった」。
+// renderHomeRowsが集計したtagWeights/genreWeights/pocketCreatorsから、
+// このユーザー自身のポケットの実際の傾向をざっくり言葉にする(ⓘボタンの
+// showInfo()に渡すだけなので、textContentとして使われる=HTMLエスケープ
+// 不要な生テキストのまま返してよい)。
+function buildPocketAnalysisSummary(tagWeights, genreWeights, pocketCreators, catalogMode){
+  const topTags = Object.keys(tagWeights).filter(t => tagWeights[t] > 0).sort((a, b) => tagWeights[b] - tagWeights[a]).slice(0, 3);
+  const topGenres = Object.keys(genreWeights).filter(g => genreWeights[g] > 0).sort((a, b) => genreWeights[b] - genreWeights[a]).slice(0, 3);
+  const topCreators = Array.from(pocketCreators).slice(0, 3);
+  const parts = [];
+  if(topTags.length) parts.push(`あなたのポケットには「${topTags.join('」「')}」のような気分の作品が多く入っています。`);
+  if(topGenres.length) parts.push(`ジャンルでは「${topGenres.join('」「')}」が目立ちます。`);
+  if(topCreators.length){
+    const creatorLabel = CATALOG_MODE_CREATOR_LABEL[catalogMode] || '制作者';
+    parts.push(`よく選んでいる${creatorLabel}: ${topCreators.join('、')}。`);
+  }
+  if(!parts.length) return 'ポケットに入れた作品の感情タグやジャンルから、好みに近い作品をざっくり選んでいます。';
+  return parts.join('\n');
+}
 function updateCatalogModeToggleUI(){
   const mode = state.catalogMode;
   const landingActive = state.homeLandingActive;
