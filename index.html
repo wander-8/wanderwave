@@ -7322,6 +7322,14 @@ async function renderWeeklyFeature(){
 // 特集の対象作品は生成時点で既に選ばれている(selected_movie_ids)ので、
 // 場面カードと違いスコアリングや配信確認の非同期取得は不要で即座に描画できる。
 function openWeeklyFeature(id){
+  // オーナー指摘:「ユーザーがバナーを押すと閉じてほしい」。既に開いている
+  // カードをもう一度タップした場合は、開き直すのではなく結果欄を閉じる。
+  if(openWeeklyFeatureId === id){
+    openWeeklyFeatureId = null;
+    document.querySelectorAll('#weekly-feature-row .feature-card').forEach(el => el.classList.remove('active'));
+    document.getElementById('weekly-feature-results').classList.remove('open');
+    return;
+  }
   const feature = WEEKLY_FEATURES.find(f => f.id === id);
   if(!feature) return;
   openWeeklyFeatureId = id;
