@@ -6576,8 +6576,14 @@ function renderHomeRows(){
       const personalPicks = seededShuffle(widePool, `pocket-personal:${catalogMode}`).slice(0, 14);
       if(personalPicks.length){
         const modeLabel = (CATALOG_MODES.find(([mode]) => mode === catalogMode) || [])[1] || '';
+        // オーナー要望:「あなたのポケットから見たのおすすめ理由ざっくりと
+        // タイトルの隣におこうかな。ボタンを置いてタップすると見えるように」。
+        // 他のⓘボタン(愛度・表現度)と同じshowInfo()の仕組みをそのまま使う。
         html += `
-          <div class="section-label">ポケットから見えた、あなた向けの${modeLabel}</div>
+          <div class="section-label-row">
+            <div class="section-label">ポケットから見えた、あなた向けの${modeLabel}</div>
+            <button class="info-icon" onclick="showInfo('この棚について', 'ポケットに入れた作品の感情タグやジャンル、よく選ぶ監督・作者・アーティストから、好みに近い作品をざっくり選んでいます。各カードの下にも、一番の決め手になった理由を短く添えています。')">ⓘ</button>
+          </div>
           <div class="results">${personalPicks.map(x => buildCardHTML(x.m, { reasonText: x.reasonText })).join('')}</div>
         `;
       }
