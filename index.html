@@ -1243,6 +1243,10 @@
   .interest-pct{ font-size: 13px; font-weight:600; color: var(--love); white-space:nowrap; display:inline-flex; align-items:center; gap:3px; }
   .interest-pct .heart-icon{ width: 12px; height: 11px; }
   .interest-count{ font-size: 11.5px; color: var(--ink-soft); }
+  /* 「ポケットから見えた、あなた向けの○○」棚の一言理由(オーナー要望:
+     「ポイントも簡略的に書いてほしい」)。result-year/interest-countと
+     同じ控えめなキャプション扱いにする。 */
+  .pocket-reason-text{ font-size: 11px; color: var(--ink-soft); margin-bottom: 4px; line-height:1.3; }
 
   .meter-row{ display:flex; gap: 22px; margin: 10px 0 12px; }
   .meter{ flex:1; }
@@ -6230,12 +6234,17 @@ function buildCardHTML(m, opts){
   // 「音楽が他の項目と一緒にされてないのが気になる」)、埋もれて見えなく
   // ならないようポスターに縁取りを付けるだけの控えめな強調。
   const musicHighlightClass = (opts && opts.highlightMusic && m.isMusic) ? ' home-mood-music-highlight' : '';
+  // opts.reasonText: 「ポケットから見えた、あなた向けの○○」棚だけで使う、
+  // この作品が選ばれた理由の一言(オーナー要望:「ポイントも簡略的に
+  // 書いてほしい」)。呼び出し元で既にエスケープ済みの短い文字列を渡す。
+  const reasonHTML = (opts && opts.reasonText) ? `<div class="pocket-reason-text">${opts.reasonText}</div>` : '';
   return `
     <div class="result-card${musicHighlightClass}" onclick="${clickHandler}">
       <div class="poster-thumb" style="background:${m.posterColor}">${posterImg}${initialOrTitle}${typeBadge}${removeBtn}${playBtn}</div>
       ${overlayTitle ? '' : `<div class="result-title">${m.title}</div>`}
       ${isLean ? '' : `
       <div class="result-year">${m.year}</div>
+      ${reasonHTML}
       ${hasLoveBasis(m) ? `
       <div class="interest-row">
         <div class="interest-bar-track"><div class="interest-bar-fill" style="width:${(avg/5)*100}%"></div></div>
@@ -6528,41 +6537,55 @@ function renderHomeRows(){
     `;
   }
 
-  // 「ポケットから見えた、あなた向けの音楽」棚: 音楽モードのホームでだけ、
-  // 「今話題の新作」の直下に出す(オーナー要望:「ポケットの中身から
-  // ユーザーの好み割り出して最新の作品の下にユーザー向けの音楽一覧」)。
+  // 「ポケットから見えた、あなた向けの○○」棚: 元は音楽モード限定だったが、
+  // オーナー要望(2026-10-20):「音楽以外の項目にもこのポケットから見えた
+  // 〜のやつ作って欲しい」を受けて全モード共通にした。
   // ポケットは映画・漫画等も含む横断的な「気になる」保管庫なので、好みの
   // 手がかりは感情タグ(全メディア共通の語彙)を軸にする。加えてポケットに
-  // 音楽そのものが入っていれば、そのジャンル・アーティスト(director列を
-  // 流用)の一致も強めの手がかりとして使う。ポケットが空(未登録・未使用)
-  // の間は手がかりが無いので棚ごと出さない。
-  if(catalogMode === 'music'){
+  // 今のモードと同じ種別の作品が入っていれば、そのジャンル・監督/作者/
+  // アーティスト(director列を流用)の一致も強めの手がかりとして使う。
+  // ポケットが空(未登録・未使用)の間は手がかりが無いので棚ごと出さない。
+  {
     const pocketMovies = getPocketMovies();
     if(pocketMovies.length){
       // 直近の月を重く、前の月を少し軽く使う(オーナー仕様:「推薦は、直近の
       // 月を重く、前の月を少し軽く使う。空っぽに見えないようにする」)。
       const tagWeights = {};
       pocketMovies.forEach(m => m.tags.forEach(t => { tagWeights[t] = (tagWeights[t] || 0) + pocketMovieWeight(m.id); }));
-      const pocketMusic = pocketMovies.filter(m => m.isMusic);
+      const pocketSameMode = pocketMovies.filter(m => isInCatalogMode(m, catalogMode));
       const genreWeights = {};
-      pocketMusic.forEach(m => (m.genre || []).forEach(g => { genreWeights[g] = (genreWeights[g] || 0) + pocketMovieWeight(m.id); }));
-      const pocketArtists = new Set(pocketMusic.map(m => m.director).filter(Boolean));
+      pocketSameMode.forEach(m => (m.genre || []).forEach(g => { genreWeights[g] = (genreWeights[g] || 0) + pocketMovieWeight(m.id); }));
+      const pocketCreators = new Set(pocketSameMode.map(m => m.director).filter(Boolean));
       const pocketIds = new Set(pocketMovies.map(m => m.id));
-      const musicPool = discoveryMovies.filter(m => m.isMusic && !pocketIds.has(m.id));
-      const scored = musicPool.map(m => {
-        const tagScore = m.tags.reduce((sum, t) => sum + (tagWeights[t] || 0), 0);
-        const genreScore = (m.genre || []).reduce((sum, g) => sum + (genreWeights[g] || 0), 0) * 2;
-        const artistScore = pocketArtists.has(m.director) ? 5 : 0;
-        return { m, score: tagScore + genreScore + artistScore };
+      const candidatePool = discoveryMovies.filter(m => isInCatalogMode(m, catalogMode) && !pocketIds.has(m.id));
+      const scored = candidatePool.map(m => {
+        // オーナー要望:「ポイントも簡略的に書いてほしい」。一番点数に
+        // 効いた手がかり(監督/作者/アーティストの一致 > ジャンルの一致 >
+        // 感情タグの一致、の順)を、カード下の一言理由として残しておく。
+        const matchedGenres = (m.genre || []).filter(g => genreWeights[g] > 0).sort((a, b) => genreWeights[b] - genreWeights[a]);
+        const matchedTags = m.tags.filter(t => tagWeights[t] > 0).sort((a, b) => tagWeights[b] - tagWeights[a]);
+        const creatorMatch = pocketCreators.has(m.director);
+        const tagScore = matchedTags.reduce((sum, t) => sum + tagWeights[t], 0);
+        const genreScore = matchedGenres.reduce((sum, g) => sum + genreWeights[g], 0) * 2;
+        const artistScore = creatorMatch ? 5 : 0;
+        const reasonText = creatorMatch
+          ? `よく選ぶ${CATALOG_MODE_CREATOR_LABEL[catalogMode] || '制作者'}、${escapeHtml(m.director)}の作品`
+          : matchedGenres.length
+          ? `「${escapeHtml(matchedGenres[0])}」が好みに近い作品`
+          : matchedTags.length
+          ? `「${matchedTags[0]}」の雰囲気が近い作品`
+          : '';
+        return { m, score: tagScore + genreScore + artistScore, reasonText };
       })
         .filter(x => x.score > 0)
         .sort((a, b) => b.score - a.score || (loveAverage(b.m) - loveAverage(a.m)));
-      const widePool = scored.slice(0, 36).map(x => x.m);
-      const personalPicks = seededShuffle(widePool, 'pocket-music').slice(0, 14);
+      const widePool = scored.slice(0, 36);
+      const personalPicks = seededShuffle(widePool, `pocket-personal:${catalogMode}`).slice(0, 14);
       if(personalPicks.length){
+        const modeLabel = (CATALOG_MODES.find(([mode]) => mode === catalogMode) || [])[1] || '';
         html += `
-          <div class="section-label">ポケットから見えた、あなた向けの音楽</div>
-          <div class="results">${personalPicks.map(buildCardHTML).join('')}</div>
+          <div class="section-label">ポケットから見えた、あなた向けの${modeLabel}</div>
+          <div class="results">${personalPicks.map(x => buildCardHTML(x.m, { reasonText: x.reasonText })).join('')}</div>
         `;
       }
     }
@@ -10362,6 +10385,11 @@ const CATALOG_MODES = [
   ['novel', '本'],
   ['music', '音楽'],
 ];
+// 「ポケットから見えた、あなた向けの○○」棚(renderHomeRows参照)で、
+// director列を流用している作り手の呼び方をモードごとに出し分ける。
+const CATALOG_MODE_CREATOR_LABEL = {
+  movie: '監督', anime: '監督', drama: '監督', manga: '作者', novel: '作者', music: 'アーティスト'
+};
 function updateCatalogModeToggleUI(){
   const mode = state.catalogMode;
   const landingActive = state.homeLandingActive;
