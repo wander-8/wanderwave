@@ -40,6 +40,15 @@ function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+function shuffle<T>(arr: T[]): T[] {
+  const out = arr.slice();
+  for (let i = out.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [out[i], out[j]] = [out[j], out[i]];
+  }
+  return out;
+}
+
 // Last.fmは補助情報。失敗・該当無しでも分類自体は続行する(必須ではない)。
 async function fetchLastfmTags(artist: string, track: string): Promise<string[]> {
   if (!LASTFM_API_KEY || !artist) return [];
@@ -60,25 +69,123 @@ async function fetchLastfmTags(artist: string, track: string): Promise<string[]>
   }
 }
 
+// 2026-10-20: オーナー指摘「クレジット使いすぎ」を受けてコスト見直し。
+// 以前は曲1件ごとにAnthropic APIを1回呼んでおり、場面一覧+説明文の
+// システムプロンプト(500トークン超)を曲の数だけ毎回送り直していたため、
+// 残り6,941件だけでも数百万トークン規模の無駄な繰り返しが発生していた。
+// 曲をBATCH_SIZE件まとめて1回のAPI呼び出しで判定することで、システム
+// プロンプトの送信回数を1/BATCH_SIZEに減らす(出力トークン自体は曲の数に
+// 比例するので削れないが、支配的だった繰り返しコストはここで削れる)。
+const BATCH_SIZE = 15;
+const BATCH_CONCURRENCY = 2;
+
 const tool = {
-  name: "classify_music_scene",
-  description: "曲を、挙げられた「場面」タグの中から当てはまるものだけ選ぶ(0〜2個)",
+  name: "classify_music_scenes_batch",
+  description: "曲のリストについて、曲ごとに「場面」タグの中から当てはまるものだけ選ぶ(各曲0〜2個)",
   input_schema: {
     type: "object",
     properties: {
-      scenes: {
+      results: {
         type: "array",
-        items: { type: "string", enum: MUSIC_SCENE_NAMES },
-        maxItems: 2,
-        description:
-          "この曲の雰囲気・知られている使われ方(アニメ主題歌なら作品の雰囲気も参考にする)から、" +
-          "一覧の中で本当に当てはまるものだけを0〜2個選ぶ。どれにも強く当てはまらない場合は空配列にする" +
-          "(無理に当てはめない)。知らない曲・情報が無い曲も空配列でよい。",
+        description: "入力した曲の番号(index)ごとの分類結果。入力した曲と同じ件数・同じindexを必ずすべて含めること。",
+        items: {
+          type: "object",
+          properties: {
+            index: { type: "integer", description: "入力した曲リストでの番号(0始まり)" },
+            scenes: {
+              type: "array",
+              items: { type: "string", enum: MUSIC_SCENE_NAMES },
+              maxItems: 2,
+              description: "この曲の雰囲気・知られている使われ方から一覧の中で本当に当てはまるものだけを0〜2個。どれにも強く当てはまらなければ空配列。",
+            },
+          },
+          required: ["index", "scenes"],
+        },
       },
     },
-    required: ["scenes"],
+    required: ["results"],
   },
 };
+
+async function classifyBatch(batch: any[]): Promise<any[]> {
+  const lastfmTagsList = await Promise.all(batch.map((m) => fetchLastfmTags(m.director || "", m.title)));
+
+  const systemPrompt = [
+    "あなたは音楽アプリ「Wander」の選曲担当です。複数の曲について、曲名・アーティスト名(分かる場合は",
+    "ジャンル・参考タグ)から、その曲の雰囲気や知られている使われ方(アニメ主題歌等)をもとに、",
+    "以下の「場面」の一覧から当てはまるものだけを選んでください。複数が薄く当てはまりそうな時は、",
+    "一番特徴的に・具体的に当てはまる場面を優先してください(「明るい曲だから元気が欲しい時」のような",
+    "どの曲にでも言える安易な選び方は避ける)。同じジャンルやアーティストの曲が複数並んでいても、",
+    "それぞれ独立に判断してください。前の曲と同じジャンルだから・似た並びだからという理由だけで",
+    "同じ分類を機械的に繰り返さないこと。知らない曲は(ジャンルだけ分かっていても)空配列にしてください。",
+    "",
+    MUSIC_SCENES.map((s) => `- 「${s.name}」: ${s.hint}`).join("\n"),
+    "",
+    "classify_music_scenes_batchツールを必ず1回呼んでください。resultsには入力した曲と同じ件数・",
+    "同じindexをすべて含めてください。曲を知らない・判断材料が無い場合や、どの場面にも強い特徴が無い",
+    "場合は無理に当てはめず空配列にしてください。",
+  ].join("\n");
+
+  const userLines = batch
+    .map((m, idx) => {
+      const parts = [`${idx}. 曲名: ${m.title}`];
+      if (m.director) parts.push(`アーティスト: ${m.director}`);
+      if (m.genre?.length) parts.push(`ジャンル: ${m.genre.join("、")}`);
+      const tags = lastfmTagsList[idx];
+      if (tags.length) parts.push(`参考タグ(Last.fm、ジャンル寄りで曲の雰囲気そのものではないことが多い): ${tags.join("、")}`);
+      return parts.join(" / ");
+    })
+    .join("\n");
+
+  const res = await fetch(ANTHROPIC_ENDPOINT, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "x-api-key": ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01" },
+    body: JSON.stringify({
+      model: MODEL,
+      max_tokens: 1200,
+      system: systemPrompt,
+      messages: [{ role: "user", content: userLines }],
+      tools: [tool],
+      tool_choice: { type: "tool", name: "classify_music_scenes_batch" },
+    }),
+  });
+  if (!res.ok) {
+    // 2026-10-16: 原因調査済み(Anthropicのクレジット残高切れ、402/400)。
+    // 再発時に再び切り分けられるよう、デバッグ用のstatus/bodyは
+    // サーバー側ログにだけ残す(呼び出し元のレスポンスには含めない)。
+    console.error(`Anthropic API error for batch starting at movie ${batch[0]?.id}: ${res.status} ${await res.text()}`);
+    return batch.map((m) => ({ movie_id: m.id, title: m.title, transientError: true }));
+  }
+  const data = await res.json();
+  const toolUse = (data?.content || []).find((c: any) => c.type === "tool_use" && c.name === "classify_music_scenes_batch");
+  if (!toolUse) {
+    console.error(`No tool_use in Anthropic response for batch starting at movie ${batch[0]?.id}: ${JSON.stringify(data).slice(0, 300)}`);
+    return batch.map((m) => ({ movie_id: m.id, title: m.title, transientError: true }));
+  }
+
+  const byIndex = new Map<number, string[]>();
+  for (const r of toolUse.input?.results || []) {
+    if (typeof r?.index === "number") {
+      byIndex.set(r.index, (r.scenes || []).filter((s: string) => MUSIC_SCENE_NAMES.includes(s)));
+    }
+  }
+
+  const out: any[] = [];
+  for (let idx = 0; idx < batch.length; idx++) {
+    const m = batch[idx];
+    const got = byIndex.has(idx);
+    const scenes = byIndex.get(idx) || [];
+    // モデルが一部のindexを返し忘れた場合は、その曲だけ未分類のまま次回に
+    // 回す(music_scene_checked_atを更新しない)。transientErrorとして
+    // 扱えば呼び出し元のdoneループでも誤って「完了」扱いされない。
+    if (!got) {
+      out.push({ movie_id: m.id, title: m.title, transientError: true });
+      continue;
+    }
+    out.push({ movie_id: m.id, title: m.title, scenes });
+  }
+  return out;
+}
 
 Deno.serve(async (req: Request) => {
   try {
@@ -93,76 +200,37 @@ Deno.serve(async (req: Request) => {
       .order("id", { ascending: true })
       .range(offset, offset + limit - 1);
     if (error) throw error;
-    const todo = rows || [];
+    // 取得元はDBの取り込み順(=id順)でまとまって同じジャンル・同じ
+    // アーティストが連続しがちで(確認済み:同じレゲエのアーティストが
+    // 連続16件)、そのままバッチ化すると「同じジャンルが並んでいる」こと
+    // 自体をAIが手がかりにしてしまい、本来は空配列にすべき無名の曲にまで
+    // 前の曲と同じタグを機械的にコピーしてしまう事故が実際に起きた(試験
+    // 投入で16件中16件が同一タグになった)。1回のAPI呼び出しに渡す前に
+    // シャッフルして同じジャンルの並びを崩す。
+    const todo = shuffle(rows || []);
+
+    const batches: any[][] = [];
+    for (let i = 0; i < todo.length; i += BATCH_SIZE) batches.push(todo.slice(i, i + BATCH_SIZE));
 
     const results: any[] = [];
-    const CONCURRENCY = 3;
-    for (let i = 0; i < todo.length; i += CONCURRENCY) {
-      const chunk = todo.slice(i, i + CONCURRENCY);
-      const chunkResults = await Promise.all(
-        chunk.map(async (m: any) => {
-          const artist = m.director || "";
-          const lastfmTags = await fetchLastfmTags(artist, m.title);
-
-          const systemPrompt = [
-            "あなたは音楽アプリ「Wander」の選曲担当です。曲名・アーティスト名(分かる場合はジャンル・",
-            "参考タグ)から、その曲の雰囲気や知られている使われ方(アニメ主題歌等)をもとに、",
-            "以下の「場面」の一覧から当てはまるものだけを選んでください。複数が薄く当てはまりそうな時は、",
-            "一番特徴的に・具体的に当てはまる場面を優先してください(「明るい曲だから元気が欲しい時」のような",
-            "どの曲にでも言える安易な選び方は避ける)。",
-            "",
-            MUSIC_SCENES.map((s) => `- 「${s.name}」: ${s.hint}`).join("\n"),
-            "",
-            "classify_music_sceneツールを必ず1回呼んでください。曲を知らない・判断材料が無い場合や、",
-            "どの場面にも強い特徴が無い場合は無理に当てはめず空配列にしてください。",
-          ].join("\n");
-
-          const userLines = [`曲名: ${m.title}`];
-          if (artist) userLines.push(`アーティスト: ${artist}`);
-          if (m.genre?.length) userLines.push(`ジャンル: ${m.genre.join("、")}`);
-          if (lastfmTags.length) userLines.push(`参考タグ(Last.fm、ジャンル寄りで曲の雰囲気そのものではないことが多い): ${lastfmTags.join("、")}`);
-
-          const res = await fetch(ANTHROPIC_ENDPOINT, {
-            method: "POST",
-            headers: { "Content-Type": "application/json", "x-api-key": ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01" },
-            body: JSON.stringify({
-              model: MODEL,
-              max_tokens: 200,
-              system: systemPrompt,
-              messages: [{ role: "user", content: userLines.join("\n") }],
-              tools: [tool],
-              tool_choice: { type: "tool", name: "classify_music_scene" },
-            }),
-          });
-          if (!res.ok) {
-            // 2026-10-16: 原因調査済み(Anthropicのクレジット残高切れ、402/400)。
-            // 再発時に再び切り分けられるよう、デバッグ用のstatus/bodyは
-            // サーバー側ログにだけ残す(呼び出し元のレスポンスには含めない)。
-            console.error(`Anthropic API error for movie ${m.id}: ${res.status} ${await res.text()}`);
-            return { movie_id: m.id, title: m.title, transientError: true };
-          }
-          const data = await res.json();
-          const toolUse = (data?.content || []).find((c: any) => c.type === "tool_use" && c.name === "classify_music_scene");
-          if (!toolUse) {
-            console.error(`No tool_use in Anthropic response for movie ${m.id}: ${JSON.stringify(data).slice(0, 300)}`);
-            return { movie_id: m.id, title: m.title, transientError: true };
-          }
-          const scenes: string[] = (toolUse.input?.scenes || []).filter((s: string) => MUSIC_SCENE_NAMES.includes(s));
-
-          if (write) {
-            await supabase
-              .from("movies")
-              .update({
-                music_scene_tags: scenes.length ? scenes : null,
-                music_scene_checked_at: new Date().toISOString(),
-              })
-              .eq("id", m.id);
-          }
-          return { movie_id: m.id, title: m.title, artist, scenes };
-        }),
-      );
-      results.push(...chunkResults);
+    for (let i = 0; i < batches.length; i += BATCH_CONCURRENCY) {
+      const chunk = batches.slice(i, i + BATCH_CONCURRENCY);
+      const chunkResults = await Promise.all(chunk.map((b) => classifyBatch(b)));
+      for (const r of chunkResults) results.push(...r);
       await sleep(200);
+    }
+
+    if (write) {
+      const toWrite = results.filter((r: any) => !r.transientError);
+      for (const r of toWrite) {
+        await supabase
+          .from("movies")
+          .update({
+            music_scene_tags: r.scenes?.length ? r.scenes : null,
+            music_scene_checked_at: new Date().toISOString(),
+          })
+          .eq("id", r.movie_id);
+      }
     }
 
     return new Response(
