@@ -8596,11 +8596,32 @@ function dedupeByNormalizedTitleYear(movies){
   return [...bestByKey.values()];
 }
 
-function renderRecommended(currentMovie){
+// 2026-10-20: オーナー要望「こんな〜もおすすめも、ポケットと同じ仕組みを
+// 利用して、ユーザーが見た作品につけられてる感情タグや場面、表現度を
+// 考慮して反映できないかな」。複数の詳細ページを素早く行き来した時、
+// 先に開いた方のawaitが後から解決して今見ているのとは別の作品の
+// おすすめを上書きしてしまわないよう、homeGiftRenderToken等と同じ
+// トークンで最後に呼ばれた分だけを反映する。
+let renderRecommendedToken = 0;
+async function renderRecommended(currentMovie){
+  const myToken = ++renderRecommendedToken;
   const root = document.getElementById('d-recommended');
   const MIN_COUNT = 12; // 詳細ページのおすすめ欄をもっと見たいとの要望を受けて4→8→12に増量
   const animePreview = isAnimePreviewEnabled();
   const others = MOVIES.filter(m => m.id !== currentMovie.id);
+
+  // 今見ている作品自身の表現度(優先順位:実投票→ポスター/題名のAI判定→
+  // 公式レーティングのAI推定、resolveIntensityByTier参照)を、おすすめの
+  // 近さ判定の基準にする。currentMovieは既にMOVIES内のオブジェクトなので、
+  // 実投票があれば追加の通信なしで即座に分かる。
+  const currentIntensityEntry = (await resolveIntensityByTier([currentMovie.id])).get(currentMovie.id);
+  if(myToken !== renderRecommendedToken) return;
+  const currentIntensityLevel = currentIntensityEntry ? currentIntensityEntry.level : null;
+  // 音楽の「場面」タグ(MUSIC_SCENES、music-scene-classifyでAI分類済み)。
+  // 音楽のページで、かつ場面タグが1つ以上付いている時だけ使う。
+  const currentSceneWeights = (currentMovie.isMusic && currentMovie.musicScenes && currentMovie.musicScenes.length)
+    ? Object.fromEntries(currentMovie.musicScenes.map(s => [s, 1]))
+    : null;
 
   // looksLikeAnimeFilm/isAnimeWorkはグローバル定義(isInCatalogMode参照)を
   // 使う。ここでの再定義はやめた(白雪姫のような海外アニメ映画も対象にする
@@ -8842,12 +8863,47 @@ function renderRecommended(currentMovie){
   // 作品まで幅出しのために混ざってしまい、「関係ある作品以外消して」との
   // 指摘につながった(オーナー指摘)。同じメディア種別同士のおすすめ
   // (movie/anime等)は母数が十分あるため今まで通り0のままでよい。
-  function scoreAndPick(pool, limit, saltKey, minShared = 0){
-    const scored = pool
+  // 2026-10-20: オーナー要望「ポケットと同じ仕組みを利用して、感情タグや
+  // 場面、表現度を考慮して反映できないかな」を受け、感情タグの一致数
+  // (従来通り)に加えて、表現度の近さ(pickOmikujiCandidatesByProfileと
+  // 同じ考え方)・音楽の場面タグの一致(opts.sceneWeights、音楽のページの
+  // 時だけ)もスコアに加える。表現度はDBを引く必要があるため、まずタグ
+  // だけで荒く絞ってから、その絞り込み後の候補だけ表現度を解決する
+  // (コスト最小化、pickOmikujiCandidatesByProfileと同じ段取り)。
+  async function scoreAndPick(pool, limit, saltKey, minShared = 0, opts = {}){
+    const sceneWeights = opts.sceneWeights || null;
+    const tagScored = pool
       .filter(m => !excludeIds.has(m.id))
-      .map(m => ({ m, sharedTags: m.tags.filter(t => currentMovie.tags.includes(t)).length }))
+      .map(m => {
+        const sharedTags = m.tags.filter(t => currentMovie.tags.includes(t)).length;
+        const sceneScore = sceneWeights ? (m.musicScenes || []).filter(s => sceneWeights[s]).length * 2 : 0;
+        return { m, sharedTags, sceneScore };
+      })
       .filter(x => x.sharedTags >= minShared)
-      .sort((a, b) => (b.sharedTags - a.sharedTags) || (loveAverage(b.m) - loveAverage(a.m)));
+      .sort((a, b) => ((b.sharedTags + b.sceneScore) - (a.sharedTags + a.sceneScore)) || (loveAverage(b.m) - loveAverage(a.m)));
+    if(!tagScored.length) return [];
+    const prelimPool = tagScored.slice(0, Math.max(limit * 6, limit + 30));
+
+    let intensityById = new Map();
+    if(opts.intensityTarget != null){
+      intensityById = await resolveIntensityByTier(prelimPool.map(x => x.m.id));
+    }
+
+    const scored = prelimPool.map(x => {
+      let score = x.sharedTags + x.sceneScore;
+      if(opts.intensityTarget != null){
+        const found = intensityById.get(x.m.id);
+        if(found){
+          // 表現度は0〜100スケール。差50でボーナス0、差0で感情タグ1個分
+          // (+2)相当になるよう線形減衰にする(pickOmikujiCandidatesByProfile
+          // と同じ考え方)。
+          const diff = Math.abs(found.level - opts.intensityTarget);
+          score += 2 * Math.max(0, 1 - diff / 50);
+        }
+      }
+      return { m: x.m, score };
+    }).sort((a, b) => b.score - a.score || (loveAverage(b.m) - loveAverage(a.m)));
+
     const widePool = scored.slice(0, Math.max(limit * 3, limit + 12)).map(x => x.m);
     return seededShuffle(widePool, `rec:${currentMovie.id}:${saltKey}`).slice(0, limit);
   }
@@ -8860,12 +8916,14 @@ function renderRecommended(currentMovie){
   const dramaWrap = document.getElementById('d-recommended-drama-wrap');
   if(animePreview && (currentIsDrama || currentIsRegularMovie)){
     const dramaPool = others.filter(m => m.isDrama);
-    const dramaList = scoreAndPick(dramaPool, MIN_COUNT + 2, 'drama', 1);
-    if(dramaList.length){
-      dramaWrap.style.display = 'block';
-      renderMovieCards(document.getElementById('d-recommended-drama'), dramaList, '', { forceMode: 'drama' });
-    } else {
-      dramaWrap.style.display = 'none';
+    const dramaList = await scoreAndPick(dramaPool, MIN_COUNT + 2, 'drama', 1, { intensityTarget: currentIntensityLevel });
+    if(myToken === renderRecommendedToken){
+      if(dramaList.length){
+        dramaWrap.style.display = 'block';
+        renderMovieCards(document.getElementById('d-recommended-drama'), dramaList, '', { forceMode: 'drama' });
+      } else {
+        dramaWrap.style.display = 'none';
+      }
     }
   } else {
     dramaWrap.style.display = 'none';
@@ -8877,12 +8935,14 @@ function renderRecommended(currentMovie){
   const mangaWrap = document.getElementById('d-recommended-manga-wrap');
   if(animePreview && currentIsManga){
     const mangaPool = others.filter(m => m.isManga);
-    const mangaList = scoreAndPick(mangaPool, MIN_COUNT + 2, 'manga', 1);
-    if(mangaList.length){
-      mangaWrap.style.display = 'block';
-      renderMovieCards(document.getElementById('d-recommended-manga'), mangaList, '', { forceMode: 'manga' });
-    } else {
-      mangaWrap.style.display = 'none';
+    const mangaList = await scoreAndPick(mangaPool, MIN_COUNT + 2, 'manga', 1, { intensityTarget: currentIntensityLevel });
+    if(myToken === renderRecommendedToken){
+      if(mangaList.length){
+        mangaWrap.style.display = 'block';
+        renderMovieCards(document.getElementById('d-recommended-manga'), mangaList, '', { forceMode: 'manga' });
+      } else {
+        mangaWrap.style.display = 'none';
+      }
     }
   } else {
     mangaWrap.style.display = 'none';
@@ -8893,12 +8953,14 @@ function renderRecommended(currentMovie){
   const novelWrap = document.getElementById('d-recommended-novel-wrap');
   if(animePreview && currentIsNovel){
     const novelPool = others.filter(m => m.isNovel);
-    const novelList = scoreAndPick(novelPool, MIN_COUNT + 2, 'novel');
-    if(novelList.length){
-      novelWrap.style.display = 'block';
-      renderMovieCards(document.getElementById('d-recommended-novel'), novelList, '', { forceMode: 'novel' });
-    } else {
-      novelWrap.style.display = 'none';
+    const novelList = await scoreAndPick(novelPool, MIN_COUNT + 2, 'novel', 0, { intensityTarget: currentIntensityLevel });
+    if(myToken === renderRecommendedToken){
+      if(novelList.length){
+        novelWrap.style.display = 'block';
+        renderMovieCards(document.getElementById('d-recommended-novel'), novelList, '', { forceMode: 'novel' });
+      } else {
+        novelWrap.style.display = 'none';
+      }
     }
   } else {
     novelWrap.style.display = 'none';
@@ -8913,12 +8975,14 @@ function renderRecommended(currentMovie){
     // MIN_COUNT+2(14件)ではなく、もっと見れるよう大きく増やす。
     const MUSIC_REC_COUNT = 30;
     const musicPool = others.filter(m => m.isMusic);
-    const musicList = scoreAndPick(musicPool, MUSIC_REC_COUNT, 'music');
-    if(musicList.length){
-      musicWrap.style.display = 'block';
-      renderMovieCards(document.getElementById('d-recommended-music'), musicList, '', { forceMode: 'music', inlinePreview: true });
-    } else {
-      musicWrap.style.display = 'none';
+    const musicList = await scoreAndPick(musicPool, MUSIC_REC_COUNT, 'music', 0, { intensityTarget: currentIntensityLevel, sceneWeights: currentSceneWeights });
+    if(myToken === renderRecommendedToken){
+      if(musicList.length){
+        musicWrap.style.display = 'block';
+        renderMovieCards(document.getElementById('d-recommended-music'), musicList, '', { forceMode: 'music', inlinePreview: true });
+      } else {
+        musicWrap.style.display = 'none';
+      }
     }
   } else {
     musicWrap.style.display = 'none';
@@ -8940,14 +9004,16 @@ function renderRecommended(currentMovie){
   } else {
     movieWrap.style.display = 'block';
     const liveActionPool = others.filter(m => !m.isAnime && !looksLikeAnimeFilm(m));
-    const movieList = scoreAndPick(liveActionPool, MIN_COUNT, 'movie');
-    if(animePreview && currentIsAnimeFilm){
-      const animeFilmPool = others.filter(m => looksLikeAnimeFilm(m)
-        && !movieList.some(x => x.id === m.id) && !excludeIds.has(m.id));
-      const sprinkle = seededShuffle(animeFilmPool, `reco-movie-sprinkle:${currentMovie.id}`).slice(0, 2);
-      movieList.push(...sprinkle);
+    const movieList = await scoreAndPick(liveActionPool, MIN_COUNT, 'movie', 0, { intensityTarget: currentIntensityLevel });
+    if(myToken === renderRecommendedToken){
+      if(animePreview && currentIsAnimeFilm){
+        const animeFilmPool = others.filter(m => looksLikeAnimeFilm(m)
+          && !movieList.some(x => x.id === m.id) && !excludeIds.has(m.id));
+        const sprinkle = seededShuffle(animeFilmPool, `reco-movie-sprinkle:${currentMovie.id}`).slice(0, 2);
+        movieList.push(...sprinkle);
+      }
+      renderMovieCards(root, movieList, 'まだおすすめできる作品がありません。', { forceMode: 'movie' });
     }
-    renderMovieCards(root, movieList, 'まだおすすめできる作品がありません。', { forceMode: 'movie' });
   }
 
   // 「アニメ」欄: TVアニメ・アニメ映画のページに加え、
@@ -8960,16 +9026,24 @@ function renderRecommended(currentMovie){
     // 揃えておく(ここだけ別の条件だと、一覧には出るのにおすすめには
     // 出ない、という食い違いになるため)。
     const animePool = others.filter(m => isInCatalogMode(m, 'anime'));
-    const animeList = scoreAndPick(animePool, MIN_COUNT + 2, 'anime');
-    if(animeList.length){
-      animeWrap.style.display = 'block';
-      renderMovieCards(document.getElementById('d-recommended-anime'), animeList, '', { forceMode: 'anime' });
-    } else {
-      animeWrap.style.display = 'none';
+    const animeList = await scoreAndPick(animePool, MIN_COUNT + 2, 'anime', 0, { intensityTarget: currentIntensityLevel });
+    if(myToken === renderRecommendedToken){
+      if(animeList.length){
+        animeWrap.style.display = 'block';
+        renderMovieCards(document.getElementById('d-recommended-anime'), animeList, '', { forceMode: 'anime' });
+      } else {
+        animeWrap.style.display = 'none';
+      }
     }
   } else {
     animeWrap.style.display = 'none';
   }
+
+  // ここから下は同期処理だが、ここまでの間にawait(scoreAndPick等)を
+  // 挟んでいるため、別の詳細ページへ素早く移動済みだと古い方の呼び出しが
+  // 今の画面を上書きしうる。ここより上のrenderRecommendedToken判定と
+  // 同じ理由でまとめてガードする。
+  if(myToken !== renderRecommendedToken) return;
 
   // シリーズ・リメイクは別枠で表示
   const seriesRoot = document.getElementById('d-series-row');
