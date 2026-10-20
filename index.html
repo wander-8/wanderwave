@@ -11617,33 +11617,57 @@ async function selectAllRows(table, columns, applyFilterFn, orderColumn = 'id', 
   const CONCURRENCY = 6;
   const withFilter = (q) => applyFilterFn ? applyFilterFn(q) : q;
 
+  // 1ページ単体の取得が、サーバー側の一時的な混雑(接続待ち・statement_timeoutの
+  // ニアミス等)でエラー(500等)になったり、本当はPAGE_SIZE分あるのに短く
+  // 打ち切られたページを返してくることが、実際に本番で起きている(確認済み:
+  // movies残り分の取得が途中で500エラーになり、Promise.all内の1件の失敗で
+  // selectAllRows全体がthrowし、それまで積んだ分も含めて丸ごと消え、94,353件中
+  // 59,689件しか読み込めないまま二度と埋まらなかった事故。加えて、短いページを
+  // 「もう最後まで読んだ」と無条件で確定させていたため、一時的な打ち切りを
+  // 本当の末尾と誤判定して取りこぼすケースもあった)。1ページごとに最大3回まで
+  // 再試行し、エラーはthrowせず再試行、短い(0件以外でPAGE_SIZE未満の)ページも
+  // 最後の再試行まではもう一度取り直して「本当に末尾か、一時的な打ち切りか」を
+  // 確かめる(再試行で件数が伸びたら打ち切られていた証拠なので、伸びた方を使う)。
+  const fetchPageWithRetry = async (from) => {
+    let best = null;
+    for(let attempt = 0; attempt < 3; attempt++){
+      if(attempt > 0) await new Promise(r => setTimeout(r, 700));
+      try{
+        // .range()での並び替えなしページングは、Postgres側の実行計画が
+        // リクエストごとに変わりうるため危険(実際に発生:.or()フィルター付きの
+        // 取得で、あるページだけ本来より少ない件数を返し、まだ後ろに行が
+        // 残っているのに「最後まで読んだ」と誤判定してしまい、drama作品が
+        // 501件中4件しか読み込まれない事故になった)。idで安定した並び順を
+        // 固定し、ページ同士が同じ行を指し続けるようにする。
+        const { data, error } = await withFilter(supabase.from(table).select(columns)).order(orderColumn, { ascending: true }).range(from, from + PAGE_SIZE - 1);
+        if(error) throw error;
+        const rows = data || [];
+        if(!best || rows.length > best.length) best = rows;
+        // フルページ(=まだ後ろに行がある前提で問題ない)か、0件(本当の末尾)
+        // ならそれ以上粘る必要はない。短いページだけ、再試行の余地があるうちは
+        // 粘って確かめる。
+        if(rows.length === PAGE_SIZE || rows.length === 0) return rows;
+      }catch(err){
+        if(attempt === 2){
+          if(best) return best; // 前の試行で何か取れていれば、全滅よりはそれを使う
+          throw err;
+        }
+      }
+    }
+    return best || [];
+  };
+
   let rows = [];
   let pageStart = startOffset;
   let reachedEnd = false;
   while(!reachedEnd){
     const starts = Array.from({ length: CONCURRENCY }, (_, i) => pageStart + i * PAGE_SIZE);
-    const batchResults = await Promise.all(starts.map(async from => {
-      // .range()での並び替えなしページングは、Postgres側の実行計画が
-      // リクエストごとに変わりうるため危険(実際に発生:.or()フィルター付きの
-      // 取得で、あるページだけ本来より少ない件数を返し、まだ後ろに行が
-      // 残っているのに「最後まで読んだ」と誤判定してしまい、drama作品が
-      // 501件中4件しか読み込まれない事故になった)。idで安定した並び順を
-      // 固定し、ページ同士が同じ行を指し続けるようにする。
-      const { data, error } = await withFilter(supabase.from(table).select(columns)).order(orderColumn, { ascending: true }).range(from, from + PAGE_SIZE - 1);
-      if(error) throw error;
-      return data || [];
-    }));
+    const batchResults = await Promise.all(starts.map(fetchPageWithRetry));
     for(const data of batchResults){
       rows = rows.concat(data);
       if(data.length < PAGE_SIZE) reachedEnd = true;
-      // PostgREST側の1リクエストあたりの実際の上限がPAGE_SIZEより小さい
-      // (=要求した件数を静かに切り詰めてくる)場合、この関数は「早めに
-      // 最後まで読んだ」と誤判定して取りこぼす。0件(本当の末尾)以外で
-      // PAGE_SIZE未満が返ってきたら、次に触る人が気づけるようコンソールに
-      // 警告を出しておく(本番で実際にこれが起きて映画一覧が6割近く
-      // 欠けたまま気づかれなかった事故があったため)。
       if(data.length > 0 && data.length < PAGE_SIZE){
-        console.warn(`selectAllRows(${table}): requested ${PAGE_SIZE} rows but got ${data.length} — PAGE_SIZE may exceed the server's actual per-request limit. Verify PAGE_SIZE matches it exactly.`);
+        console.warn(`selectAllRows(${table}): requested ${PAGE_SIZE} rows but got ${data.length} after retry — treating as end of data.`);
       }
     }
     pageStart += CONCURRENCY * PAGE_SIZE;
