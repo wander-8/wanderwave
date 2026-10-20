@@ -7231,6 +7231,30 @@ function renderHomeLanding(){
   setTimeout(prefetchHomeSceneAvailability, 600);
 }
 
+// カタログの裏読み込み(loadRemainingMoviesInBackground/
+// loadNonMovieCatalogInBackground等)が1歩進むたびに棚を描き直す共通処理。
+// 今の表示状態(ホーム=全メディア混在/特定モードのみ)に合わせて呼び先を
+// 変える。renderHomeLanding()を丸ごと呼び直すとrenderWeeklyFeature()の
+// 不要なネットワーク再取得やマーキーアニメーションの巻き戻しを毎回
+// 伴ってしまうため、ホーム表示中はカタログの増分に実際に依存する3つ
+// (場面カード・気分マーキー・きょうの贈り物)だけを呼び直す(オーナー
+// 指摘:「ホームのところにある作品が映画しかないからすぐいろんな
+// ジャンルを出して欲しい」。ホームはstate.catalogModeを'movie'のまま
+// 保持する作り(showHomeLanding参照)なので、各バックグラウンド読み込みの
+// 再描画ガードが「catalogModeが'movie'なら何もしない」だけだと、ホーム
+// 表示中もアニメ・ドラマ・漫画・小説・音楽や映画の残りが届くたびに
+// 本来は反映すべきなのに素通りしてしまい、読み込みが終わった後もホームが
+// 映画だけのまま固まって見える事故になっていた)。
+function refreshHomeView(){
+  if(state.homeLandingActive){
+    renderHomeScenesRow();
+    renderHomeMarquees();
+    renderHomeGift();
+  }else{
+    renderHomeRows();
+  }
+}
+
 // 自動特集生成(オーナー指示書より):毎週1回AIが既存カタログから書く
 // 「今週の特集」(generate-daily-feature edge function、automated_features
 // テーブル。週次化はコミットcfcf015参照)を、ホーム画面の一番上に出す。
@@ -12199,7 +12223,7 @@ async function loadRemainingMoviesInBackground(startOffset, plainMovieFilter, st
     renderCountryCloud();
     renderDecadeCloud();
     renderFeaturedBanner();
-    renderHomeRows();
+    refreshHomeView();
     renderResults();
   }catch(err){
     console.error('映画カタログの残り分の読み込みに失敗しました', err);
@@ -12222,7 +12246,7 @@ async function loadMovieBigFieldsInBackground(){
     });
     movieBigFieldsLoaded = true;
     renderFeaturedBanner();
-    renderHomeRows();
+    refreshHomeView();
     renderResults();
     if(state.currentMovieId != null && document.getElementById('view-detail').classList.contains('active')){
       const current = MOVIES.find(x => x.id === state.currentMovieId);
@@ -12270,7 +12294,11 @@ const NON_MOVIE_TYPE_FLAGS = ['is_anime', 'is_drama', 'is_manga', 'is_novel', 'i
 async function loadNonMovieCatalogInBackground(statsByMovie, estimatesByMovie){
   const PER_TYPE_FIRST_PAGE_SIZE = 500;
   const rerenderIfNeeded = () => {
-    if(state.catalogMode === 'movie') return;
+    // ホーム(state.homeLandingActive)はcatalogModeを'movie'のまま保持する
+    // 作りなので、catalogModeだけを見るとホーム表示中もここで素通りしてしまい、
+    // 読み込みが終わった後もホームが映画だけのまま固まって見える事故になる
+    // (refreshHomeView参照)。
+    if(state.catalogMode === 'movie' && !state.homeLandingActive) return;
     // ジャンル・国・年代チップは「今のモードのプールに実在するものだけ」を
     // その都度計算して出す作りなので、このバックグラウンド読み込みが
     // 終わった後も再計算しないと、ページを開いた直後にモードを切り替えた
@@ -12284,7 +12312,7 @@ async function loadNonMovieCatalogInBackground(statsByMovie, estimatesByMovie){
     renderCountryCloud();
     renderDecadeCloud();
     renderFeaturedBanner();
-    renderHomeRows();
+    refreshHomeView();
     renderResults();
   };
   // 種別ごとに1つずつ、独立したtry/catchで順番に取得する。以前は5種を
@@ -12354,9 +12382,9 @@ async function loadNonMovieBigFieldsInBackground(){
       const row = rowById[movie.id];
       if(row) applyBigFieldsPatch(movie, row);
     });
-    if(state.catalogMode !== 'movie'){
+    if(state.catalogMode !== 'movie' || state.homeLandingActive){
       renderFeaturedBanner();
-      renderHomeRows();
+      refreshHomeView();
       renderResults();
     }
     if(state.currentMovieId != null && document.getElementById('view-detail').classList.contains('active')){
