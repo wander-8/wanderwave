@@ -4184,9 +4184,16 @@ const TURNSTILE_SITE_KEY = '0x4AAAAAAEyRzv6vqgd53c5F';
 // 表示サイズが大きい箇所ではw780を使う(movie.posterPathから組み立てる)。
 const TMDB_IMAGE_BASE = 'https://image.tmdb.org/t/p/w342';
 // フィーチャーバナー(画面最上部、全幅表示)専用。w780だと画面幅の広い端末で
-// 引き伸ばされてぼやけて見えていたため、TMDbが提供する最大解像度に上げる。
-// 通常のカードサムネ(TMDB_IMAGE_BASE)とは別定数で、影響範囲はバナーのみ。
-const TMDB_IMAGE_BASE_LARGE = 'https://image.tmdb.org/t/p/original';
+// 引き伸ばされてぼやけて見えていたため、以前はTMDbの最大解像度(original)に
+// 上げていた。ただし実際に来るposterPathは縦長のポスター画像(2:3比)で、
+// originalだと2000×3000px=600万画素にもなり、バナーはどうせcoverで
+// 一部を切り抜いて表示するだけなのに、使わない解像度のデコードкоストが
+// LCP(初回表示速度)を750ms近く遅らせていた(オーナー指摘:「サイトそのもの
+// をもっと速く読み込めるようにして」、本番トレースで実測)。w780は画面幅の
+// 広い端末でも十分な解像度を保ちつつ、デコード対象のピクセル数を約1/6に
+// 抑えられる。通常のカードサムネ(TMDB_IMAGE_BASE)とは別定数で、影響範囲は
+// バナーのみ。
+const TMDB_IMAGE_BASE_LARGE = 'https://image.tmdb.org/t/p/w780';
 let hasSupabaseSession = false;
 // init()が発火させる自動匿名サインインの進行中プロミス。ハートのタップ等、
 // 匿名サインインさえ済んでいれば使える操作から「今ちょうど進行中なら
