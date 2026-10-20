@@ -2830,7 +2830,7 @@
      だと判断し、pointerupの前にpointercancelになってスワイプ判定(36px以上の
      横移動)に届かない。横方向はJS側で処理し、縦方向だけブラウザの標準スク
      ロールに任せる(pan-y)ことで、斜め気味のスワイプでも拾えるようにする。 */
-  #omikuji-card-home{ touch-action: pan-y; }
+  #omikuji-card, #omikuji-card-home{ touch-action: pan-y; }
   .omikuji-label{
     font-size: 11px; color: var(--gold); font-weight:600; letter-spacing:.06em;
     margin-bottom: 16px;
@@ -3743,7 +3743,8 @@
            同じ日はページを開き直しても結果は変わらない。
            本物のおみくじと同じく、開くのはユーザー自身のタップから
            (表示された瞬間に結果を見せてしまわない)。 -->
-      <div id="omikuji-card" class="omikuji-card" style="display:none;" onclick="onOmikujiCardClick()">
+      <div id="omikuji-card" class="omikuji-card omikuji-glow" style="display:none;" onclick="onOmikujiCardClick()">
+        <div id="omikuji-glow-wrap"></div>
         <div class="omikuji-label">きょうの贈り物。</div>
         <div class="omikuji-closed" id="omikuji-closed">
           <div class="omikuji-orb-wrap" id="omikuji-orb-wrap"><div class="omikuji-orb"></div></div>
@@ -3758,6 +3759,10 @@
           </div>
         </div>
       </div>
+      <!-- オーナー要望:「今日の贈り物、ポケットとホーム同じにしてほしい」。
+           ホーム版だけにあったスワイプで他の候補も見られる機能と同じ
+           ヒント文言(候補が2件以上ある時だけ表示、renderOmikujiCard参照)。 -->
+      <div class="gift-swipe-hint" id="gift-swipe-hint" style="display:none;" onclick="onGiftHintTap(event, '')">タップでほかの候補も見られます</div>
     </div>
 
     <button class="link-btn diagnosis-history-link" onclick="openDiagnosisHistoryModal()">過去の記憶を見る</button>
@@ -7183,7 +7188,7 @@ async function renderHomeGift(){
   // オーナー指摘:「作品をスライドすると他の項目のおすすめも出るように
   // してもいいかも」。pickSmartOmikujiCandidatesから続けて何件か引いて
   // おき(1件目が下のmovieIdと一致)、開封後に横スワイプで切り替えられる
-  // ようにする(onHomeGiftPointerUp参照)。
+  // ようにする(onGiftPointerUp参照)。
   const candidates = await pickSmartOmikujiCandidates(giftMode, latest.topTag, latest.movieIds || [], 5);
   if(myToken !== homeGiftRenderToken) return; // 後から呼ばれた別の表示に上書きされた
   const movieId = candidates[0];
@@ -7195,17 +7200,15 @@ async function renderHomeGift(){
       </div>`;
     return;
   }
-  // オーナー最終決定:「案A(グロー背景版)」。場面カードと同じ、タグ色を
-  // ぼかした円を重ねる技法(homeMoodBlurHTML)を流用し、玉はそのまま残して
-  // 背景だけ他のホーム要素と同じ材質に揃える。色はこの贈り物自身の作品の
-  // タグから作るので、日によって自然に変わる。
-  const pickedMovie = MOVIES.find(m => m.id === movieId);
-  const glowTags = (pickedMovie && pickedMovie.tags.length) ? pickedMovie.tags.slice(0, 3) : [latest.topTag];
-  homeGiftCandidates = candidates;
-  homeGiftIndex = 0;
+  // 2026-10-20: オーナー要望「今日の贈り物、ポケットとホーム同じにして
+  // ほしい」。グロー背景・スワイプ候補・ヒント文言は、以前はここだけで
+  // 個別に組み立てていたが、ポケット(診断結果画面)側の静的HTMLと共通の
+  // renderOmikujiCard()に一本化した(giftCandidatesBySuffix参照)。
+  giftCandidatesBySuffix['-home'] = candidates;
+  giftIndexBySuffix['-home'] = 0;
   container.innerHTML = `
     <div id="omikuji-card-home" class="omikuji-card omikuji-glow" style="display:none;" onclick="onOmikujiCardClick('-home')">
-      ${homeMoodBlurHTML(glowTags)}
+      <div id="omikuji-glow-wrap-home"></div>
       <div class="omikuji-label">きょうの贈り物。</div>
       <div class="omikuji-closed" id="omikuji-closed-home">
         <div class="omikuji-orb-wrap" id="omikuji-orb-wrap-home"><div class="omikuji-orb"></div></div>
@@ -7220,12 +7223,12 @@ async function renderHomeGift(){
         </div>
       </div>
     </div>
-    ${homeGiftCandidates.length > 1 ? `<div class="gift-swipe-hint" onclick="onHomeGiftHintTap(event)">タップでほかの候補も見られます</div>` : ''}`;
-  renderOmikujiCard(movieId, '-home');
+    <div class="gift-swipe-hint" id="gift-swipe-hint-home" style="display:none;" onclick="onGiftHintTap(event, '-home')">タップでほかの候補も見られます</div>`;
+  renderOmikujiCard(movieId, '-home', latest.topTag);
   const cardEl = document.getElementById('omikuji-card-home');
-  cardEl.addEventListener('pointerdown', onHomeGiftPointerDown);
-  cardEl.addEventListener('pointerup', onHomeGiftPointerUp);
-  cardEl.addEventListener('pointercancel', onHomeGiftPointerCancel);
+  cardEl.addEventListener('pointerdown', ev => onGiftPointerDown(ev, '-home'));
+  cardEl.addEventListener('pointerup', ev => onGiftPointerUp(ev, '-home'));
+  cardEl.addEventListener('pointercancel', () => onGiftPointerCancel('-home'));
 }
 
 function scrollToSearchHome(){
@@ -14461,14 +14464,26 @@ const omikujiState = {
   '-home': { pendingMovieId: null, opened: false },
 };
 
-function renderOmikujiCard(movieId, suffix){
+// 2026-10-20: オーナー要望「今日の贈り物、ポケットに設置されてるのと
+// ホームに設置されてるの同じにしてほしい」。以前はグロー背景・スワイプで
+// 他の候補を見る機能・ヒント文言をホーム版(-home)だけに実装しており、
+// ポケット(診断結果画面、suffix='')側は単一候補・背景無しのままだった。
+// omikujiStateと同じ考え方でgiftCandidatesBySuffix等もsuffixごとに持ち、
+// 両方で完全に同じロジックを使う。
+function renderOmikujiCard(movieId, suffix, fallbackGlowTag){
   suffix = suffix || '';
   const card = document.getElementById('omikuji-card' + suffix);
   if(!card) return;
+  const glowWrap = document.getElementById('omikuji-glow-wrap' + suffix);
+  const hintEl = document.getElementById('gift-swipe-hint' + suffix);
   const m = movieId != null ? MOVIES.find(x => x.id === movieId) : null;
   omikujiState[suffix].pendingMovieId = m ? m.id : null;
   omikujiState[suffix].opened = false;
-  if(!m){ card.style.display = 'none'; return; }
+  if(!m){
+    card.style.display = 'none';
+    if(hintEl) hintEl.style.display = 'none';
+    return;
+  }
 
   document.getElementById('omikuji-closed' + suffix).style.display = 'block';
   document.getElementById('omikuji-orb-wrap' + suffix).style.display = '';
@@ -14493,74 +14508,94 @@ function renderOmikujiCard(movieId, suffix){
   const typeBadgeEl = document.getElementById('omikuji-type-badge' + suffix);
   typeBadgeEl.textContent = typeInfo.label;
   typeBadgeEl.style.background = typeInfo.color;
+  // グロー背景(タグ色のぼかし、場面カードと同じhomeMoodBlurHTML)。元は
+  // 「案A」としてホーム版だけに試した演出だが、両方のカードで統一する。
+  if(glowWrap){
+    const glowTags = (m.tags && m.tags.length) ? m.tags.slice(0, 3) : (fallbackGlowTag ? [fallbackGlowTag] : []);
+    glowWrap.innerHTML = glowTags.length ? homeMoodBlurHTML(glowTags) : '';
+  }
+  if(hintEl){
+    hintEl.style.display = (giftCandidatesBySuffix[suffix] || []).length > 1 ? '' : 'none';
+  }
   card.style.display = 'block';
 }
 
 // スワイプ⇔タップの判定用。開封後、横方向に一定以上動いたらスワイプ扱い
 // にして候補を切り替え、クリックハンドラ側(onOmikujiCardClick)の「詳細へ
 // 移動」は1回だけ無視する(でないとスワイプのたびに詳細ページへ飛んでしまう)。
-let homeGiftCandidates = [];
-let homeGiftIndex = 0;
-let homeGiftSwipeStartX = null;
-let homeGiftJustSwiped = false;
+// suffix('' = 診断結果側、'-home' = ホーム側)ごとに独立して持つ。
+const giftCandidatesBySuffix = { '': [], '-home': [] };
+const giftIndexBySuffix = { '': 0, '-home': 0 };
+const giftJustSwipedBySuffix = { '': false, '-home': false };
+let giftSwipeStartX = null;
+let giftSwipeSuffix = '';
 
-function onHomeGiftPointerDown(ev){
-  homeGiftSwipeStartX = (ev.touches ? ev.touches[0].clientX : ev.clientX);
+function onGiftPointerDown(ev, suffix){
+  giftSwipeStartX = (ev.touches ? ev.touches[0].clientX : ev.clientX);
+  giftSwipeSuffix = suffix || '';
 }
 // スワイプ・タップどちらから呼ばれても同じ方法で候補を進める共通処理。
-function advanceHomeGiftCandidate(dir){
-  if(homeGiftCandidates.length < 2) return;
-  homeGiftIndex = (homeGiftIndex + dir + homeGiftCandidates.length) % homeGiftCandidates.length;
-  swapHomeGiftMovie(homeGiftCandidates[homeGiftIndex]);
+function advanceGiftCandidate(suffix, dir){
+  const candidates = giftCandidatesBySuffix[suffix];
+  if(!candidates || candidates.length < 2) return;
+  giftIndexBySuffix[suffix] = (giftIndexBySuffix[suffix] + dir + candidates.length) % candidates.length;
+  swapGiftMovie(suffix, candidates[giftIndexBySuffix[suffix]]);
 }
-function onHomeGiftPointerUp(ev){
-  if(homeGiftSwipeStartX == null) return;
+function onGiftPointerUp(ev, suffix){
+  suffix = suffix || '';
+  if(giftSwipeStartX == null || giftSwipeSuffix !== suffix) return;
   const endX = (ev.changedTouches ? ev.changedTouches[0].clientX : ev.clientX);
-  const dx = endX - homeGiftSwipeStartX;
-  homeGiftSwipeStartX = null;
-  const st = omikujiState['-home'];
+  const dx = endX - giftSwipeStartX;
+  giftSwipeStartX = null;
+  const st = omikujiState[suffix];
+  const candidates = giftCandidatesBySuffix[suffix];
   // 開封前のスワイプはタップ(開封)として普通に扱う。候補切り替えは
   // 開封後だけ。
-  if(!st || !st.opened || homeGiftCandidates.length < 2) return;
+  if(!st || !st.opened || !candidates || candidates.length < 2) return;
   if(Math.abs(dx) < 36) return;
-  homeGiftJustSwiped = true;
-  advanceHomeGiftCandidate(dx < 0 ? 1 : -1);
+  giftJustSwipedBySuffix[suffix] = true;
+  advanceGiftCandidate(suffix, dx < 0 ? 1 : -1);
 }
-function onHomeGiftPointerCancel(){
-  homeGiftSwipeStartX = null;
+function onGiftPointerCancel(suffix){
+  if(giftSwipeSuffix === (suffix || '')) giftSwipeStartX = null;
 }
 // オーナー指摘:「今日の贈り物は今下側にメッセージあるけど、そこをタップ
 // すると次の項目が見れるようにしてほしい」。スワイプだけだと気づきにくい
 // /実機で拾いにくいことがあるため、ヒント文言自体をタップでも次の候補へ
 // 進められるようにする(外側カードのonclick=「詳細へ移動/開封」と競合
 // しないようstopPropagationする)。
-function onHomeGiftHintTap(event){
+function onGiftHintTap(event, suffix){
   if(event) event.stopPropagation();
-  advanceHomeGiftCandidate(1);
+  advanceGiftCandidate(suffix || '', 1);
 }
-function swapHomeGiftMovie(movieId){
+function swapGiftMovie(suffix, movieId){
   const m = MOVIES.find(x => x.id === movieId);
   if(!m) return;
-  omikujiState['-home'].pendingMovieId = m.id;
-  const posterEl = document.getElementById('omikuji-poster-home');
+  omikujiState[suffix].pendingMovieId = m.id;
+  const posterEl = document.getElementById('omikuji-poster' + suffix);
   posterEl.style.background = m.posterColor;
   posterEl.innerHTML = m.posterUrl
     ? `<img src="${m.posterUrl}" alt="" loading="lazy" decoding="async">`
     : escapeHtml(m.title.charAt(0));
-  document.getElementById('omikuji-title-home').innerHTML = m.title;
-  document.getElementById('omikuji-line-home').textContent = pickOmikujiMessage();
+  document.getElementById('omikuji-title' + suffix).innerHTML = m.title;
+  document.getElementById('omikuji-line' + suffix).textContent = pickOmikujiMessage();
   const typeInfo = mediaTypeInfo(m);
-  const badgeEl = document.getElementById('omikuji-type-badge-home');
+  const badgeEl = document.getElementById('omikuji-type-badge' + suffix);
   badgeEl.textContent = typeInfo.label;
   badgeEl.style.background = typeInfo.color;
-  const bodyEl = document.getElementById('omikuji-body-home');
+  const glowWrap = document.getElementById('omikuji-glow-wrap' + suffix);
+  if(glowWrap){
+    const glowTags = (m.tags && m.tags.length) ? m.tags.slice(0, 3) : [];
+    glowWrap.innerHTML = glowTags.length ? homeMoodBlurHTML(glowTags) : '';
+  }
+  const bodyEl = document.getElementById('omikuji-body' + suffix);
   bodyEl.classList.remove('reveal'); void bodyEl.offsetWidth; bodyEl.classList.add('reveal');
   feedbackGiftOpen();
 }
 
 function onOmikujiCardClick(suffix){
   suffix = suffix || '';
-  if(suffix === '-home' && homeGiftJustSwiped){ homeGiftJustSwiped = false; return; }
+  if(giftJustSwipedBySuffix[suffix]){ giftJustSwipedBySuffix[suffix] = false; return; }
   const st = omikujiState[suffix];
   if(st.pendingMovieId == null) return;
   if(!st.opened){
@@ -15713,10 +15748,23 @@ async function applyDiagnosisResultDisplay(historyEntry, isFresh){
     </div>
   `).join('');
 
+  // 2026-10-20: オーナー要望「今日の贈り物、ポケットに設置されてるのと
+  // ホームに設置されてるの同じにしてほしい」。ホーム版と同じ件数(5件)の
+  // 候補を取って、スワイプで他の候補も見られるようにする(giftCandidatesBySuffix
+  // ・renderOmikujiCard参照)。
   const giftMode = todaysGiftMode(movies);
-  const [omikujiMovieId] = await pickSmartOmikujiCandidates(giftMode, historyEntry.topTag, historyEntry.movieIds || [], 1);
+  const candidates = await pickSmartOmikujiCandidates(giftMode, historyEntry.topTag, historyEntry.movieIds || [], 5);
   if(myToken !== diagnosisResultRenderToken) return; // 後から呼ばれた別の表示に上書きされた
-  renderOmikujiCard(omikujiMovieId ?? null);
+  giftCandidatesBySuffix[''] = candidates;
+  giftIndexBySuffix[''] = 0;
+  renderOmikujiCard(candidates[0] ?? null, '', historyEntry.topTag);
+  const pocketCardEl = document.getElementById('omikuji-card');
+  if(pocketCardEl && !pocketCardEl.dataset.giftListenersAttached){
+    pocketCardEl.dataset.giftListenersAttached = '1';
+    pocketCardEl.addEventListener('pointerdown', ev => onGiftPointerDown(ev, ''));
+    pocketCardEl.addEventListener('pointerup', ev => onGiftPointerUp(ev, ''));
+    pocketCardEl.addEventListener('pointercancel', () => onGiftPointerCancel(''));
+  }
 
   const resultEl = document.getElementById('diagnosis-result');
   if(isFresh){
