@@ -7112,7 +7112,13 @@ function buildGiftProgressSlotsHTML(monthIds, total){
   return html;
 }
 
-function renderHomeGift(){
+// loadNonMovieCatalogInBackground等の裏読み込みが進むたびにrefreshHomeView
+// 経由でrenderHomeGift()が何度も呼ばれるため(2026-10-20の修正)、先に
+// 呼ばれた方のawait(match_movies_by_pocket RPC)が後から解決して新しい
+// 表示を上書きしてしまわないよう、トークンで最後に呼ばれた分だけを反映する。
+let homeGiftRenderToken = 0;
+async function renderHomeGift(){
+  const myToken = ++homeGiftRenderToken;
   const container = document.getElementById('home-gift-area');
   // オーナー指摘:「作品を入れた時点で診断されるのはやめて欲しい。メッセージ
   // で診断できるよって施して欲しい」。latestが古い月の診断であっても
@@ -7150,7 +7156,15 @@ function renderHomeGift(){
       </div>`;
     return;
   }
-  const movieId = pickOmikujiMovie(latest.topTag, null, latest.movieIds || []);
+  const diagnosedMovies = (latest.movieIds || []).map(id => MOVIES.find(m => m.id === id)).filter(Boolean);
+  const giftMode = todaysGiftMode(diagnosedMovies);
+  // オーナー指摘:「作品をスライドすると他の項目のおすすめも出るように
+  // してもいいかも」。pickSmartOmikujiCandidatesから続けて何件か引いて
+  // おき(1件目が下のmovieIdと一致)、開封後に横スワイプで切り替えられる
+  // ようにする(onHomeGiftPointerUp参照)。
+  const candidates = await pickSmartOmikujiCandidates(giftMode, latest.topTag, latest.movieIds || [], 5);
+  if(myToken !== homeGiftRenderToken) return; // 後から呼ばれた別の表示に上書きされた
+  const movieId = candidates[0];
   if(movieId == null){
     container.innerHTML = `
       <div class="gift-empty" onclick="scrollToSearchHome()">
@@ -7165,11 +7179,7 @@ function renderHomeGift(){
   // タグから作るので、日によって自然に変わる。
   const pickedMovie = MOVIES.find(m => m.id === movieId);
   const glowTags = (pickedMovie && pickedMovie.tags.length) ? pickedMovie.tags.slice(0, 3) : [latest.topTag];
-  // オーナー指摘:「作品をスライドすると他の項目のおすすめも出るように
-  // してもいいかも」。pickOmikujiMovieと同じ候補プールから続けて何件か
-  // 引いておき(1件目は必ず上のmovieIdと一致)、開封後に横スワイプで
-  // 切り替えられるようにする(onHomeGiftPointerUp参照)。
-  homeGiftCandidates = pickOmikujiCandidates(latest.topTag, null, latest.movieIds || [], 5);
+  homeGiftCandidates = candidates;
   homeGiftIndex = 0;
   container.innerHTML = `
     <div id="omikuji-card-home" class="omikuji-card omikuji-glow" style="display:none;" onclick="onOmikujiCardClick('-home')">
@@ -14011,7 +14021,7 @@ async function generateMonthlyDiagnosis(monthMovies, allPocketMovies, milestone)
   const monthTopTag = topTagFromMovies(monthMovies) || "楽しい";
   const usualTopTag = topTagFromWeightedMovies(allPocketMovies) || monthTopTag;
   const pickedIds = allPocketMovies.map(m => m.id);
-  const omikujiMovieId = pickOmikujiMovie(monthTopTag, usualTopTag, pickedIds);
+  const omikujiMovieId = pickOmikujiMovie(todaysGiftMode(allPocketMovies), monthTopTag, usualTopTag, pickedIds);
 
   try{
     const payloadMovies = monthMovies.slice(0, 10).map(m => ({
@@ -14046,19 +14056,30 @@ async function generateMonthlyDiagnosis(monthMovies, allPocketMovies, milestone)
 }
 
 // 「今日の贈り物」が映画専用に固定されていたのを、日替わりで映画・アニメ・
-// ドラマ・漫画・小説・音楽を巡回するように変更。dayNumを直接インデックスに
-// 使うので、同じ日は必ず同じメディア種別になり、日が変われば次の種別に
-// 進む(CATALOG_MODESの並び順どおりに巡回)。
-function todaysGiftMode(){
+// ドラマ・漫画・小説・音楽を巡回するように変更していた。しかしこれは
+// 曜日だけで機械的に巡回しており、ユーザーが実際にポケットへ何を入れたかを
+// 一切見ていなかった(オーナー指摘2026-10-20:「項目が全部入ってるわけ
+// じゃないのが気になる」。今日がたまたま映画の日なら、ポケットが漫画
+// だらけでも映画からしか選ばれない)。診断対象になった作品
+// (diagnosedMovies、呼び出し元はmovieIdsをMOVIESへ引き当てた配列)に
+// 実在する種別だけを対象に、日付をシードに1つ選ぶ(同じ日は同じ種別、
+// 日が変われば別の種別)。種別情報が無い(診断がまだ無い等)場合だけ、
+// 従来通りの機械的な巡回にフォールバックする。
+function todaysGiftMode(diagnosedMovies){
   const dayNum = Math.floor(Date.now() / 86400000);
+  const typesPresent = diagnosedMovies && diagnosedMovies.length
+    ? [...new Set(diagnosedMovies.map(nativeModeOf))]
+    : [];
+  if(typesPresent.length) return typesPresent[dayNum % typesPresent.length];
   return CATALOG_MODES[dayNum % CATALOG_MODES.length][0];
 }
 
 // 一覧で選ばせる「おすすめ」ではなく、傾向が近い未選択の作品から1本だけを
 // おみくじのように差し出す。日付+選んだ作品IDをシードにしているので、
 // 同じ日にページを開き直しても結果は変わらない(日が変われば新しい1本になる)。
-function pickOmikujiMovie(topTag, secondTag, excludeIds){
-  const mode = todaysGiftMode();
+// タグ1個の一致だけで選ぶ軽量版。embeddingがまだ無い(pickHomeGiftCandidates
+// 参照)場合のフォールバックとしてのみ使う。
+function pickOmikujiMovie(mode, topTag, secondTag, excludeIds){
   const candidates = MOVIES.filter(m =>
     !excludeIds.includes(m.id) && isInCatalogMode(m, mode)
     && (m.tags.includes(topTag) || (secondTag && m.tags.includes(secondTag)))
@@ -14074,8 +14095,7 @@ function pickOmikujiMovie(topTag, secondTag, excludeIds){
 // かも」)。pickOmikujiMovieと全く同じ候補プール・同じシードから連続して
 // 引くので、1件目は必ずpickOmikujiMovie()の結果と一致する(その上で続けて
 // 2件目以降も引く)。診断結果画面(view-pocket)側は今まで通り1件固定。
-function pickOmikujiCandidates(topTag, secondTag, excludeIds, count){
-  const mode = todaysGiftMode();
+function pickOmikujiCandidates(mode, topTag, secondTag, excludeIds, count){
   const candidates = MOVIES.filter(m =>
     !excludeIds.includes(m.id) && isInCatalogMode(m, mode)
     && (m.tags.includes(topTag) || (secondTag && m.tags.includes(secondTag)))
@@ -14095,6 +14115,33 @@ function pickOmikujiCandidates(topTag, secondTag, excludeIds, count){
     picked.push(candidates[idx].id);
   }
   return picked;
+}
+
+// 2026-10-20: オーナー指摘「ポケットで診断したのに、そこから診断された
+// 作品とは思えない」。従来はタグ1個(トップの感情タグ)の一致だけで
+// カタログ全体から選んでおり、実際に診断対象だった作品そのものとの
+// 繋がりが薄かった。movies.embedding(voyage-embed-backfillで既に計算済み)
+// を使い、診断対象だった作品群(sourceIds)の平均ベクトルに近い作品から
+// 選ぶように強化する。match_movies_by_pocket RPCは既存の値を読むだけで
+// 新たにVoyage APIを呼ばないため、コスト増にはならない。embeddingの
+// バックフィルがまだ届いていない作品が対象だと候補0件になるため、その
+// 場合は従来のタグ一致(pickOmikujiCandidates)に静かにフォールバックする。
+async function pickSmartOmikujiCandidates(mode, topTag, sourceIds, count){
+  try{
+    const { data, error } = await supabase.rpc('match_movies_by_pocket', {
+      source_ids: sourceIds,
+      exclude_ids: sourceIds,
+      match_count: 50
+    });
+    if(error) throw error;
+    const ranked = (data || [])
+      .map(r => MOVIES.find(m => m.id === r.id))
+      .filter(m => m && isInCatalogMode(m, mode));
+    if(ranked.length) return ranked.slice(0, count).map(m => m.id);
+  }catch(err){
+    console.error('ポケットに近い作品の検索に失敗しました(タグ一致にフォールバックします)', err);
+  }
+  return pickOmikujiCandidates(mode, topTag, null, sourceIds, count);
 }
 
 // 「今日はこの1つを、そっと差し出してみます。」固定だったおみくじの添え書きを、
@@ -15359,7 +15406,12 @@ function applyDiagnosisShareCard(cardId, topTag, themeTitle, movieTitles){
 // 見返す時)に、直近の診断結果をここで出す。本人が「診断してみる」を
 // タップして新しく生成した直後だけisFresh=trueにして、ファンファーレ付きの
 // 登場アニメーションにする(runMilestoneDiagnosisから呼ぶ)。
-function applyDiagnosisResultDisplay(historyEntry, isFresh){
+// 複数回連続で呼ばれた(例: ポケット画面を素早く開き直した)場合に、
+// 先に呼ばれた方のawaitが後から解決して新しい表示を上書きしてしまわない
+// ようにするためのトークン(openHomeSceneIdと同じ考え方)。
+let diagnosisResultRenderToken = 0;
+async function applyDiagnosisResultDisplay(historyEntry, isFresh){
+  const myToken = ++diagnosisResultRenderToken;
   const movies = (historyEntry.movieIds || []).map(id => MOVIES.find(m => m.id === id)).filter(Boolean);
   // history.nameは『』で囲って保存してあるので、カード表示用に中身だけ取り出す
   const themeTitle = (historyEntry.name || '').replace(/^『|』$/g, '') || 'まだ名前のない物語';
@@ -15383,8 +15435,10 @@ function applyDiagnosisResultDisplay(historyEntry, isFresh){
     </div>
   `).join('');
 
-  const omikujiMovieId = pickOmikujiMovie(historyEntry.topTag, null, historyEntry.movieIds || []);
-  renderOmikujiCard(omikujiMovieId);
+  const giftMode = todaysGiftMode(movies);
+  const [omikujiMovieId] = await pickSmartOmikujiCandidates(giftMode, historyEntry.topTag, historyEntry.movieIds || [], 1);
+  if(myToken !== diagnosisResultRenderToken) return; // 後から呼ばれた別の表示に上書きされた
+  renderOmikujiCard(omikujiMovieId ?? null);
 
   const resultEl = document.getElementById('diagnosis-result');
   if(isFresh){
