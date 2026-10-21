@@ -8127,6 +8127,14 @@ const VIBE_QUERY_ALIASES = {
   "dragon": ["ドラゴン"],
   "fairy": ["妖精"],
   "curse": ["呪い"],
+  // オーナー指摘(2026-10-22、design spec A-3):実際にniche_tagsへ取り込まれた
+  // AniList由来タグの出現頻度(SQL確認済み)を見て追加した分。既存のisekai/
+  // reincarnation/based on true story/revenge/serial killer/coming of age/
+  // based on novel or book/based on comic/gay theme/lgbt等は既にエイリアス
+  // 済みだったため、ここでは実際に抜けていたものだけを足す。
+  "demons": ["悪魔"],
+  "female harem": ["ハーレム"],
+  "based on manga": ["原作漫画", "漫画原作"],
   "possession": ["憑依"],
   "exorcism": ["エクソシズム", "悪魔祓い"],
   "occult": ["オカルト"],
@@ -8501,8 +8509,16 @@ function relevantVibeKeywords(normalizedQuery){
     .map(([keyword]) => keyword);
 }
 function matchesVibeAlias(m, relevantKeywords){
-  if(!m.keywordsLower || m.keywordsLower.length === 0 || !relevantKeywords || relevantKeywords.length === 0) return false;
-  return relevantKeywords.some(keyword => m.keywordsLower.some(k => keywordContainsWord(k, keyword)));
+  if(!relevantKeywords || relevantKeywords.length === 0) return false;
+  const inKeywords = !!m.keywordsLower && m.keywordsLower.length > 0
+    && relevantKeywords.some(keyword => m.keywordsLower.some(k => keywordContainsWord(k, keyword)));
+  if(inKeywords) return true;
+  // niche_tags(AniList/TMDBの細かいトロープ、Rakuten分のAI分類タグ)にも
+  // 同じエイリアス辞書を効かせる(design spec A-3)。keywordsだけだと、
+  // AniList側で追加で保持するようになったタグ(上限緩和・スポイラー込み)が
+  // このブリッジの外に取り残されてしまうため。
+  return !!m.nicheTagsLower && m.nicheTagsLower.length > 0
+    && relevantKeywords.some(keyword => m.nicheTagsLower.some(k => keywordContainsWord(k, keyword)));
 }
 
 // 「マーベル」で検索した時だけ関連作品がふわっと出てくるための、緩い検索
@@ -12237,6 +12253,11 @@ function buildMovieRecord(row, statsByMovie, estimatesByMovie){
     // Rakuten分のAI分類タグ(日本語)が混在する列(niche_tags)。検索専用
     // (ホーム画面の受動的な棚には一切使わない、design spec参照)。
     nicheTagsNorm: nicheTagsArr.map(normalizeForSearch),
+    // VIBE_QUERY_ALIASES経由の日本語→英語ブリッジ(matchesVibeAlias)が
+    // niche_tagsも見られるようにする(そうしないと、AniList由来の
+    // keywordsに無い追加タグ(スポイラー系含む)や、Rakuten分のタグに
+    // このブリッジが一切効かないまま)。
+    nicheTagsLower: nicheTagsArr.map(k => k.toLowerCase()),
     keywordsLower: keywordsArr.map(k => k.toLowerCase()),
     // AI検索が感情タグ的な言葉(「楽しい」等)を拾った時、termMatchesMovie側で
     // 感情タグ欄とも照合できるように正規化済みで持っておく(tags参照)。
