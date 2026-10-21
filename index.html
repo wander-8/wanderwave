@@ -254,10 +254,15 @@
     margin-bottom: 8px;
     box-shadow: 0 0 0 1px rgba(125,95,214,0.12), 0 14px 32px -16px rgba(125,95,214,0.55);
   }
+  /* オーナー指摘(2026-10-22):「感情で探すってところの文字が浮いて見える
+     かも」。元は.mood-row-tag寄りの大きく太い見出し(14px/丸ゴシック)だった
+     ため、検索欄とは別の「主張してくるブロック」に見えてしまっていた。
+     既存の.mood-row-kicker(他の棚で使っている控えめな小見出し)と同じ
+     サイズ・色・ウェイトに揃え、検索欄の下に溶け込む「ラベル」程度の
+     軽さにする。余白も詰めて検索欄との連続性を出す。 */
   .search-hero-label{
-    font-family: 'M PLUS Rounded 1c', sans-serif;
-    font-size: 14px; font-weight:700; color: var(--plum-deep);
-    margin: 20px 0 8px;
+    font-size: 12px; color: #c5b5e8; font-weight:600;
+    margin: 14px 0 4px;
   }
   .search-box{
     display:flex; gap:8px;
