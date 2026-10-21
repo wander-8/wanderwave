@@ -7294,14 +7294,31 @@ function renderHomeLanding(){
 // 表示中もアニメ・ドラマ・漫画・小説・音楽や映画の残りが届くたびに
 // 本来は反映すべきなのに素通りしてしまい、読み込みが終わった後もホームが
 // 映画だけのまま固まって見える事故になっていた)。
+// オーナー指摘(2026-10-21):「ホームのところ最初に開くと作品の内容を刷新
+// するためなのかすごいブレる。今日の贈り物の中身も違う項目入ってない」。
+// refreshHomeView()はバックグラウンド読み込み(映画の残り・アニメ/ドラマ/
+// 漫画/小説/音楽の各種別×2段階・あらすじ一括パッチ)の完了ごとに呼ばれ、
+// 初回表示の数秒間で10回以上連続で呼ばれる。呼ばれるたびに棚・今日の贈り物
+// (renderHomeGift、innerHTMLごと再構築してpickSmartOmikujiCandidatesを
+// MOVIESプールの「その時点の件数」で引き直す)を丸ごと作り直すため、
+// 候補の母数が変わるたびに選ばれる作品自体が変わり、見た目がガタガタ変わる
+// 原因になっていた。呼び出し自体を間引く(最後の呼び出しから一定時間
+// 経っても次が来なければ初めて描き直す)ことで、読み込みが落ち着いた
+// 後に1回だけ滑らかに切り替わるようにする。初回表示(renderHomeRows()を
+// 直接呼ぶ側、起動時・goHome()等)はこの間引きの対象外でそのまま即時描画する。
+let refreshHomeViewDebounceTimer = null;
 function refreshHomeView(){
-  if(state.homeLandingActive){
-    renderHomeScenesRow();
-    renderHomeMarquees();
-    renderHomeGift();
-  }else{
-    renderHomeRows();
-  }
+  if(refreshHomeViewDebounceTimer) clearTimeout(refreshHomeViewDebounceTimer);
+  refreshHomeViewDebounceTimer = setTimeout(() => {
+    refreshHomeViewDebounceTimer = null;
+    if(state.homeLandingActive){
+      renderHomeScenesRow();
+      renderHomeMarquees();
+      renderHomeGift();
+    }else{
+      renderHomeRows();
+    }
+  }, 600);
 }
 
 // 自動特集生成(オーナー指示書より):毎週1回AIが既存カタログから書く
