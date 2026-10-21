@@ -5918,11 +5918,20 @@ function isTooIntenseForPassiveDiscovery(m){
 // (isTooIntenseForPassiveDiscoveryと同じ適用範囲、検索には適用しない)。
 const VARIOUS_ARTISTS_NAMES = new Set(['various artists', 'ヴァリアス・アーティスト', 'various artist']);
 const BGM_MILL_ARTIST_PATTERN = /BGM|Lofi|lofi|relax(ing)?\s*(piano|music|bgm|α\s*wave|world)|cafe music|coffee beatz|チルアウト|BOOST渋谷|Track Maker|ドローンマーシー|Yuu[0-9]+|安眠堂|心を浄化|癒しの周波数|うつ改善|^ランニングBGM$|ネオノスタルジカ/i;
+// オーナー指摘(2026-10-22):「AIだったよ。ちゃんと調べたよ」。FiGG/VELVET MIRAGE JP/
+// mochi.はオーナーが個別に確認したAI生成アーティスト。iTunes側は複数月にわたる
+// 独自タイトルの継続リリースを装っており(著作権表記も自己名義や数字のみの
+// シェルレーベル名義)、BGM量産チャンネル名のパターンにも掛からず上記の
+// 正規表現では検出できなかった。チャンネル名パターンで機械的に弾けない以上、
+// 現時点では名前の直接列挙で対応する(同種の事例が見つかれば追加していく)。
+const AI_GENERATED_ARTIST_NAMES = new Set(['figg', 'velvet mirage jp', 'mochi.']);
 function isNotRealMusicArtist(m){
   if(!m.isMusic) return false;
   const artist = (m.director || '').trim();
   if(!artist) return false;
-  if(VARIOUS_ARTISTS_NAMES.has(artist.toLowerCase())) return true;
+  const artistLower = artist.toLowerCase();
+  if(VARIOUS_ARTISTS_NAMES.has(artistLower)) return true;
+  if(AI_GENERATED_ARTIST_NAMES.has(artistLower)) return true;
   return BGM_MILL_ARTIST_PATTERN.test(artist);
 }
 
@@ -6550,7 +6559,24 @@ function renderHomeRows(){
   // 最大2件までにして、他の作品も混ざるようにする。
   const newReleasesSorted = visibleMovies.filter(m => m.japanReleaseDate && m.japanReleaseDate <= todayStr)
     .sort((a, b) => b.japanReleaseDate.localeCompare(a.japanReleaseDate) || (b.id - a.id));
-  const newReleases = pickWithSeriesCap(newReleasesSorted, 12, 2);
+  // オーナー指摘(2026-10-20):「今話題の新作には、最近放送された主題歌や
+  // 最近リリースされた新作が出されるようにしてほしい」。音楽モードでは
+  // Apple Musicの人気チャート(itunes-discover-music)を公開日だけで並べると、
+  // 量産型「アーティスト」が高頻度で「新作」を出し続けるだけで主題歌や
+  // 普通の新曲が埋もれてしまう(isNotRealMusicArtistで検出済みの名前は
+  // 既にvisibleMoviesから除外済みだが、未検出の類似事例に対しても棚の
+  // 構成自体で耐性を持たせる)。アニメの主題歌・OST(iTunesジャンルに
+  // "Anime"が入っている)を優先枠として確保し、残りを通常の新作で埋める。
+  const newReleases = (catalogMode === 'music')
+    ? (() => {
+        const isAnimeThemeTrack = (m) => Array.isArray(m.genre) && m.genre.some(g => /anime/i.test(g));
+        const animeThemePicks = pickWithSeriesCap(newReleasesSorted.filter(isAnimeThemeTrack), 5, 2);
+        const animeThemeIds = new Set(animeThemePicks.map(m => m.id));
+        const otherPicks = pickWithSeriesCap(newReleasesSorted.filter(m => !animeThemeIds.has(m.id)), 12 - animeThemePicks.length, 2);
+        return [...animeThemePicks, ...otherPicks]
+          .sort((a, b) => b.japanReleaseDate.localeCompare(a.japanReleaseDate) || (b.id - a.id));
+      })()
+    : pickWithSeriesCap(newReleasesSorted, 12, 2);
   if(newReleases.length){
     html += `
       <div class="section-label">今話題の新作</div>
