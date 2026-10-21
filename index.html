@@ -8595,9 +8595,11 @@ function termMatchesMovie(m, term, relevantVibeKws, shortTermTitleRe){
     // 語彙で、ジャンルと同じく短い語の誤マッチが起きにくいのでnoisy
     // 判定の対象から外す)。
     || (m.tagsNorm && m.tagsNorm.includes(term))
-    // ニッチ・フェチ属性タグ(niche_tags)。感情タグと同じく少数の管理された
-    // 語彙ではなくオープンエンドだが、個別の語自体は固有名詞に近く短い語の
-    // 誤マッチは起きにくいため、noisy判定の対象からは外す。
+    // ニッチ・フェチ属性タグ(niche_tags)。AniList/TMDBの細かいトロープや
+    // AI分類由来のオープンエンドな語彙で、感情タグ・ジャンルのような少数の
+    // 管理された語彙ではない(TMDbキーワード=keywordsNormと同じ性質)。
+    // そのためkeywordsNormと同じくnoisy(短い曖昧な語)の時は照合しない
+    // (短い語での誤マッチを避ける、keywordsNormの扱いに揃えている)。
     || (!noisy && m.nicheTagsNorm && m.nicheTagsNorm.some(k => k.includes(term)))
     || matchesCountryAlias(m, term)
     || matchesVibeAlias(m, relevantVibeKws)
