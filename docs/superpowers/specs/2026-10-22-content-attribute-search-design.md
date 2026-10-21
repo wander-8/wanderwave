@@ -55,14 +55,15 @@ AniList/TMDBは「新しい分類エンジン」を作らなくても、**既存
 - `termMatchesMovie`に`m.nicheTagsNorm.includes(term)`の分岐を1行追加するだけで、既存のマッチング経路にそのまま乗る(新しい検索エンジンは不要)。
 
 **A-4. Rakuten/iTunes向けの新規AI分類**
-- 新規の共有edge function `niche-tag-classify` を1つ作り、`rakuten-discover-manga`/`rakuten-discover-novel`/`itunes-discover-music`からinsert直後に呼び出す(各discover function内にプロンプトを重複させない。既存の`omdb-poster-backfill`等と同様、`offset/limit/write`引数を持つバックフィル用途にも流用できる単独関数にする)。作品の「要約ではない完全なあらすじ」(`synopsis`列、`synopsis_excerpt`ではない)をAIに読ませ、該当すればオープンエンドな語彙でタグを自由記述させる(感情タグのような固定10語ではなく、「男性妊娠」のように作品ごとに違う語を返してよい)。
+- 新規の共有edge function `content-classify` を1つ作り、`rakuten-discover-manga`/`rakuten-discover-novel`からinsert直後に呼び出す(各discover function内にプロンプトを重複させない。既存の`omdb-poster-backfill`等と同様、`offset/limit/write`引数を持つバックフィル用途にも流用できる単独関数にする)。作品の「要約ではない完全なあらすじ」(`synopsis`列、`synopsis_excerpt`ではない)をAIに読ませ、該当すればオープンエンドな語彙でタグを自由記述させる(感情タグのような固定10語ではなく、「男性妊娠」のように作品ごとに違う語を返してよい)。
+- **このAI呼び出しは、下記コンポーネントBの「あらすじ全文からのAI推測」(ソース2)と同じ1回の呼び出しに統合する**(詳細は後述「分類コストを軽くする設計」)。1回の読み込みで`niche_tags`候補と`content_warning`候補(11カテゴリ)を同時に返させ、新規作品1件あたりのAI呼び出しを1回に抑える。
 - 出力はそのまま`niche_tags`に日本語で追記(AniList/TMDB由来の英語タグとは別に、日本語タグも同じ列に混在してよい。検索時は正規化した文字列の部分一致なので言語混在は実害が無い)。
 - 音楽(iTunes)は歌詞・あらすじが無いため対象外のまま(既存の表現度でも同様の理由で対象外にしている前例を踏襲)。
 
 ### 自動化(新規追加作品への対応)
 
 - AniList/TMDB分は、上記A-1/A-2の変更が取り込み時のコードパスそのものなので、変更後に追加される作品は自動的に`niche_tags`が付く(追加のジョブは不要)。
-- Rakuten/iTunes分(A-4)は、各discover edge functionの新規insert直後に分類呼び出しを挟む(同期で軽く済む想定、処理が重ければ後続のバックグラウンドジョブに逃がす)。
+- Rakuten分(A-4)は、`rakuten-discover-manga`/`rakuten-discover-novel`の新規insert直後に`content-classify`呼び出しを挟む(同期で軽く済む想定、処理が重ければ後続のバックグラウンドジョブに逃がす)。この呼び出しは下記コンポーネントBのAI推測も同時に行う。
 
 ---
 
@@ -84,7 +85,8 @@ AniList/TMDBは「新しい分類エンジン」を作らなくても、**既存
 
 ニッチ属性と違い、ここは「ユーザーが安全判断に使う」ため、ある程度構造化した固定カテゴリにする(オープンエンドにはしない)。既存の`REASON_INFO`(暴力・性的・恐怖/音楽はExplicit)を拡張する形にする:
 
-- 初期カテゴリ案: `animal_death`(動物の死)・`suicide`(自殺)・`disaster`(震災・災害描写)・`sexual_violence`(性暴力)。オーナーが例示した「犬が死なない」「震災ものが嫌」「自殺が嫌」をカバーする。
+- 初期カテゴリ(オーナー承認済み、11個): `animal_death`(動物の死)・`suicide`(自殺)・`self_harm`(自傷行為、自殺とは別枠)・`disaster`(震災・災害描写)・`sexual_violence`(性暴力)・`bullying`(いじめ)・`abuse`(虐待、児童・家庭内)・`terminal_illness`(闘病・余命宣告)・`miscarriage`(流産・死産)・`accidental_death`(事故死)・`substance_abuse`(薬物依存)。
+- カテゴリの数自体は後段のAI分類コストにほぼ効かない(1回の読み込みで複数項目をまとめて判定できるため、下記「分類コストを軽くする設計」参照)。そのため数を絞らず、オーナー方針通り全部含める。
 - 新しいカテゴリの追加は想定内(列挙型ではなく、`content_warning_categories`のようなマスタ行として管理し、コード変更なしで増やせるようにする)。
 
 ### データモデル(新規テーブル)
@@ -107,8 +109,16 @@ AniList/TMDBは「新しい分類エンジン」を作らなくても、**既存
 
 ### 自動化(新規追加作品への対応)
 
-- 新規作品のinsert直後、ソース2(AI推測、あらすじベース)だけは即座に実行できる(材料があらすじしかないため)。`ai_guess`状態で`movie_content_warnings`に入る。
+- 新規作品のinsert直後、ソース2(AI推測、あらすじベース)だけは即座に実行できる(材料があらすじしかないため)。`ai_guess`状態で`movie_content_warnings`に入る。Rakuten分はコンポーネントAと同じ`content-classify`呼び出しの中で同時に行う(下記参照)。TMDB分(movie/drama/アニメ映画)は`tmdb-discover-*`系のinsert直後に同様のAI推測を実行する(こちらはTMDBのあらすじを材料にする、別途軽い呼び出し)。
 - ソース1(レビュー)は性質上すぐには揃わない。TMDB分は、`tmdb-movie-reviews`のキャッシュが(既存の「詳細ページを開いた時の遅延取得」で)埋まるたびに、裏で`movie_content_warnings`の該当行を`ai_guess`→`confirmed`に格上げするトリガー的な処理を追加する(新規に全件先読みはしない、遅延取得の既存方針を踏襲)。
+
+### 分類コストを軽くする設計
+
+カテゴリ数(11個)やタグの種類を絞るのではなく、**AI呼び出しの回数を絞る**ことでコストを抑える。
+
+- **Rakuten分(novel/manga)**: コンポーネントA(ニッチ属性タグ)とコンポーネントB(トラウマ回避のAI推測)を、`content-classify`という1つの共有edge functionの1回の呼び出しに統合する。あらすじ全文を1回読ませ、ツール呼び出しの出力スキーマに`nicheTags`(自由記述配列)と`contentWarnings`(11カテゴリそれぞれの`present`/`absent`/`unknown`)の両方を持たせる。新規作品1件あたりのAI呼び出しは1回のまま(今の感情タグ・表現度推定と同程度のコスト感)。
+- **TMDB分(movie/drama/アニメ映画)**: 同様に、既存の表現度推定(`tmdb-expression-estimate`/`tmdb-tv-expression-estimate`)の出力スキーマに`contentWarnings`を追加する形で統合する(表現度推定も「あらすじを1回読んで複数項目を返す」構造なので、同じ呼び出しに相乗りできる。ニッチ属性タグはTMDBの場合A-2の通りkeywords流用でAI呼び出し自体が不要)。
+- **レビューに基づく確信度の格上げ**: 既存の`tmdb-movie-reviews`の遅延取得(詳細ページを開いた時だけ)に完全に乗る。新規作品のために先回りして全件のレビューを取得する処理は作らない。Wander自前レビューも同様に、投稿された時だけその1件を判定する(バッチ再スキャンはしない)。
 
 ---
 
@@ -120,7 +130,7 @@ AniList/TMDBは「新しい分類エンジン」を作らなくても、**既存
 
 ## 今後(実装計画へ)
 
-この設計書の承認後、`writing-plans`スキルでタスク分解した実装計画を作成する。規模が大きいため、実装計画は次の2つのサブプロジェクトに分けることを推奨する(それぞれ独立にテスト・デプロイ可能):
+この設計書の承認後、`writing-plans`スキルでタスク分解した実装計画を作成する。規模が大きいため、実装計画は次の2つのサブプロジェクトに分けることを推奨する(それぞれ独立にテスト・デプロイ可能)。ただし`content-classify`(Rakuten分の統合AI呼び出し)と`tmdb-expression-estimate`系の出力スキーマ拡張はA・B共有の土台なので、どちらのサブプロジェクトでも触る前提で計画する:
 
-1. コンポーネントA(ニッチ・フェチ属性タグ): データ列追加→AniList/TMDB保持範囲拡張→エイリアス辞書→検索マッチング→Rakuten/iTunes向けAI分類
-2. コンポーネントB(トラウマ回避フラグ): テーブル追加→AI推測パイプライン→TMDBレビュー連携→検索(`ai-search`拡張)→UI注記
+1. コンポーネントA(ニッチ・フェチ属性タグ): データ列追加→AniList/TMDB保持範囲拡張→エイリアス辞書→検索マッチング→`content-classify`(Rakuten向け、nicheTags部分)
+2. コンポーネントB(トラウマ回避フラグ): テーブル追加→`content-classify`/`tmdb-expression-estimate`系へのAI推測統合→TMDBレビュー連携→検索(`ai-search`拡張)→UI注記
