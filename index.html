@@ -6797,6 +6797,11 @@ function renderHomeRows(){
 // ホームの場面カード(openHomeScene)と同じ操作感(タップで下に結果を開く)
 // だが、こちらはスコアリングや配信確認が不要で、m.musicScenesに場面名が
 // 含まれる曲をその場で絞り込むだけなので即座に描画できる。
+// オーナーとすり合わせ済みのデザイン(6曲・縦に長くなりすぎない・事実に基づく
+// 表示)がコードに反映されていなかった指摘(2026-10-22)を受け、結果の見た目を
+// 他の場面カード(openHomeScene)と同じbuildHomeSceneResultItemHTML(ポスター左
+// +タイトル/あらすじ右の横並び)・最大6件に揃える(以前はbuildCardHTMLの
+// グリッドを24件まで出しており、縦に長くなっていた)。
 function openMusicScene(scene){
   document.querySelectorAll('#music-scene-row .scene-card').forEach(el => el.classList.toggle('active', el.dataset.scene === scene));
   const panel = document.getElementById('music-scene-results');
@@ -6809,10 +6814,10 @@ function openMusicScene(scene){
     catalogMode
   );
   const matches = visibleMovies.filter(m => (m.musicScenes || []).includes(scene));
-  const list = seededShuffle(matches, `music-scene:${scene}`).slice(0, 24);
+  const list = seededShuffle(matches, `music-scene:${scene}`).slice(0, 6);
   const listEl = document.getElementById('music-scene-results-list');
   listEl.innerHTML = list.length
-    ? `<div class="results">${list.map(m => buildCardHTML(m)).join('')}</div>`
+    ? list.map(m => buildHomeSceneResultItemHTML(m)).join('')
     : `<p style="font-size:12.5px; color:var(--ink-soft);">対象の曲がまだ見つかりませんでした。</p>`;
   panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
