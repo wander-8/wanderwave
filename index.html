@@ -1143,6 +1143,19 @@
   .result-poster img{ position:absolute; inset:0; width:100%; height:100%; object-fit:cover; }
   .result-body{ min-width:0; flex:1; padding-top:4px; }
   .result-synopsis{ font-size: 11.5px; color: var(--ink-soft); opacity:.75; line-height:1.6; margin: 6px 0 2px; font-style:italic; }
+  /* オーナー指摘(2026-10-22):「右側にあらすじって書いてたけど、感情タグ×
+     表現度を記載した方が伝わるんじゃないか」。サイトが感情タグ・表現度という
+     実データを持って絞り込んでいることが一目で伝わるよう、場面カードの結果
+     行ではあらすじの代わりにこの2つをバッジで示す(データが無い作品だけ
+     あらすじへフォールバック、buildHomeSceneResultItemHTML参照)。 */
+  .result-facet-row{ display:flex; align-items:center; gap:7px; margin: 6px 0 2px; flex-wrap:wrap; }
+  .result-facet-tag, .result-facet-intensity{
+    font-size: 12px; font-weight:700;
+    padding: 3px 9px; border-radius: 999px;
+    background: rgba(255,255,255,0.06);
+    white-space: nowrap;
+  }
+  .result-facet-sep{ font-size: 11px; color: var(--ink-soft); opacity:.6; }
   .result-love-row{
     display:flex; align-items:center; gap:6px; margin: 7px 0 4px;
     font-size:19px; font-weight:700; color: var(--love);
@@ -7076,7 +7089,25 @@ function buildHomeSceneResultItemHTML(m){
   const posterInner = hasPoster
     ? `<img src="${m.posterUrl}" alt="" loading="lazy" decoding="async">`
     : m.title.charAt(0);
-  const synopsis = m.synopsis ? `<div class="result-synopsis">${m.synopsis}</div>` : '';
+  // オーナー指摘(2026-10-22):「右側にあらすじって書いてたけど、感情タグ×
+  // 表現度を記載した方が伝わるんじゃないかな」。あらすじ(文章)より、感情
+  // タグ・表現度という実データを持って絞り込んでいること自体が伝わる表示に
+  // 差し替える(「このサイトはちゃんと中身を見て判断してる」という説得力を
+  // 持たせる狙い)。どちらのデータも無い作品(未評価、感情タグ未付与)では
+  // 完全に空になるよりはましなので、従来通りあらすじへフォールバックする。
+  const primaryTag = (m.tags && m.tags[0]) || null;
+  const intensityBand = movieIntensityBand(m);
+  const intensityKnown = intensityBand != null;
+  let facetHTML = '';
+  if(primaryTag || intensityKnown){
+    const tagPart = primaryTag
+      ? `<span class="result-facet-tag" style="color:${tagColor(primaryTag)}">${escapeHtml(primaryTag)}</span>` : '';
+    const sep = (primaryTag && intensityKnown) ? `<span class="result-facet-sep">×</span>` : '';
+    const intensityPart = intensityKnown
+      ? `<span class="result-facet-intensity" style="color:${riskCategoryColor(intensityBand)}">表現度 ${riskLabel(intensityBand)}</span>` : '';
+    facetHTML = `<div class="result-facet-row">${tagPart}${sep}${intensityPart}</div>`;
+  }
+  const synopsis = (!facetHTML && m.synopsis) ? `<div class="result-synopsis">${m.synopsis}</div>` : '';
   // オーナー指摘:「ハートの数だけタイトルの下に置いて欲しかった。あらすじは
   // 右に置いて欲しかった。棒線はいらない」。バー(.interest-bar-track)や
   // 件数の文(.interest-count)は出さず、ハート+スコアだけの最小表示にする。
@@ -7094,6 +7125,7 @@ function buildHomeSceneResultItemHTML(m){
       <div class="result-body">
         <div class="result-title">${m.title}</div>
         ${loveHTML}
+        ${facetHTML}
         ${synopsis}
       </div>
     </div>
@@ -7389,7 +7421,13 @@ function renderHomeLanding(){
     <div id="home-gift-area"></div>
   `;
   homeMoodRotationSeed = 0;
-  renderWeeklyFeature();
+  // オーナー指摘(2026-10-22):「今週の特集は一旦見せなくていいかも」。
+  // generate-daily-feature(週次cron)・automated_featuresテーブルへの
+  // 生成自体は止めず、ホーム画面への表示だけ止める(呼び出しをコメント
+  // アウト。weekly-feature-labelは元々display:noneで始まるので、これを
+  // 呼ばなければ何も表示されないままになる)。再表示したくなったら
+  // この1行を戻すだけで良い。
+  // renderWeeklyFeature();
   renderHomeScenesRow();
   renderHomeMarquees();
   renderHomeGift();
