@@ -9943,6 +9943,14 @@ function resetTracksUI(m){
 
 async function toggleTracksSection(){
   tracksOpen = !tracksOpen;
+  // オーナー指摘(2026-10-21):「音楽のところバグで作品閉じてるのに音楽流れる」。
+  // 「収録曲を見る」を閉じても、そこから再生していた曲(playingTrackIndex)が
+  // 止まらないままだった(stopTrackPreview()が呼ばれるのはswitchView経由で
+  // 別画面に移った時だけで、同じ詳細ページ内でこの欄を閉じるだけの操作は
+  // 対象外だった)。欄を閉じたら、そこから再生中の曲も止める。
+  if(!tracksOpen && playingTrackIndex != null){
+    stopTrackPreview();
+  }
   document.getElementById('tracks-toggle-btn').classList.toggle('open', tracksOpen);
   document.getElementById('tracks-body').classList.toggle('open', tracksOpen);
   if(tracksOpen && tracksCache === null){
