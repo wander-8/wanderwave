@@ -7153,10 +7153,11 @@ function buildGiftProgressSlotsHTML(monthIds, total){
   return html;
 }
 
-// loadNonMovieCatalogInBackground等の裏読み込みが進むたびにrefreshHomeView
-// 経由でrenderHomeGift()が何度も呼ばれるため(2026-10-20の修正)、先に
-// 呼ばれた方のawait(match_movies_by_pocket RPC)が後から解決して新しい
-// 表示を上書きしてしまわないよう、トークンで最後に呼ばれた分だけを反映する。
+// 背景読み込みが進むたびにscheduleViewRefresh経由でrenderHomeGift()が
+// 呼ばれうるため(2026-10-20の修正、2026-10-21にscheduleViewRefreshへ統合・
+// 間引き追加)、先に呼ばれた方のawait(match_movies_by_pocket RPC)が後から
+// 解決して新しい表示を上書きしてしまわないよう、トークンで最後に呼ばれた
+// 分だけを反映する。
 let homeGiftRenderToken = 0;
 async function renderHomeGift(){
   const myToken = ++homeGiftRenderToken;
@@ -7295,22 +7296,49 @@ function renderHomeLanding(){
 // 本来は反映すべきなのに素通りしてしまい、読み込みが終わった後もホームが
 // 映画だけのまま固まって見える事故になっていた)。
 // オーナー指摘(2026-10-21):「ホームのところ最初に開くと作品の内容を刷新
-// するためなのかすごいブレる。今日の贈り物の中身も違う項目入ってない」。
-// refreshHomeView()はバックグラウンド読み込み(映画の残り・アニメ/ドラマ/
-// 漫画/小説/音楽の各種別×2段階・あらすじ一括パッチ)の完了ごとに呼ばれ、
-// 初回表示の数秒間で10回以上連続で呼ばれる。呼ばれるたびに棚・今日の贈り物
+// するためなのかすごいブレる。今日の贈り物の中身も違う項目入ってない」→
+// 「今の所の問題点とシンプルにしていくためにどうすればいいか」→「1から
+// 全て取り掛かろう」。
+// 背景読み込み(映画の残り・movie/non-movieのsynopsis一括パッチ・アニメ/
+// ドラマ/漫画/小説/音楽の各種別×2段階)が完了するたびに「どのビューを
+// 再描画すべきか」を4箇所(loadRemainingMoviesInBackground/
+// loadMovieBigFieldsInBackground/loadNonMovieCatalogInBackground/
+// loadNonMovieBigFieldsInBackground)でそれぞれ個別に判断し、ほぼ同じ
+// renderTagCloud〜renderResults()の並びをコピペしていた。初回表示の数秒間に
+// 10回以上連続で呼ばれる箇所もあり、呼ばれるたびに棚・今日の贈り物
 // (renderHomeGift、innerHTMLごと再構築してpickSmartOmikujiCandidatesを
-// MOVIESプールの「その時点の件数」で引き直す)を丸ごと作り直すため、
-// 候補の母数が変わるたびに選ばれる作品自体が変わり、見た目がガタガタ変わる
-// 原因になっていた。呼び出し自体を間引く(最後の呼び出しから一定時間
-// 経っても次が来なければ初めて描き直す)ことで、読み込みが落ち着いた
-// 後に1回だけ滑らかに切り替わるようにする。初回表示(renderHomeRows()を
-// 直接呼ぶ側、起動時・goHome()等)はこの間引きの対象外でそのまま即時描画する。
-let refreshHomeViewDebounceTimer = null;
-function refreshHomeView(){
-  if(refreshHomeViewDebounceTimer) clearTimeout(refreshHomeViewDebounceTimer);
-  refreshHomeViewDebounceTimer = setTimeout(() => {
-    refreshHomeViewDebounceTimer = null;
+// MOVIESプールの「その時点の件数」で引き直す)を丸ごと作り直すため、候補の
+// 母数が変わるたびに選ばれる作品自体が変わり、見た目がガタガタ変わって
+// いた。検索結果・絞り込みチップ側も同じ理由で間引かれておらず、ホーム以外
+// でも同じ症状の余地が残っていた。
+// 4箇所の再描画ロジックをこの1関数にまとめ、間引き(debounce)もここだけで
+// 一元管理する。呼び出し元ごとに「カタログモードが映画のままなら素通り」
+// のような個別ガードを持たせていたのもここでは廃止した(間引き自体が
+// 連続呼び出しのコストをほぼ吸収するため、ガードを条件分岐で保つより
+// 「常に呼ぶ」方が単純で、ガードの条件漏れでホームが固まって見える、
+// という過去に実際に起きた種類の事故自体が起こらなくなる)。
+// includeChips: ジャンル・感情タグ・国・年代の選択肢が増えうる呼び出し元
+// (映画の残りページ・非映画カタログ)だけtrueを渡す。あらすじ・出演者だけの
+// 読み込みは新しいジャンル値を持ち込まないのでチップの再計算は不要。
+// 初回表示(renderHomeRows()を直接呼ぶ側、起動時・goHome()等)はこの間引きの
+// 対象外でそのまま即時描画する(ここで一本化しているのは背景読み込みの
+// 完了シグナルだけ)。
+let viewRefreshDebounceTimer = null;
+let viewRefreshWantsChips = false;
+function scheduleViewRefresh(includeChips){
+  if(includeChips) viewRefreshWantsChips = true;
+  if(viewRefreshDebounceTimer) clearTimeout(viewRefreshDebounceTimer);
+  viewRefreshDebounceTimer = setTimeout(() => {
+    viewRefreshDebounceTimer = null;
+    const doChips = viewRefreshWantsChips;
+    viewRefreshWantsChips = false;
+    if(doChips){
+      renderTagCloud();
+      renderGenreCloud();
+      renderCountryCloud();
+      renderDecadeCloud();
+    }
+    renderFeaturedBanner();
     if(state.homeLandingActive){
       renderHomeScenesRow();
       renderHomeMarquees();
@@ -7318,6 +7346,7 @@ function refreshHomeView(){
     }else{
       renderHomeRows();
     }
+    renderResults();
   }, 600);
 }
 
@@ -12396,15 +12425,9 @@ async function loadRemainingMoviesInBackground(startOffset, plainMovieFilter, st
     const existingIds = new Set(MOVIES.map(m => m.id));
     const newRecords = restRows.filter(row => !existingIds.has(row.id)).map(row => buildMovieRecord(row, statsByMovie, estimatesByMovie));
     MOVIES = MOVIES.concat(newRecords);
-    // loadNonMovieCatalogInBackgroundと同じ理由: 残りの映画が増えた分だけ
-    // 感情タグ・ジャンル・国・年代チップの選択肢も増えうるので、ここでも再計算する。
-    renderTagCloud();
-    renderGenreCloud();
-    renderCountryCloud();
-    renderDecadeCloud();
-    renderFeaturedBanner();
-    refreshHomeView();
-    renderResults();
+    // 残りの映画が増えた分だけ感情タグ・ジャンル・国・年代チップの選択肢も
+    // 増えうるので、チップも合わせて再計算する(scheduleViewRefresh参照)。
+    scheduleViewRefresh(true);
   }catch(err){
     console.error('映画カタログの残り分の読み込みに失敗しました', err);
   }
@@ -12425,9 +12448,7 @@ async function loadMovieBigFieldsInBackground(){
       if(row) applyBigFieldsPatch(movie, row);
     });
     movieBigFieldsLoaded = true;
-    renderFeaturedBanner();
-    refreshHomeView();
-    renderResults();
+    scheduleViewRefresh(false);
     if(state.currentMovieId != null && document.getElementById('view-detail').classList.contains('active')){
       const current = MOVIES.find(x => x.id === state.currentMovieId);
       if(current){
@@ -12473,28 +12494,13 @@ async function loadMovieBigFieldsInBackground(){
 const NON_MOVIE_TYPE_FLAGS = ['is_anime', 'is_drama', 'is_manga', 'is_novel', 'is_music'];
 async function loadNonMovieCatalogInBackground(statsByMovie, estimatesByMovie){
   const PER_TYPE_FIRST_PAGE_SIZE = 500;
-  const rerenderIfNeeded = () => {
-    // ホーム(state.homeLandingActive)はcatalogModeを'movie'のまま保持する
-    // 作りなので、catalogModeだけを見るとホーム表示中もここで素通りしてしまい、
-    // 読み込みが終わった後もホームが映画だけのまま固まって見える事故になる
-    // (refreshHomeView参照)。
-    if(state.catalogMode === 'movie' && !state.homeLandingActive) return;
-    // ジャンル・国・年代チップは「今のモードのプールに実在するものだけ」を
-    // その都度計算して出す作りなので、このバックグラウンド読み込みが
-    // 終わった後も再計算しないと、ページを開いた直後にモードを切り替えた
-    // (=この読み込みが終わる前にrenderGenreCloud等が1度空のプールで
-    // 呼ばれてしまった)場合、ジャンルが後から増えても二度と反映されず
-    // 「詳しく絞り込む」の中身が空のまま固まって見える事故になっていた。
-    // 感情タグも同じ理由(今のモードに実在するものだけを出す仕組みを
-    // availableTags()に入れた)で再計算が必要。
-    renderTagCloud();
-    renderGenreCloud();
-    renderCountryCloud();
-    renderDecadeCloud();
-    renderFeaturedBanner();
-    refreshHomeView();
-    renderResults();
-  };
+  // ジャンル・国・年代チップ・感情タグは「今のモードのプールに実在する
+  // ものだけ」をその都度計算して出す作りなので、この背景読み込みが終わった
+  // 後も再計算しないと「詳しく絞り込む」の中身が増えないまま固まって見える。
+  // 以前はここで「カタログモードが映画のままなら素通り」という個別ガードを
+  // 持たせていたが、scheduleViewRefresh側の間引きで連続呼び出しのコストは
+  // 既に吸収されるため、ガードの条件漏れで固まって見える事故(過去に実際に
+  // 発生)自体をなくすため廃止し、常にchips込みで呼ぶ。
   // 種別ごとに1つずつ、独立したtry/catchで順番に取得する。以前は5種を
   // Promise.allで同時並列に投げていたが、1つ1つは軽いクエリでも接続が
   // 重なり、匿名ロールのstatement_timeout(3秒、エラーコード57014)に
@@ -12528,7 +12534,7 @@ async function loadNonMovieCatalogInBackground(statsByMovie, estimatesByMovie){
       if(lastErr) throw lastErr;
       const firstPageRows = firstPageData || [];
       MOVIES = MOVIES.concat(firstPageRows.map(row => buildMovieRecord(row, statsByMovie, estimatesByMovie)));
-      rerenderIfNeeded();
+      scheduleViewRefresh(true);
       if(firstPageRows.length === PER_TYPE_FIRST_PAGE_SIZE) needsBackfill.push(flag);
     }catch(err){
       console.error(`${flag}のカタログ読み込みに失敗しました(他の種別には影響させず続行)`, err);
@@ -12541,7 +12547,7 @@ async function loadNonMovieCatalogInBackground(statsByMovie, estimatesByMovie){
       const existingIds = new Set(MOVIES.map(m => m.id));
       const newRecords = restRows.filter(row => !existingIds.has(row.id)).map(row => buildMovieRecord(row, statsByMovie, estimatesByMovie));
       MOVIES = MOVIES.concat(newRecords);
-      rerenderIfNeeded();
+      scheduleViewRefresh(true);
     }catch(err){
       console.error(`${flag}の残りカタログ読み込みに失敗しました(他の種別には影響させず続行)`, err);
     }
@@ -12562,11 +12568,7 @@ async function loadNonMovieBigFieldsInBackground(){
       const row = rowById[movie.id];
       if(row) applyBigFieldsPatch(movie, row);
     });
-    if(state.catalogMode !== 'movie' || state.homeLandingActive){
-      renderFeaturedBanner();
-      refreshHomeView();
-      renderResults();
-    }
+    scheduleViewRefresh(false);
     if(state.currentMovieId != null && document.getElementById('view-detail').classList.contains('active')){
       const current = MOVIES.find(x => x.id === state.currentMovieId);
       if(current){
