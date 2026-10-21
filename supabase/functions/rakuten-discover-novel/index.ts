@@ -895,11 +895,16 @@ Deno.serve(async (req: Request) => {
           })
           .filter(Boolean);
         if (classifyItems.length) {
-          await fetch(`${SUPABASE_URL}/functions/v1/content-classify`, {
+          const classifyPromise = fetch(`${SUPABASE_URL}/functions/v1/content-classify`, {
             method: "POST",
             headers: { "Content-Type": "application/json", Authorization: `Bearer ${SERVICE_ROLE}` },
             body: JSON.stringify({ items: classifyItems, write: true }),
           }).catch((err) => console.error("content-classify呼び出しに失敗しました", err));
+          // レビュー指摘:content-classifyは1件ずつ逐次でAnthropicを呼ぶため、
+          // awaitすると件数分だけこの関数自体の応答が遅延し、insertは
+          // 既に完了しているのに呼び出し元からはタイムアウト/失敗に見えて
+          // しまう。EdgeRuntime.waitUntilで完全にバックグラウンド化する。
+          EdgeRuntime.waitUntil(classifyPromise);
         }
       }
     }
