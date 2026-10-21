@@ -6902,7 +6902,9 @@ function renderHomeRows(){
 // 他の場面カード(openHomeScene)と同じbuildHomeSceneResultItemHTML(ポスター左
 // +タイトル/あらすじ右の横並び)・最大6件に揃える(以前はbuildCardHTMLの
 // グリッドを24件まで出しており、縦に長くなっていた)。
-function openMusicScene(scene){
+let openMusicSceneName = null;
+async function openMusicScene(scene){
+  openMusicSceneName = scene;
   document.querySelectorAll('#music-scene-row .scene-card').forEach(el => el.classList.toggle('active', el.dataset.scene === scene));
   const panel = document.getElementById('music-scene-results');
   if(!panel) return;
@@ -6915,6 +6917,11 @@ function openMusicScene(scene){
   );
   const matches = visibleMovies.filter(m => (m.musicScenes || []).includes(scene));
   const list = seededShuffle(matches, `music-scene:${scene}`).slice(0, 6);
+  // オーナー指摘(2026-10-22):「表現度控えめも出して欲しい」対応。
+  // openHomeSceneと同じく、表示するぶんだけその場で表現度を取得する
+  // (ensureExpressionEstimatesForMovies参照、詳細はそちらのコメント)。
+  if(list.length) await ensureExpressionEstimatesForMovies(list.map(m => m.id));
+  if(openMusicSceneName !== scene) return; // 取得中に別の場面カードへ切り替えられた場合は結果を捨てる
   const listEl = document.getElementById('music-scene-results-list');
   listEl.innerHTML = list.length
     ? list.map(m => buildHomeSceneResultItemHTML(m)).join('')
@@ -7071,6 +7078,8 @@ async function openHomeScene(id){
   listEl.innerHTML = `<p style="font-size:12.5px; color:var(--ink-soft);">探しています…</p>`;
   panel.scrollIntoView({ behavior:'smooth', block:'nearest' });
   const results = await getHomeSceneResults(scene, 3);
+  if(openHomeSceneId !== id) return; // 取得中に別の場面カードへ切り替えられた場合は結果を捨てる
+  if(results.length) await ensureExpressionEstimatesForMovies(results.map(m => m.id));
   if(openHomeSceneId !== id) return; // 取得中に別の場面カードへ切り替えられた場合は結果を捨てる
   if(!results.length){
     listEl.innerHTML = `<p style="font-size:12.5px; color:var(--ink-soft);">近い作品がまだ見つかりませんでした。</p>`;
@@ -12413,6 +12422,46 @@ async function loadExpressionEstimateForMovie(movieId){
     }
   }catch(err){
     console.error('表現度の取得に失敗しました', err);
+  }
+}
+
+// オーナー指摘(2026-10-22):「表現度控えめも出して欲しい」。場面カードの
+// 結果(buildHomeSceneResultItemHTML)に感情タグ×表現度バッジを出すように
+// したが、表現度の推定値(movie_expression_estimates)は上の
+// ensureFullExpressionEstimatesLoaded()の通り意図的に全件先読みしておらず、
+// カタログ読み込み直後は9割以上の作品がまだ未取得のまま(=バッジが
+// 出ない)だった。控えめが出ないように見えたのはバンドの偏りではなく、
+// そもそも表現度データ自体がまだ届いていない作品が大半だったのが原因
+// (実際は全体の約67%が「控えめ」で最多)。場面カードの結果は毎回
+// 3〜6件程度と少ないので、全件先読みを復活させず、表示する分だけ
+// その場でまとめて取得する(詳細ページ1件分のloadExpressionEstimateFor
+// Movieと同じ考え方を、複数件・1往復にまとめた版)。
+async function ensureExpressionEstimatesForMovies(movieIds){
+  const needed = movieIds.filter(id => {
+    const m = MOVIES.find(x => x.id === id);
+    return m && !(m.intensityCount > 0) && !m.expressionEstimated;
+  });
+  if(!needed.length) return;
+  try{
+    const { data, error } = await supabase.from('movie_expression_estimates')
+      .select('movie_id, expression_level, reason_tags')
+      .in('movie_id', needed);
+    if(error) throw error;
+    (data || []).forEach(est => {
+      const m = MOVIES.find(x => x.id === est.movie_id);
+      if(!m || m.intensityCount > 0 || m.expressionEstimated) return;
+      m.intensitySum = est.expression_level;
+      m.intensityWeight = 1;
+      m.expressionEstimated = true;
+      m.reasonVotes = {
+        violence: (est.reason_tags || []).includes('violence') ? 1 : 0,
+        sexual: (est.reason_tags || []).includes('sexual') ? 1 : 0,
+        fear: (est.reason_tags || []).includes('fear') ? 1 : 0,
+        explicit: (est.reason_tags || []).includes('explicit') ? 1 : 0
+      };
+    });
+  }catch(err){
+    console.error('場面カード結果の表現度取得に失敗しました', err);
   }
 }
 
