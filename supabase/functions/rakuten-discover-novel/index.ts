@@ -883,6 +883,24 @@ Deno.serve(async (req: Request) => {
           if (estErr) throw estErr;
           estimatesInserted = count ?? estimateRows.length;
         }
+
+        // オーナー指摘(2026-10-22、design spec コンポーネントA-4):Rakuten分は
+        // AniList/TMDBのような既製の細かいタグが無いため、ここでcontent-classify
+        // を呼んでniche_tagsを埋める。失敗してもinsert自体(新規作品の取り込み)は
+        // 既に完了しているので影響しない(.catchで握り潰す)。
+        const classifyItems = rows
+          .map((r) => {
+            const movieId = idByTitle.get(normalizeTitle(r._key));
+            return movieId ? { movie_id: movieId, synopsis: r.synopsis || "" } : null;
+          })
+          .filter(Boolean);
+        if (classifyItems.length) {
+          await fetch(`${SUPABASE_URL}/functions/v1/content-classify`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", Authorization: `Bearer ${SERVICE_ROLE}` },
+            body: JSON.stringify({ items: classifyItems, write: true }),
+          }).catch((err) => console.error("content-classify呼び出しに失敗しました", err));
+        }
       }
     }
 
