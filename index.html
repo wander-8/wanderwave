@@ -5488,6 +5488,27 @@ function availableTags(){
   pool.forEach(m => (m.tags || []).forEach(t => set.add(t)));
   return ALL_TAGS.filter(t => set.has(t));
 }
+// オーナー指摘(2026-10-22):「感情タグが調べにくいのもそこが要因な気がする」
+// 「どんな感じになるか気になる」→実際に試した結果、単語そのままの
+// クエリ(「怖い」等)はAI検索(submitSearch)を経由しても、ただ打っただけの
+// 瞬時のローカル一致(onSearchInput)と結果が完全に同じだった(AIの強みは
+// 複数の手がかりを含む文・曖昧な雰囲気表現の方にしか出ない)。そのため
+// タグを押した時にAI検索そのものを動かすのではなく、実際の絞り込み方法
+// (state.activeTags、既存のまま)は変えずに、検索欄の見た目だけタップした
+// タグを反映させる。「押す→検索欄にその言葉が入る→結果が変わる」という
+// 一連の流れが見えるようにする狙い(「ただのチェックボックス」に見える
+// 問題への最小対応。実験的な変更という位置づけ)。
+function syncSearchInputWithActiveTags(){
+  const input = document.getElementById('search-input');
+  if(!input) return;
+  const text = [...state.activeTags].join('・');
+  input.value = text;
+  state.query = text;
+  state.queryKeywords = [];
+  state.semanticMatches = null;
+  updateSearchPlaceholderGhostVisibility();
+}
+
 function renderTagCloud(){
   const el = document.getElementById('tag-cloud');
   el.innerHTML = "";
@@ -5511,6 +5532,7 @@ function renderTagCloud(){
       if(wasActive) state.activeTags.delete(tag);
       else state.activeTags.add(tag);
       playTone(wasActive ? 420 : 600, 0.08, 0.07, 'sine');
+      syncSearchInputWithActiveTags();
       renderTagCloud();
       renderResults();
     };
