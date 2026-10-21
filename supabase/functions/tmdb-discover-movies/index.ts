@@ -313,6 +313,10 @@ Deno.serve(async (req: Request) => {
             japan_release_date: japanReleaseDate,
             japan_release_checked_at: new Date().toISOString(),
             keywords: keywords.length ? keywords : null,
+            // オーナー指摘(2026-10-22):TMDBのkeywordsは既にニッチなトロープ
+            // 情報を含んでおり、ニッチ属性検索の土台としてそのままniche_tags
+            // にも反映する(design spec A-2)。keywords列自体の意味は変えない。
+            niche_tags: keywords.length ? keywords : null,
             keywords_checked_at: new Date().toISOString(),
             series,
             series_checked_at: new Date().toISOString(),
