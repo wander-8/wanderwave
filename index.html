@@ -5904,6 +5904,28 @@ function isTooIntenseForPassiveDiscovery(m){
   return TITLE_EXPLICIT_WORDS.some(w => (m.title || '').includes(w));
 }
 
+// オーナー指摘(2026-10-21):「音楽の今話題の新作の内容がAIだらけだったから
+// 正直ちゃんとした正式なバンドに絞ってほしい。AIが作ってもいいけど、バンドに
+// 収益いかないなら意味がない」。実データ調査(itunes-discover-musicはApple
+// Musicの人気アルバムチャートそのものを取り込んでいるが、そのチャート自体に
+// 量産型の作業用BGM・コンピレーションが混入していた)で2系統を確認:
+// ①「Various Artists」名義のコンピレーション(575件、単独のバンドが存在しない)
+// ②BGM/Lofi/作業用音楽の量産「アーティスト」(86件、チャンネル名のような名前で
+// 実在のバンドではない。実例: Yuu07「ワークアウトミュージックVol.403」、
+// ドローンマーシー「サーフィンしたくなるBGM」)。
+// カタログからの削除は要望されていない(検索では見つかってよい)ため、
+// ホームの「今話題の新作」等の受動的な棚からだけ除外する
+// (isTooIntenseForPassiveDiscoveryと同じ適用範囲、検索には適用しない)。
+const VARIOUS_ARTISTS_NAMES = new Set(['various artists', 'ヴァリアス・アーティスト', 'various artist']);
+const BGM_MILL_ARTIST_PATTERN = /BGM|Lofi|lofi|relax(ing)?\s*(piano|music|bgm|α\s*wave|world)|cafe music|coffee beatz|チルアウト|BOOST渋谷|Track Maker|ドローンマーシー|Yuu[0-9]+|安眠堂|心を浄化|癒しの周波数|うつ改善|^ランニングBGM$|ネオノスタルジカ/i;
+function isNotRealMusicArtist(m){
+  if(!m.isMusic) return false;
+  const artist = (m.director || '').trim();
+  if(!artist) return false;
+  if(VARIOUS_ARTISTS_NAMES.has(artist.toLowerCase())) return true;
+  return BGM_MILL_ARTIST_PATTERN.test(artist);
+}
+
 // スライダーの見た目(ラベル・色・注釈)だけを今のstate.intensityFilterに
 // 合わせて更新する。renderResults()からも呼ぶため、renderResults()を
 // 呼び返さない(呼ぶとonIntensityFilterInput⇄renderResultsの無限再帰になる)。
@@ -6464,7 +6486,7 @@ function renderHomeRows(){
   // ないから整理してほしい」)。
   const catalogMode = currentCatalogMode();
   const visibleMovies = bookTypeNarrowedPool(
-    MOVIES.filter(m => !matchesExcludedWord(m) && !isTooIntenseForPassiveDiscovery(m) && isInCatalogMode(m, catalogMode)),
+    MOVIES.filter(m => !matchesExcludedWord(m) && !isTooIntenseForPassiveDiscovery(m) && !isNotRealMusicArtist(m) && isInCatalogMode(m, catalogMode)),
     catalogMode
   );
 
@@ -6693,7 +6715,7 @@ function renderHomeRows(){
   const reviewCards = RECENT_REVIEWS
     .map(r => {
       const m = MOVIES.find(x => x.id === r.movie_id);
-      if(!m || matchesExcludedWord(m) || isTooIntenseForPassiveDiscovery(m)) return null;
+      if(!m || matchesExcludedWord(m) || isTooIntenseForPassiveDiscovery(m) || isNotRealMusicArtist(m)) return null;
       const snippet = r.review_text.length > 60 ? r.review_text.slice(0, 60) + '…' : r.review_text;
       const posterImg = (m.posterUrl && !shouldHidePosterForIntensity(m, { forcePosterHide: true })) ? `<img src="${m.posterUrl}" alt="" loading="lazy" decoding="async">` : '';
       const typeInfo = mediaTypeInfo(m);
@@ -6757,7 +6779,7 @@ function openMusicScene(scene){
   document.getElementById('music-scene-results-label').textContent = `「${scene}」に近い曲`;
   const catalogMode = currentCatalogMode();
   const visibleMovies = bookTypeNarrowedPool(
-    MOVIES.filter(m => !matchesExcludedWord(m) && !isTooIntenseForPassiveDiscovery(m) && isInCatalogMode(m, catalogMode)),
+    MOVIES.filter(m => !matchesExcludedWord(m) && !isTooIntenseForPassiveDiscovery(m) && !isNotRealMusicArtist(m) && isInCatalogMode(m, catalogMode)),
     catalogMode
   );
   const matches = visibleMovies.filter(m => (m.musicScenes || []).includes(scene));
@@ -6860,7 +6882,7 @@ async function filterByRealAvailability(movies){
 // の考え方)。
 async function getHomeSceneResults(scene, limit){
   limit = limit || 3;
-  const pool = MOVIES.filter(m => !matchesExcludedWord(m) && !isTooIntenseForPassiveDiscovery(m));
+  const pool = MOVIES.filter(m => !matchesExcludedWord(m) && !isTooIntenseForPassiveDiscovery(m) && !isNotRealMusicArtist(m));
   const scored = pool.map(m => {
     const w = tagWeights(m);
     const score = scene.moodTags.reduce((sum, t) => sum + (w[t] || 0), 0);
@@ -6981,7 +7003,7 @@ function buildHomeSceneResultItemHTML(m){
 // 「有名どころ(famous)+まだ無名だが情報が揃っている作品(rare)」を混ぜる
 // 方式に変え、候補の母数を大きく広げた。
 function getHomeMoodMarqueePool(tag, count){
-  const pool = MOVIES.filter(m => !matchesExcludedWord(m) && !isTooIntenseForPassiveDiscovery(m) && m.tags.includes(tag));
+  const pool = MOVIES.filter(m => !matchesExcludedWord(m) && !isTooIntenseForPassiveDiscovery(m) && !isNotRealMusicArtist(m) && m.tags.includes(tag));
   const perTypeCap = Math.max(3, Math.ceil(count / CATALOG_MODES.length));
   let picked = [];
   CATALOG_MODES.forEach(([mode]) => {
@@ -7017,7 +7039,7 @@ function getHomeMoodMarqueePool(tag, count){
 // 直すとまた日替わりの既定値に戻る)。
 let homeMoodRotationSeed = 0;
 function pickHomeMoodTags(){
-  const pool = MOVIES.filter(m => !matchesExcludedWord(m) && !isTooIntenseForPassiveDiscovery(m));
+  const pool = MOVIES.filter(m => !matchesExcludedWord(m) && !isTooIntenseForPassiveDiscovery(m) && !isNotRealMusicArtist(m));
   const tagCounts = {};
   pool.forEach(m => m.tags.forEach(t => { tagCounts[t] = (tagCounts[t] || 0) + 1; }));
   const topTags = Object.keys(tagCounts).sort((a, b) => tagCounts[b] - tagCounts[a]);
@@ -7459,7 +7481,7 @@ function renderFeaturedBanner(){
   // 「ホーム」モード中は特定のメディア種別に絞らない(オーナー指摘:「今一番
   // 愛されてる作品が映画のみなのが気になる」)。他の6モードでは今まで通り
   // そのモードの作品だけに絞る。
-  const eligibleMovies = MOVIES.filter(m => !matchesExcludedWord(m) && !isTooIntenseForPassiveDiscovery(m) && !isFanbookLikeItem(m) && (state.homeLandingActive || isInCatalogMode(m, catalogMode)));
+  const eligibleMovies = MOVIES.filter(m => !matchesExcludedWord(m) && !isTooIntenseForPassiveDiscovery(m) && !isNotRealMusicArtist(m) && !isFanbookLikeItem(m) && (state.homeLandingActive || isInCatalogMode(m, catalogMode)));
   const lovedPool = eligibleMovies.filter(m => hasLoveBasis(m))
     .sort((a, b) => loveAverage(b) - loveAverage(a))
     .slice(0, 30);
@@ -14351,7 +14373,7 @@ async function pickOmikujiCandidatesByProfile(mode, sourceMovies, excludeIds, co
   // まずタグだけで荒く絞る(DB不要、無料)。表現度の階層を引くのは、この
   // 絞り込み後の候補だけに限定してコストを最小化する。
   const tagScored = MOVIES
-    .filter(m => !excludeIds.includes(m.id) && !isTooIntenseForPassiveDiscovery(m) && isInCatalogMode(m, mode))
+    .filter(m => !excludeIds.includes(m.id) && !isTooIntenseForPassiveDiscovery(m) && !isNotRealMusicArtist(m) && isInCatalogMode(m, mode))
     .map(m => ({ m, tagScore: (m.tags || []).reduce((s, t) => s + (tagProfile[t] || 0), 0) }))
     .filter(x => x.tagScore > 0)
     .sort((a, b) => b.tagScore - a.tagScore);
