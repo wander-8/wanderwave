@@ -6011,6 +6011,36 @@ function renderDecadeCloud(){
   renderFilterTabs();
 }
 
+// オーナー指摘(2026-10-22):「自由に検索できることが一発じゃ伝わらない」。
+// 検索欄が空の間、placeholderを自由文の例でローテーションさせ、タップせず
+// 見るだけで「こういう書き方で探せる」と伝わるようにする(あくまで見るだけの
+// ヒントで、タップしても何も起きない。実際に試せる仕組み(タップで検索実行)は
+// 別案として検討中、今回はまずこれだけ入れてみる)。
+// まだ実使用ログがほぼ無く(ai_search_cacheは12件、ほぼ開発時のテスト文)、
+// どの言い回しが響くかの実データが無いため、例文は「具体的な設定」
+// 「雰囲気・感情」「音楽の場面」をひとまず仮で用意したもの(情報量が
+// 多すぎる・響かないと分かれば内容を見直す前提)。
+const SEARCH_PLACEHOLDER_EXAMPLES = [
+  '作品名・ジャンル・雰囲気で探す',
+  '赤いドレスを着た女性が出てくる、ちょっと怖い話',
+  '渋い感じの洋楽',
+  '雨の日に見たい、泣ける話',
+  '猫を飼っている双子が出てくる映画',
+  '元気が欲しい時に聴きたい曲',
+  '転生して無双する話',
+];
+let searchPlaceholderTimer = null;
+function startSearchPlaceholderRotation(){
+  const input = document.getElementById('search-input');
+  if(!input || searchPlaceholderTimer) return;
+  let i = 0;
+  input.placeholder = SEARCH_PLACEHOLDER_EXAMPLES[0];
+  searchPlaceholderTimer = setInterval(() => {
+    i = (i + 1) % SEARCH_PLACEHOLDER_EXAMPLES.length;
+    input.placeholder = SEARCH_PLACEHOLDER_EXAMPLES[i];
+  }, 3500);
+}
+
 // IME変換中(漢字・カタカナ変換の候補確定前)にもoninputは発火する。この時点で
 // renderResults()のような重い全件再描画を挟むと、一部のブラウザ/環境で変換中の
 // 文字が二重に確定してしまう不具合があった(オーナー報告:「クリスマスと打つと
@@ -16354,6 +16384,7 @@ async function init(){
   // 同時に投げると数秒かかっていた)。スプラッシュを閉じる条件はloadMovies
   // の完了だけなので、個人データはloadMoviesの後に回して競合を避ける。
   await loadMovies();
+  startSearchPlaceholderRotation();
   const personalDataPromise = Promise.all([loadMyReviews(), loadMyTagVotes(), loadMyWatchLater(), loadMyPocket(), loadMyLists(), loadProfile(), loadMyLogs(), loadMySubmittedMovies(), loadLastSubmissionDate(), loadDiagnosisHistory(), loadRecentReviews(), loadPersonAliases(), checkAnimePreviewOwner()]);
 
   // リロードすると開いていた画面(詳細・プロフィール・ポケット・マイリスト等)に
