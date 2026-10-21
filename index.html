@@ -4877,12 +4877,17 @@ async function loadRecentReviews(){
   try{
     const { data, error } = await supabase
       .from('movie_reviews')
-      .select('movie_id, review_text, created_at, profiles(user_name, avatar_color, avatar_photo_url)')
+      .select('movie_id, review_text, created_at, is_hidden, profiles(user_name, avatar_color, avatar_photo_url)')
       .not('review_text', 'is', null)
       .order('created_at', { ascending: false })
       .limit(20);
     if(error) throw error;
-    RECENT_REVIEWS = data || [];
+    // オーナー指摘(2026-10-21):「レビューの内容に関して...キーワードが
+    // みんなの声に出てたらまずい」。詳細ページのレビュー一覧(10915行)は
+    // 通報が集まって非表示になったレビュー(is_hidden)を既に除外していたが、
+    // ホームの「みんなの声」はis_hiddenを一切見ておらず、通報済みのレビューが
+    // そのままホームに流れてしまう抜け穴だった。同じ基準に揃える。
+    RECENT_REVIEWS = (data || []).filter(r => !r.is_hidden);
   }catch(err){
     console.error('最近の感想の読み込みに失敗しました', err);
   }
@@ -5889,7 +5894,12 @@ function movieIntensityBand(m){
 // 別途担当)。検索は自分から探しに来た行動なので今まで通りそのまま出す
 // (このチェックは検索結果には適用しない、ホームの棚・場面カード・
 // マーキー・今日の贈り物のような「選んだわけではなく流れてくる」表示専用)。
-const TITLE_EXPLICIT_WORDS = ['えっち','シたい','エロゲ','エロい','エロ本','エロ漫画','エロマンガ','エロビデオ','エログロ','エロティック'];
+// オーナー追加指摘:「グロ・暴力も同様に」。惨殺・拷問等の語も同じ考え方で
+// 対象に加える。単純な「グロ」2文字一致は「グローバル」「グローブ」等を
+// 誤検出するため(エロの時と同じ理由)、「エログロ」「グロテスク」のような
+// 意味が明確な複合語だけに絞る。
+const TITLE_EXPLICIT_WORDS = ['えっち','シたい','エロゲ','エロい','エロ本','エロ漫画','エロマンガ','エロビデオ','エログロ','エロティック',
+  '惨殺','拷問','陵辱','強姦','猟奇','鬼畜','虐殺','残虐','グロテスク'];
 function isTooIntenseForPassiveDiscovery(m){
   return TITLE_EXPLICIT_WORDS.some(w => (m.title || '').includes(w));
 }
