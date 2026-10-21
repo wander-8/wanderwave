@@ -7334,12 +7334,14 @@ function renderHomeLanding(){
 // 間引きをいくら細かくしても、この「選び直すたびに別の作品になる」こと
 // 自体は無くならない。
 // 対策: 場面カード・マーキー・今日の贈り物は、非映画カタログの読み込みが
-// 完了する(nonMovieCatalogLoaded)までは引き続き選び直してよいが、完了後は
-// 固定する(以降の背景読み込みはmovieの残りページ・あらすじ一括パッチだけで、
-// どちらも「選べる作品の種類」を増やすものではないため、固定しても選択肢が
-// 狭いまま取り残されることはない)。featuredBanner・検索結果は今まで通り
-// 毎回更新する(featuredBannerは元々別タイマーで定期的に入れ替わる前提の
-// 表示なので、この固定の対象外)。
+// 一定水準(nonMoviePhase1Loaded、5種それぞれ最初の500件)進むまでは引き続き
+// 選び直してよいが、それ以降は固定する。当初はphase1+phase2の完全完了
+// (nonMovieCatalogLoaded)まで待つ設計にしたが、phase2(各種別の残り全件、
+// 漫画だけで14,569件)まで待つと実機で18秒前後かかり効果が薄かった。
+// 場面カード・マーキーは全件を必要とせず5種各500件で十分多様なサンプルに
+// なるため、固定のタイミングをphase1完了(数秒で揃う)まで早めた。featured
+// Banner・検索結果は今まで通り毎回更新する(featuredBannerは元々別タイマーで
+// 定期的に入れ替わる前提の表示なので、この固定の対象外)。
 let viewRefreshDebounceTimer = null;
 let viewRefreshWantsChips = false;
 let homeLandingShelvesFrozen = false;
@@ -7362,7 +7364,7 @@ function scheduleViewRefresh(includeChips){
         renderHomeScenesRow();
         renderHomeMarquees();
         renderHomeGift();
-        if(typeof nonMovieCatalogLoaded !== 'undefined' && nonMovieCatalogLoaded){
+        if(typeof nonMoviePhase1Loaded !== 'undefined' && nonMoviePhase1Loaded){
           homeLandingShelvesFrozen = true;
         }
       }
@@ -12167,6 +12169,14 @@ async function loadCastForMovie(movieId){
 }
 
 let nonMovieCatalogLoaded = false;
+// オーナー指摘(2026-10-21、「やっぱホーム画治らない」の2回目の修正):
+// nonMovieCatalogLoaded(phase1+phase2の全完了)で場面カード等を固定する
+// 設計にしたが、実機計測でphase2(種別ごとの残り全件backfill、漫画だけで
+// 14,569件)まで待つと18秒前後かかり、その間ずっと選び直され続けていた。
+// 場面カード・マーキーは全件を必要とせず、5種それぞれ最初の500件(=
+// phase1)が揃った時点で十分に多様なサンプルになるため、固定のタイミングを
+// phase1完了(数秒で揃う)まで早める。
+let nonMoviePhase1Loaded = false;
 let movieBigFieldsLoaded = false;
 
 // 表現度(内容の強さ)の推定値(movie_expression_estimates)は、以前は
@@ -12563,6 +12573,8 @@ async function loadNonMovieCatalogInBackground(statsByMovie, estimatesByMovie){
       console.error(`${flag}のカタログ読み込みに失敗しました(他の種別には影響させず続行)`, err);
     }
   }
+  // 5種それぞれ最初の500件が出揃った時点(nonMoviePhase1Loaded参照)。
+  nonMoviePhase1Loaded = true;
 
   for(const flag of needsBackfill){
     try{
