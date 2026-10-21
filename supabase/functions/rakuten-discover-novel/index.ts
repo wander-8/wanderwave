@@ -252,7 +252,15 @@ function isForeignAuthorName(author: string | null | undefined): boolean {
 
 const TIER = { LOW: 15, MILD: 40, STRONG: 65, INTENSE: 85 };
 const HEAVY_WORDS = ["惨殺", "拷問", "陵辱", "強姦", "グロテスク", "残虐", "自殺", "虐待"];
-const SEXUAL_WORDS = ["性的", "ヌード", "官能", "濡れ場", "エッチ", "妖艶", "セクシーポーズ"];
+// オーナー指摘(2026-10-21):「えっちとかエロゲ、シたいって単語出てるのに
+// 表で出てる作品あったから気を付けて」。manga側と同じ穴があった(「エッチ」
+// カタカナだけでひらがな「えっち」や「エロゲ」「シたい」を拾えていなかった)。
+// 単純な「エロ」2文字一致は「ピエロ」等の無関係な固有名詞を誤検出するため
+// (rakuten-discover-manga側で実データ確認済み)、意味が明確な複合語だけに
+// 絞る。manga側と語彙を揃える(妖艶・セクシーポーズは小説側で元々あった分、
+// そのまま残す)。
+const SEXUAL_WORDS = ["性的", "ヌード", "官能", "濡れ場", "エッチ", "妖艶", "セクシーポーズ",
+  "えっち", "シたい", "エロゲ", "エロい", "エロ本", "エロティック", "エロ漫画", "エロマンガ", "エロビデオ", "エログロ"];
 // 美術系の人体クロッキー・デッサン参考書は、実際には裸体写真が主体でも
 // キャプションが「裸婦」という学術的な語で書かれ、SEXUAL_WORDS(ヌード・
 // 官能等、アダルト向け商品で使われがちな語)には一致しないまま表現度15
@@ -443,12 +451,11 @@ function stripBonusPrefix(title: string): string {
 // 「【楽天ブックス限定特典】彼方から 小冊子付き愛蔵版 4(ミニ複製原画風
 // カード1枚)」のような特典グッズのSKUは、括弧内が特典の説明文になって
 // いるため、タグを取り除いた後にその説明もまとめて切り落とす。
-// 「【楽天ブックス限定デジタル特典】PHOTO ARK BABIES...」「【発売記念
-// 特典銀牙伝説ぷくぷくシール付き】高橋よしひろ 犬マンガの世界」のように、
-// 「特典」を含む【】表記は語順・前後の語が揺れる(オーナー指摘で発見、
-// 完全一致だった旧正規表現では素通りしていた)。括弧内のどこかに「特典」
-// が含まれていればほぼ確実に特典SKUの表記なので、固定の候補一覧ではなく
-// 「特典」を含む【】という条件に緩める。
+// 「【発売記念特典銀牙伝説ぷくぷくシール付き】高橋よしひろ 犬マンガの世界」
+// のように、「特典」を含む【】表記は語順・前後の語が揺れる(オーナー指摘で
+// 発見、完全一致だった旧正規表現では素通りしていた)。括弧内のどこかに
+// 「特典」が含まれていればほぼ確実に特典SKUの表記なので、固定の候補一覧
+// ではなく「特典」を含む【】という条件に緩める。
 function stripRetailTags(title: string): string {
   const m = title.match(/^【(バーゲン本|サイン本|[^】]*特典[^】]*)】\s*(.+)$/u);
   if (!m) return title.trim();
@@ -602,6 +609,22 @@ function trimToSentenceBoundaryJa(text: string, maxLen: number): string {
   const cut = text.slice(0, maxLen);
   const lastPunct = Math.max(cut.lastIndexOf("。"), cut.lastIndexOf("！"), cut.lastIndexOf("？"));
   return lastPunct > maxLen * 0.5 ? cut.slice(0, lastPunct + 1) : cut;
+}
+
+// 楽天のitemCaptionは、出版社によっては実際のあらすじではなく章立て・
+// 目次だけが入っていることがある(実例:「モンテ・クリスト伯」「はてしない
+// 物語」「思い出のマーニー」等の名作で「1　マルセイユ──帰港\n\n2　父
+// と子\n\n3...」のような目次がそのままsynopsisに入ってしまっていた、
+// オーナー指摘:「楽天のあらすじがあんまり良くない」)。目次は一見長くて
+// それっぽく見えるが、実際には「何の話か」が一切わからないため、あらすじ
+// としては無いのと同じ(むしろ無い方が「順次更新中」の表示に回ってマシ)。
+// 「数字+空白」で始まる行が4つ以上並んでいる場合は目次とみなし、synopsis
+// には入れない(crosscheckGoogleBooksが後でISBN経由の本物の紹介文に
+// 差し替える)。
+function looksLikeTableOfContents(text: string): boolean {
+  if (!text) return false;
+  const numberedLines = (text.match(/(^|\n)[0-9０-９]{1,3}[\s　]/gu) || []).length;
+  return numberedLines >= 4;
 }
 
 Deno.serve(async (req: Request) => {
@@ -794,7 +817,7 @@ Deno.serve(async (req: Request) => {
         // 見ているので、この中に外国の小説ジャンルが含まれるかどうかで
         // 判定する。
         country: (isForeignBook(item.booksGenreId) || isForeignAuthorName(item.author)) ? "海外" : "日本",
-        synopsis: caption ? trimToSentenceBoundaryJa(caption, SYNOPSIS_MAX_LEN) : null,
+        synopsis: caption && !looksLikeTableOfContents(caption) ? trimToSentenceBoundaryJa(caption, SYNOPSIS_MAX_LEN) : null,
         poster_path: coverUrl,
         japan_release_date: null,
         japan_release_checked_at: null,
