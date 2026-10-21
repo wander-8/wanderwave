@@ -8435,13 +8435,30 @@ function renderResults(){
       : q === ""
         || (exactGenreQuery
           ? !!(m.genre && m.genre.includes(exactGenreQuery))
-          : termMatchesMovie(m, q, relevantVibeKws, qShortTermTitleRe)
-            || personAliasNorms.some(alias =>
-              (m.castNorm && m.castNorm.some(a => a.includes(alias)))
-              || (m.directorNorm && m.directorNorm.includes(alias)))
-            || queryAliasNorms.some(alias =>
-              (m.castNorm && m.castNorm.some(a => a.includes(alias)))
-              || (m.directorNorm && m.directorNorm.includes(alias))));
+          // オーナー指摘(2026-10-21):「作品詳細から作家やバンド名をタップ
+          // してみたら、その単語が出てくる全く関係ない作品も出たんだけど
+          // やめてほしい。作品詳細から出たものはその作りての関連作品のみ
+          // 表示、それ以外で普通に検索した時は作家名以外でも出るように
+          // して大丈夫」。crossMediaSearch(人物名タップ)の時だけ、
+          // termMatchesMovie(タイトル・あらすじ等も含む曖昧一致)を使わず
+          // 監督・出演者欄だけに絞る。通常の文字検索(クエリ入力)は
+          // 今まで通りtermMatchesMovieの曖昧一致のまま変更しない。
+          : state.crossMediaSearch
+            ? ((m.directorNorm && m.directorNorm.includes(q))
+              || (m.castNorm && m.castNorm.some(a => a.includes(q)))
+              || personAliasNorms.some(alias =>
+                (m.castNorm && m.castNorm.some(a => a.includes(alias)))
+                || (m.directorNorm && m.directorNorm.includes(alias)))
+              || queryAliasNorms.some(alias =>
+                (m.castNorm && m.castNorm.some(a => a.includes(alias)))
+                || (m.directorNorm && m.directorNorm.includes(alias))))
+            : termMatchesMovie(m, q, relevantVibeKws, qShortTermTitleRe)
+              || personAliasNorms.some(alias =>
+                (m.castNorm && m.castNorm.some(a => a.includes(alias)))
+                || (m.directorNorm && m.directorNorm.includes(alias)))
+              || queryAliasNorms.some(alias =>
+                (m.castNorm && m.castNorm.some(a => a.includes(alias)))
+                || (m.directorNorm && m.directorNorm.includes(alias))));
     const matchTags = state.activeTags.size === 0 || [...state.activeTags].every(t => m.tags.includes(t));
     // 表現度フィルターは、タグを選んでいるかどうかに関係なく、選択中の
     // バンドだけで判定する(以前はactiveTags.size===0の時に無条件で
