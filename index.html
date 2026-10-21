@@ -250,6 +250,11 @@
     border-radius: 14px;
     padding: 6px;
   }
+  .search-input-wrap{
+    position: relative;
+    flex: 1;
+    display: flex;
+  }
   .search-box input{
     flex:1; border:none; outline:none;
     background:transparent;
@@ -257,6 +262,28 @@
     padding: 10px 12px;
     color: var(--ink);
   }
+  /* オーナー指摘(2026-10-22):「モーションつけて自然に出るように」。
+     ネイティブのplaceholder属性は文字が変わる瞬間が常に一発で切り替わり、
+     CSSトランジションが効かない(属性値の変更自体はアニメーション対象外)。
+     代わりにplaceholderの見た目を模した要素(このspan)を入力欄の上に重ねて
+     表示し、文言の入れ替え時だけこちらをフェードさせる。入力欄に文字が
+     入ったら(.hiddenを付与して)隠す。 */
+  .search-placeholder-ghost{
+    position: absolute;
+    left: 12px; top: 50%;
+    transform: translateY(-50%);
+    font-family: 'Inter'; font-size: 15px;
+    color: var(--ink-soft);
+    pointer-events: none;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: calc(100% - 24px);
+    opacity: 1;
+    transition: opacity .4s ease;
+  }
+  .search-placeholder-ghost.fade-out{ opacity: 0; }
+  .search-placeholder-ghost.hidden{ opacity: 0; transition: none; }
   .search-clear-btn{
     background: var(--line); color: var(--ink);
     border: none; border-radius: 50%;
@@ -3019,7 +3046,10 @@
            旧ブラウザ向けにevent.keyCode===229(IME変換中を示す値)も
            合わせて見ることで、変換確定のEnterでは検索を実行しないようにする。 -->
       <div class="search-box">
-        <input type="text" id="search-input" placeholder="作品名・ジャンル・雰囲気で探す" oninput="onSearchInput()" oncompositionstart="searchComposing=true" oncompositionend="searchComposing=false; onSearchInput();" onkeydown="if(event.key==='Enter' && !event.isComposing && event.keyCode !== 229){ event.preventDefault(); this.blur(); submitSearch(); }">
+        <div class="search-input-wrap">
+          <input type="text" id="search-input" placeholder="" oninput="onSearchInput()" oncompositionstart="searchComposing=true; hideSearchPlaceholderGhost();" oncompositionend="searchComposing=false; onSearchInput();" onkeydown="if(event.key==='Enter' && !event.isComposing && event.keyCode !== 229){ event.preventDefault(); this.blur(); submitSearch(); }">
+          <span class="search-placeholder-ghost" id="search-placeholder-ghost">作品名・ジャンル・雰囲気で探す</span>
+        </div>
         <button class="search-clear-btn" id="search-clear-btn" onclick="clearSearch()" style="display:none;">×</button>
         <button class="ai-search-btn" id="ai-search-btn" onclick="submitSearch()">検索</button>
       </div>
@@ -6012,14 +6042,18 @@ function renderDecadeCloud(){
 }
 
 // オーナー指摘(2026-10-22):「自由に検索できることが一発じゃ伝わらない」。
-// 検索欄が空の間、placeholderを自由文の例でローテーションさせ、タップせず
-// 見るだけで「こういう書き方で探せる」と伝わるようにする(あくまで見るだけの
-// ヒントで、タップしても何も起きない。実際に試せる仕組み(タップで検索実行)は
-// 別案として検討中、今回はまずこれだけ入れてみる)。
+// 検索欄が空の間、placeholder代わりのghost要素(CSS参照)を自由文の例文で
+// ローテーションさせ、タップせず見るだけで「こういう書き方で探せる」と
+// 伝わるようにする(あくまで見るだけのヒントで、タップしても何も起きない。
+// 実際に試せる仕組み(タップで検索実行)は別案として検討中、今回はまず
+// これだけ入れてみる)。
 // まだ実使用ログがほぼ無く(ai_search_cacheは12件、ほぼ開発時のテスト文)、
 // どの言い回しが響くかの実データが無いため、例文は「具体的な設定」
 // 「雰囲気・感情」「音楽の場面」をひとまず仮で用意したもの(情報量が
 // 多すぎる・響かないと分かれば内容を見直す前提)。
+// 2026-10-22追記(オーナー指摘:「ローテーションが早すぎるかも」):
+// 初回3.5秒は読み切る前に切り替わるテンポだったため、1周6.5秒(読む時間
+// 約6秒+フェード)に伸ばした。これも実データに基づく数字ではなく仮の値。
 const SEARCH_PLACEHOLDER_EXAMPLES = [
   '作品名・ジャンル・雰囲気で探す',
   '赤いドレスを着た女性が出てくる、ちょっと怖い話',
@@ -6029,16 +6063,36 @@ const SEARCH_PLACEHOLDER_EXAMPLES = [
   '元気が欲しい時に聴きたい曲',
   '転生して無双する話',
 ];
+const SEARCH_PLACEHOLDER_INTERVAL_MS = 6500;
+const SEARCH_PLACEHOLDER_FADE_MS = 400;
 let searchPlaceholderTimer = null;
 function startSearchPlaceholderRotation(){
-  const input = document.getElementById('search-input');
-  if(!input || searchPlaceholderTimer) return;
+  const ghost = document.getElementById('search-placeholder-ghost');
+  if(!ghost || searchPlaceholderTimer) return;
   let i = 0;
-  input.placeholder = SEARCH_PLACEHOLDER_EXAMPLES[0];
   searchPlaceholderTimer = setInterval(() => {
     i = (i + 1) % SEARCH_PLACEHOLDER_EXAMPLES.length;
-    input.placeholder = SEARCH_PLACEHOLDER_EXAMPLES[i];
-  }, 3500);
+    ghost.classList.add('fade-out');
+    setTimeout(() => {
+      ghost.textContent = SEARCH_PLACEHOLDER_EXAMPLES[i];
+      ghost.classList.remove('fade-out');
+    }, SEARCH_PLACEHOLDER_FADE_MS);
+  }, SEARCH_PLACEHOLDER_INTERVAL_MS);
+}
+// 検索欄に文字が入っている間は、重なって見えないようghostを隠す
+// (ネイティブのplaceholderが値ありの時は自動で消えるのと同じ挙動)。
+function updateSearchPlaceholderGhostVisibility(){
+  const ghost = document.getElementById('search-placeholder-ghost');
+  const input = document.getElementById('search-input');
+  if(!ghost || !input) return;
+  ghost.classList.toggle('hidden', !!input.value);
+}
+// IME変換の開始直後は、確定前の文字がまだinput.valueに反映されない
+// タイミングがあり、上のvalueベースの判定だけでは一瞬ghostと変換中の文字が
+// 重なって見える。変換開始時点で即座に隠しておく。
+function hideSearchPlaceholderGhost(){
+  const ghost = document.getElementById('search-placeholder-ghost');
+  if(ghost) ghost.classList.add('hidden');
 }
 
 // IME変換中(漢字・カタカナ変換の候補確定前)にもoninputは発火する。この時点で
@@ -6049,6 +6103,7 @@ function startSearchPlaceholderRotation(){
 let searchComposing = false;
 function onSearchInput(){
   if(searchComposing) return;
+  updateSearchPlaceholderGhostVisibility();
   state.query = document.getElementById('search-input').value.trim();
   // 手で打ち直した時点で、直前のAI検索が拾った複数キーワードのAND絞り込み
   // も、雰囲気検索(voyage-search)の結果も引き継がない(以後は通常の
@@ -6081,6 +6136,7 @@ function goPersonSearch(name){
   state.decadeFilter = 0;
   state.bookType = null;
   document.getElementById('search-input').value = name;
+  updateSearchPlaceholderGhostVisibility();
   switchView('view-home');
   // これもホームへ戻る経路の1つなので、古いプロフィール等の保存先が
   // 残らないようクリアする(clearSearch内の同じ対応を参照)。
@@ -6207,6 +6263,7 @@ function clearSearch(){
   state.queryKeywords = [];
   state.semanticMatches = null;
   document.getElementById('search-input').value = "";
+  updateSearchPlaceholderGhostVisibility();
   state.activeTags.clear();
   state.activeGenres.clear();
   state.activeCountries.clear();
