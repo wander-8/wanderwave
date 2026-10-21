@@ -14443,8 +14443,20 @@ async function pickOmikujiCandidatesByProfile(mode, sourceMovies, excludeIds, co
 
   // まずタグだけで荒く絞る(DB不要、無料)。表現度の階層を引くのは、この
   // 絞り込み後の候補だけに限定してコストを最小化する。
-  const tagScored = MOVIES
-    .filter(m => !excludeIds.includes(m.id) && !isTooIntenseForPassiveDiscovery(m) && !isNotRealMusicArtist(m) && isInCatalogMode(m, mode))
+  // オーナー指摘(2026-10-21):「今日の贈り物相変わらず項目が一部に偏ってる」。
+  // tagScoreは整数の合計なので同点(タイ)が大量に出るが、Array.sortは
+  // 安定ソートのためタイの順序はMOVIES配列の並び(ほぼid順=カタログに
+  // 登録された順)のまま固定される。結果、score上位(=最終候補プール)が
+  // 日によらずほぼ同じ顔ぶれになり、「今日の贈り物」で回っているように
+  // 見えてdoubleのランダム抽選(後段のmulberry32)は常にこの同じ狭い
+  // プールの中からしか選べていなかった。ソート前に日替わりシードで
+  // 並びをシャッフルしておくことで、同点同士の勝ち残り方自体が日ごとに
+  // 変わるようにする(抽選の母数そのものを毎日入れ替える)。
+  const omikujiShuffleSeed = `omikuji-tag-shuffle:${excludeIds.slice().sort((a, b) => a - b).join(',')}`;
+  const tagScored = seededShuffle(
+    MOVIES.filter(m => !excludeIds.includes(m.id) && !isTooIntenseForPassiveDiscovery(m) && !isNotRealMusicArtist(m) && isInCatalogMode(m, mode)),
+    omikujiShuffleSeed
+  )
     .map(m => ({ m, tagScore: (m.tags || []).reduce((s, t) => s + (tagProfile[t] || 0), 0) }))
     .filter(x => x.tagScore > 0)
     .sort((a, b) => b.tagScore - a.tagScore);
