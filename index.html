@@ -8595,6 +8595,10 @@ function termMatchesMovie(m, term, relevantVibeKws, shortTermTitleRe){
     // 語彙で、ジャンルと同じく短い語の誤マッチが起きにくいのでnoisy
     // 判定の対象から外す)。
     || (m.tagsNorm && m.tagsNorm.includes(term))
+    // ニッチ・フェチ属性タグ(niche_tags)。感情タグと同じく少数の管理された
+    // 語彙ではなくオープンエンドだが、個別の語自体は固有名詞に近く短い語の
+    // 誤マッチは起きにくいため、noisy判定の対象からは外す。
+    || (!noisy && m.nicheTagsNorm && m.nicheTagsNorm.some(k => k.includes(term)))
     || matchesCountryAlias(m, term)
     || matchesVibeAlias(m, relevantVibeKws)
     || matchesMarvelAlias(m, term);
@@ -12168,7 +12172,7 @@ async function selectAllRows(table, columns, applyFilterFn, orderColumn = 'id', 
 // 遅くしている最大の要因だった。検索の根幹であるkeywordsは(サイトの
 // 存在意義に関わるため)初回取得に残したまま、この2つだけ後から
 // バックグラウンドで取得する(loadMovieBigFieldsInBackground参照)。
-const MOVIE_LIGHT_COLUMNS = 'id, title, release_year, emotion_tags, genre, director, country, poster_path, japan_release_date, keywords, series, trailer_key, media_type, is_anime, is_drama, is_manga, is_novel, is_music, volume_count, tmdb_vote_average, tmdb_vote_count, rakuten_review_count, rakuten_review_average, music_scene_tags';
+const MOVIE_LIGHT_COLUMNS = 'id, title, release_year, emotion_tags, genre, director, country, poster_path, japan_release_date, keywords, niche_tags, series, trailer_key, media_type, is_anime, is_drama, is_manga, is_novel, is_music, volume_count, tmdb_vote_average, tmdb_vote_count, rakuten_review_count, rakuten_review_average, music_scene_tags';
 // cast_membersは検索(termMatchesMovie)が全作品横断で参照するため、全件
 // バックグラウンド取得を続ける(配列でサイズも小さい)。synopsis(あらすじ)は
 // 全文だと転送量が重いため、全件一括取得は「先頭200文字の要約」
@@ -12207,6 +12211,7 @@ function buildMovieRecord(row, statsByMovie, estimatesByMovie){
   const genreArr = row.genre || undefined;
   const castArr = row.cast_members || undefined;
   const keywordsArr = row.keywords || [];
+  const nicheTagsArr = row.niche_tags || [];
   const volumeCount = row.volume_count || null;
 
   return {
@@ -12225,6 +12230,11 @@ function buildMovieRecord(row, statsByMovie, estimatesByMovie){
     genreNorm: genreArr ? genreArr.map(normalizeForSearch) : undefined,
     synopsisNorm: row.synopsis ? normalizeForSearch(row.synopsis) : undefined,
     keywordsNorm: keywordsArr.map(normalizeForSearch),
+    // オーナー指摘(2026-10-22):「男性妊娠」のようなニッチ・フェチ属性で
+    // 検索したい人向け。AniList/TMDBの細かいトロープタグ(英語)と、
+    // Rakuten分のAI分類タグ(日本語)が混在する列(niche_tags)。検索専用
+    // (ホーム画面の受動的な棚には一切使わない、design spec参照)。
+    nicheTagsNorm: nicheTagsArr.map(normalizeForSearch),
     keywordsLower: keywordsArr.map(k => k.toLowerCase()),
     // AI検索が感情タグ的な言葉(「楽しい」等)を拾った時、termMatchesMovie側で
     // 感情タグ欄とも照合できるように正規化済みで持っておく(tags参照)。
