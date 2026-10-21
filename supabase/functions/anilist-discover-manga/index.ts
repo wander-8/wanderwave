@@ -281,7 +281,18 @@ const fresh = candidates.filter((c: any) => {
       seenInBatch.add(key);
 
       const genres: string[] = c.genres || [];
-      const tags: string[] = (c.tags || []).filter((t: any) => !t.isMediaSpoiler).map((t: any) => t.name);
+      // オーナー指摘(2026-10-22):「異世界転生とかって単独でカテゴリーされて
+      // るだろうし、そっちの情報の方が信頼できる」。AniListの細かいトロープ
+      // タグはニッチ・フェチ属性検索の土台になるため、isMediaSpoilerでの
+      // 除外をやめ、上限も40件まで緩める(design spec コンポーネントA-1)。
+      // ただし検索マッチングの裏データとしてのみ使い、カード等のUIにタグ名を
+      // そのまま表示しない制約は維持する。保存先はkeywords列(TMDB由来の
+      // SEOキーワードという別の意味を持つ既存列)ではなく、新規の
+      // niche_tags列に分離する。tags(スポイラー除外済み)はestimateExpression
+      // の表現度推定にこれまで通り使うため、従来の変数のまま残す。
+      const allTags = (c.tags || []).slice().sort((a: any, b: any) => (b.rank || 0) - (a.rank || 0));
+      const nicheTags: string[] = allTags.slice(0, 40).map((t: any) => t.name);
+      const tags: string[] = allTags.filter((t: any) => !t.isMediaSpoiler).map((t: any) => t.name);
       const emotionTags = pickEmotionTags(genres);
       if (emotionTags.length === 0) {
         skipped.push({ id: c.id, title, reason: "no_genre_mapping" });
@@ -320,6 +331,7 @@ const fresh = candidates.filter((c: any) => {
         japan_release_checked_at: null,
         keywords: tags.slice(0, 15),
         keywords_checked_at: new Date().toISOString(),
+        niche_tags: nicheTags,
         series: null,
         series_checked_at: null,
         media_type: "manga",
