@@ -7323,8 +7323,26 @@ function renderHomeLanding(){
 // 初回表示(renderHomeRows()を直接呼ぶ側、起動時・goHome()等)はこの間引きの
 // 対象外でそのまま即時描画する(ここで一本化しているのは背景読み込みの
 // 完了シグナルだけ)。
+// オーナー指摘(2026-10-21、間引き追加後も):「やっぱホーム画治らない」。
+// 実機(本番)で計測したところ、ネットワーク遅延下ではこの間引き(600ms)に
+// 収まらないほど各フェーズの間隔が空いており(実測: 1.1秒・3.0秒・6.3秒・
+// 9.6秒の4回、間引きがほぼ効かない)、毎回render自体は起きていた。本当の
+// 原因は間引きの粗さではなく、初回のホーム表示(映画1ページ目=映画2000件
+// だけ)の時点で既に場面カード・マーキー・今日の贈り物を「映画だけのプール」
+// から選んでしまい、その後アニメ/ドラマ/漫画/小説/音楽が1種類ずつ届く
+// たびに選び直され、中身が映画だけ→混在へ大きく入れ替わっていたこと。
+// 間引きをいくら細かくしても、この「選び直すたびに別の作品になる」こと
+// 自体は無くならない。
+// 対策: 場面カード・マーキー・今日の贈り物は、非映画カタログの読み込みが
+// 完了する(nonMovieCatalogLoaded)までは引き続き選び直してよいが、完了後は
+// 固定する(以降の背景読み込みはmovieの残りページ・あらすじ一括パッチだけで、
+// どちらも「選べる作品の種類」を増やすものではないため、固定しても選択肢が
+// 狭いまま取り残されることはない)。featuredBanner・検索結果は今まで通り
+// 毎回更新する(featuredBannerは元々別タイマーで定期的に入れ替わる前提の
+// 表示なので、この固定の対象外)。
 let viewRefreshDebounceTimer = null;
 let viewRefreshWantsChips = false;
+let homeLandingShelvesFrozen = false;
 function scheduleViewRefresh(includeChips){
   if(includeChips) viewRefreshWantsChips = true;
   if(viewRefreshDebounceTimer) clearTimeout(viewRefreshDebounceTimer);
@@ -7340,9 +7358,14 @@ function scheduleViewRefresh(includeChips){
     }
     renderFeaturedBanner();
     if(state.homeLandingActive){
-      renderHomeScenesRow();
-      renderHomeMarquees();
-      renderHomeGift();
+      if(!homeLandingShelvesFrozen){
+        renderHomeScenesRow();
+        renderHomeMarquees();
+        renderHomeGift();
+        if(typeof nonMovieCatalogLoaded !== 'undefined' && nonMovieCatalogLoaded){
+          homeLandingShelvesFrozen = true;
+        }
+      }
     }else{
       renderHomeRows();
     }
