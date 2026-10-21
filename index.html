@@ -4693,7 +4693,16 @@ const TAG_COLORS = {
 // ジャンルを示す語が続く場合・文末に単独で来る場合に限定する等で誤判定を
 // 排除し、GLも追加した(rakuten-discover-mangaのhasGLSignal、既存行は
 // BL_GL_backfillで反映済み)。
-const FILTER_GENRES = ["ドラマ","コメディ","アクション","スリラー","アドベンチャー","クライム","恋愛","BL","GL","ホラー","SF","ファンタジー","ミステリー","アニメーション","ファミリー","歴史","戦争","音楽","ドキュメンタリー","西部劇","特撮","TVムービー","J-Pop","K-Pop","Rock","Classical","Anime","Hip Hop/Rap","Pop","R&B/Soul","Jazz","Soundtrack","World","Alternative","Christian & Gospel","Electronic","New Age","Dance","Vocal","Country","Opera","Singer/Songwriter","Heavy Metal","Pop in Spanish","Latin","Arena Rock","Classical Crossover","Hard Rock","Salsa y Tropical","House","Musicals","Folk","Alternative & Rock in Spanish","Cantopop","Mandopop","French Pop","Children's Music","Blues","Reggae","Indie Rock","Regional Mexicano","Ambient","Electronica","Funk","Bollywood","Gospel","Spoken Word","Video Game","Soul","小説・エッセイ","暮らし・健康・料理","語学・学習参考書","旅行・留学・アウトドア","人文・思想・社会","ビジネス・経済・就職","パソコン・システム開発","科学・医学・技術","エンタメ","日本美術","東洋美術","西洋美術","デザイン","イラスト","美術館","技法書","写真","建築","陶芸","書道","骨董","染織・漆","風景写真集"];
+// オーナー指摘(2026-10-21):「恋愛って少女漫画と少年漫画で分けられると
+// 思う」。漫画の「恋愛」はRakuten書籍ジャンルの読者対象区分(少年/少女/
+// 青年/レディース)がそのまま内容ジャンルの既定値に使われていたせいで、
+// 内容に関わらず少女向け・レディース向け漫画のほとんどが「恋愛」になって
+// いた(実データ確認: plain「恋愛」5777件)。漫画の「恋愛」だけ少女漫画/
+// 少年漫画/恋愛(その他)に置き換える(rakuten-discover-mangaのresolveRomanceGenre
+// 参照。既存行はrecover_romance_demographicで再分類済み)。他媒体(映画・
+// ドラマ・アニメ等)の「恋愛」はTMDb等の別経路でそのまま使われているため
+// 「恋愛」自体は残す。BL/GLは変更しない。
+const FILTER_GENRES = ["ドラマ","コメディ","アクション","スリラー","アドベンチャー","クライム","恋愛","少女漫画","少年漫画","恋愛(その他)","BL","GL","ホラー","SF","ファンタジー","ミステリー","アニメーション","ファミリー","歴史","戦争","音楽","ドキュメンタリー","西部劇","特撮","TVムービー","J-Pop","K-Pop","Rock","Classical","Anime","Hip Hop/Rap","Pop","R&B/Soul","Jazz","Soundtrack","World","Alternative","Christian & Gospel","Electronic","New Age","Dance","Vocal","Country","Opera","Singer/Songwriter","Heavy Metal","Pop in Spanish","Latin","Arena Rock","Classical Crossover","Hard Rock","Salsa y Tropical","House","Musicals","Folk","Alternative & Rock in Spanish","Cantopop","Mandopop","French Pop","Children's Music","Blues","Reggae","Indie Rock","Regional Mexicano","Ambient","Electronica","Funk","Bollywood","Gospel","Spoken Word","Video Game","Soul","小説・エッセイ","暮らし・健康・料理","語学・学習参考書","旅行・留学・アウトドア","人文・思想・社会","ビジネス・経済・就職","パソコン・システム開発","科学・医学・技術","エンタメ","日本美術","東洋美術","西洋美術","デザイン","イラスト","美術館","技法書","写真","建築","陶芸","書道","骨董","染織・漆","風景写真集"];
 // 音楽(iTunes由来)は映画(TMDb由来)よりずっと多くの国をカバーしており、
 // 国別チップがFILTER_COUNTRIESに無い国の作品は選択肢自体が出せず「国で
 // 絞り込んでも特定の国だけ出てこない」という事故になっていた(オーナー
@@ -5869,6 +5878,22 @@ function movieIntensityBand(m){
   return band;
 }
 
+// オーナー指摘(2026-10-21):「えっちとかエロゲ、シたいって単語出てるのに
+// 表で出てる作品あったから気を付けて」。ただし総合の表現度(movieIntensityBand)
+// で一律に切ると、「あやかしトライアングル」のように総合評価は高いが
+// タイトル・ポスター自体は普通に見える作品まで一緒に消えてしまう
+// (オーナー訂正:「あやかしトライアングルとかは、タイトルもポスター自体は
+// 表現度が高いものじゃない。それは表で出してもいい。ただ さっき言った
+// 作品は表で見るには危うすぎる」)。判定基準は総合評価ではなく「タイトル
+// 自体が露骨か」に絞る(ポスターの過激さは既存のEXPLICIT_COVER_MOVIE_IDSが
+// 別途担当)。検索は自分から探しに来た行動なので今まで通りそのまま出す
+// (このチェックは検索結果には適用しない、ホームの棚・場面カード・
+// マーキー・今日の贈り物のような「選んだわけではなく流れてくる」表示専用)。
+const TITLE_EXPLICIT_WORDS = ['えっち','シたい','エロゲ','エロい','エロ本','エロ漫画','エロマンガ','エロビデオ','エログロ','エロティック'];
+function isTooIntenseForPassiveDiscovery(m){
+  return TITLE_EXPLICIT_WORDS.some(w => (m.title || '').includes(w));
+}
+
 // スライダーの見た目(ラベル・色・注釈)だけを今のstate.intensityFilterに
 // 合わせて更新する。renderResults()からも呼ぶため、renderResults()を
 // 呼び返さない(呼ぶとonIntensityFilterInput⇄renderResultsの無限再帰になる)。
@@ -6429,7 +6454,7 @@ function renderHomeRows(){
   // ないから整理してほしい」)。
   const catalogMode = currentCatalogMode();
   const visibleMovies = bookTypeNarrowedPool(
-    MOVIES.filter(m => !matchesExcludedWord(m) && isInCatalogMode(m, catalogMode)),
+    MOVIES.filter(m => !matchesExcludedWord(m) && !isTooIntenseForPassiveDiscovery(m) && isInCatalogMode(m, catalogMode)),
     catalogMode
   );
 
@@ -6658,7 +6683,7 @@ function renderHomeRows(){
   const reviewCards = RECENT_REVIEWS
     .map(r => {
       const m = MOVIES.find(x => x.id === r.movie_id);
-      if(!m || matchesExcludedWord(m)) return null;
+      if(!m || matchesExcludedWord(m) || isTooIntenseForPassiveDiscovery(m)) return null;
       const snippet = r.review_text.length > 60 ? r.review_text.slice(0, 60) + '…' : r.review_text;
       const posterImg = (m.posterUrl && !shouldHidePosterForIntensity(m, { forcePosterHide: true })) ? `<img src="${m.posterUrl}" alt="" loading="lazy" decoding="async">` : '';
       const typeInfo = mediaTypeInfo(m);
@@ -6722,7 +6747,7 @@ function openMusicScene(scene){
   document.getElementById('music-scene-results-label').textContent = `「${scene}」に近い曲`;
   const catalogMode = currentCatalogMode();
   const visibleMovies = bookTypeNarrowedPool(
-    MOVIES.filter(m => !matchesExcludedWord(m) && isInCatalogMode(m, catalogMode)),
+    MOVIES.filter(m => !matchesExcludedWord(m) && !isTooIntenseForPassiveDiscovery(m) && isInCatalogMode(m, catalogMode)),
     catalogMode
   );
   const matches = visibleMovies.filter(m => (m.musicScenes || []).includes(scene));
@@ -6825,7 +6850,7 @@ async function filterByRealAvailability(movies){
 // の考え方)。
 async function getHomeSceneResults(scene, limit){
   limit = limit || 3;
-  const pool = MOVIES.filter(m => !matchesExcludedWord(m));
+  const pool = MOVIES.filter(m => !matchesExcludedWord(m) && !isTooIntenseForPassiveDiscovery(m));
   const scored = pool.map(m => {
     const w = tagWeights(m);
     const score = scene.moodTags.reduce((sum, t) => sum + (w[t] || 0), 0);
@@ -6946,7 +6971,7 @@ function buildHomeSceneResultItemHTML(m){
 // 「有名どころ(famous)+まだ無名だが情報が揃っている作品(rare)」を混ぜる
 // 方式に変え、候補の母数を大きく広げた。
 function getHomeMoodMarqueePool(tag, count){
-  const pool = MOVIES.filter(m => !matchesExcludedWord(m) && m.tags.includes(tag));
+  const pool = MOVIES.filter(m => !matchesExcludedWord(m) && !isTooIntenseForPassiveDiscovery(m) && m.tags.includes(tag));
   const perTypeCap = Math.max(3, Math.ceil(count / CATALOG_MODES.length));
   let picked = [];
   CATALOG_MODES.forEach(([mode]) => {
@@ -6982,7 +7007,7 @@ function getHomeMoodMarqueePool(tag, count){
 // 直すとまた日替わりの既定値に戻る)。
 let homeMoodRotationSeed = 0;
 function pickHomeMoodTags(){
-  const pool = MOVIES.filter(m => !matchesExcludedWord(m));
+  const pool = MOVIES.filter(m => !matchesExcludedWord(m) && !isTooIntenseForPassiveDiscovery(m));
   const tagCounts = {};
   pool.forEach(m => m.tags.forEach(t => { tagCounts[t] = (tagCounts[t] || 0) + 1; }));
   const topTags = Object.keys(tagCounts).sort((a, b) => tagCounts[b] - tagCounts[a]);
@@ -7424,7 +7449,7 @@ function renderFeaturedBanner(){
   // 「ホーム」モード中は特定のメディア種別に絞らない(オーナー指摘:「今一番
   // 愛されてる作品が映画のみなのが気になる」)。他の6モードでは今まで通り
   // そのモードの作品だけに絞る。
-  const eligibleMovies = MOVIES.filter(m => !matchesExcludedWord(m) && !isFanbookLikeItem(m) && (state.homeLandingActive || isInCatalogMode(m, catalogMode)));
+  const eligibleMovies = MOVIES.filter(m => !matchesExcludedWord(m) && !isTooIntenseForPassiveDiscovery(m) && !isFanbookLikeItem(m) && (state.homeLandingActive || isInCatalogMode(m, catalogMode)));
   const lovedPool = eligibleMovies.filter(m => hasLoveBasis(m))
     .sort((a, b) => loveAverage(b) - loveAverage(a))
     .slice(0, 30);
@@ -14316,7 +14341,7 @@ async function pickOmikujiCandidatesByProfile(mode, sourceMovies, excludeIds, co
   // まずタグだけで荒く絞る(DB不要、無料)。表現度の階層を引くのは、この
   // 絞り込み後の候補だけに限定してコストを最小化する。
   const tagScored = MOVIES
-    .filter(m => !excludeIds.includes(m.id) && isInCatalogMode(m, mode))
+    .filter(m => !excludeIds.includes(m.id) && !isTooIntenseForPassiveDiscovery(m) && isInCatalogMode(m, mode))
     .map(m => ({ m, tagScore: (m.tags || []).reduce((s, t) => s + (tagProfile[t] || 0), 0) }))
     .filter(x => x.tagScore > 0)
     .sort((a, b) => b.tagScore - a.tagScore);
