@@ -8579,6 +8579,16 @@ const VIBE_QUERY_ALIASES = {
   "suicide": ["自殺"],
   "terrorism": ["テロ"],
   "dying and death": ["死", "死にゆく"],
+
+  // オーナー指摘(2026-10-23):「四肢欠損」で検索しても何も出ない。TMDBの
+  // keywordsには英語の身体障害関連語(paraplegic/quadriplegic/wheelchair等)が
+  // そのまま入っているため(例:Rear Window, Super/Man: The Christopher
+  // Reeve Story)、日本語で検索されてもこのブリッジ経由で見つかるようにする。
+  "paraplegic": ["四肢欠損", "下半身不随", "下半身麻痺"],
+  "quadriplegic": ["四肢欠損", "四肢麻痺"],
+  "wheelchair": ["車椅子", "車いす"],
+  "disability": ["障害", "身体障害"],
+  "amputee": ["四肢欠損", "義足", "義手"],
 };
 
 // (国名エイリアスと同じ理由で)雰囲気検索のエイリアスも一度だけ正規化しておく。
