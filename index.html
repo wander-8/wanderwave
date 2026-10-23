@@ -1004,6 +1004,44 @@
     font-size: 12px; font-weight: 600; color: var(--ink-soft);
     text-align: center; padding: 0 10px;
   }
+  /* Bug detection dashboard */
+  .bug-filter{
+    display:flex; gap:8px; margin:16px 0; flex-wrap:wrap;
+  }
+  .filter-tab{
+    padding:8px 16px; border-radius:8px; border:1px solid var(--line);
+    background:transparent; color:var(--ink-soft); cursor:pointer; font-family:inherit;
+    font-size:13px; transition:all 0.2s;
+  }
+  .filter-tab.active{
+    background:var(--plum); color:#fff; border-color:var(--plum);
+  }
+  .filter-tab:hover{ border-color:var(--plum); }
+  .bug-list{
+    display:flex; flex-direction:column; gap:12px; margin-top:16px;
+  }
+  .bug-item{
+    padding:12px; border-radius:8px; border-left:4px solid;
+    background:rgba(125, 95, 214, 0.1); animation:cardFadeIn 0.4s ease-out both;
+  }
+  .bug-item.security{ border-left-color:#e8899e; }
+  .bug-item.performance{ border-left-color:#a084f2; }
+  .bug-item.edge_function_error{ border-left-color:#e8a06a; }
+  .bug-item.critical{ border-left-color:#ff0000; }
+  .bug-item.high{ border-left-color:#ff6b6b; }
+  .bug-title{
+    font-weight:700; font-size:14px; margin-bottom:4px; color:var(--ink);
+  }
+  .bug-meta{
+    font-size:11px; color:var(--ink-soft); margin-bottom:8px;
+  }
+  .bug-description{
+    font-size:12px; color:var(--ink); line-height:1.5; margin-bottom:8px;
+  }
+  .bug-link{
+    font-size:11px; color:var(--gold); text-decoration:none; cursor:pointer;
+  }
+  .bug-link:hover{ text-decoration:underline; }
   .poster-thumb img{
     position: absolute; inset: 0;
     width: 100%; height: 100%;
@@ -3517,6 +3555,24 @@
       <div class="results" id="d-recommended-music"></div>
     </div>
 
+  </div>
+
+  <!-- ============ BUG DETECTION VIEW ============ -->
+  <div class="view" id="view-bugs" style="display:none;">
+    <button class="back-btn" onclick="goHome()">← 一覧に戻る</button>
+    <div class="detail-head">
+      <h2>バグ検出ダッシュボード</h2>
+      <div class="sub">毎日 09:00 JST に自動検出</div>
+    </div>
+
+    <div class="bug-filter">
+      <button class="filter-tab active" onclick="filterBugs('all')">全て</button>
+      <button class="filter-tab" onclick="filterBugs('unfixed')">未修正</button>
+      <button class="filter-tab" onclick="filterBugs('security')">セキュリティ</button>
+      <button class="filter-tab" onclick="filterBugs('performance')">パフォーマンス</button>
+    </div>
+
+    <div id="bugs-list" class="bug-list"></div>
   </div>
 
   <!-- ============ ADD MOVIE VIEW ============ -->
@@ -16791,6 +16847,80 @@ function wait(ms){ return new Promise(resolve => setTimeout(resolve, ms)); }
 // 呼ぶので、ここで追加の描画は不要(以前はスプラッシュが隠している間に
 // 描画したカードを、スプラッシュが消えた後に作り直してフェードインを
 // 見せていたが、その事情自体が無くなった)。
+
+// Bug detection dashboard
+let bugsFilterState = 'all';
+
+async function loadBugDetectionDashboard(){
+  try{
+    const response = await fetch(`${SUPABASE_URL}/rest/v1/bug_detection_log?order=detected_at.desc&limit=50`, {
+      headers:{
+        'Authorization': `Bearer ${SUPABASE_KEY}`,
+        'Accept': 'application/json'
+      }
+    });
+    if(!response.ok) throw new Error(`HTTP ${response.status}`);
+    const bugs = await response.json();
+    renderBugList(bugs);
+  }catch(error){
+    console.error('Failed to load bugs:', error);
+    document.getElementById('bugs-list').innerHTML = `<div class="empty">バグ検出データを読み込めませんでした</div>`;
+  }
+}
+
+function renderBugList(bugs){
+  const container = document.getElementById('bugs-list');
+  if(!bugs || bugs.length === 0){
+    container.innerHTML = `<div class="empty">検出されたバグはありません</div>`;
+    return;
+  }
+
+  const filteredBugs = bugs.filter(bug => {
+    if(bugsFilterState === 'all') return true;
+    if(bugsFilterState === 'unfixed') return !bug.is_fixed;
+    if(bugsFilterState === 'security') return bug.type === 'security';
+    if(bugsFilterState === 'performance') return bug.type === 'performance';
+    return true;
+  });
+
+  container.innerHTML = filteredBugs.map(bug => {
+    const detectedDate = new Date(bug.detected_at);
+    const jstDate = new Date(detectedDate.getTime() + 9*60*60*1000);
+    const dateStr = jstDate.toLocaleDateString('ja-JP');
+    const timeStr = jstDate.toLocaleTimeString('ja-JP', {hour:'2-digit', minute:'2-digit'});
+
+    return `
+      <div class="bug-item ${bug.severity} ${bug.type}">
+        <div class="bug-title">${escapeHtml(bug.title)}</div>
+        <div class="bug-meta">
+          ${bug.type} • ${bug.severity} • ${dateStr} ${timeStr}
+          ${bug.is_fixed ? ' • ✓ 修正済み' : ' • ⚠ 未修正'}
+        </div>
+        ${bug.description ? `<div class="bug-description">${escapeHtml(bug.description)}</div>` : ''}
+        ${bug.remediation_url ? `<a href="${bug.remediation_url}" target="_blank" class="bug-link">修正方法 →</a>` : ''}
+      </div>
+    `;
+  }).join('');
+}
+
+function filterBugs(filter){
+  bugsFilterState = filter;
+  document.querySelectorAll('.filter-tab').forEach(btn => btn.classList.remove('active'));
+  event.target.classList.add('active');
+
+  // Re-render with new filter
+  try{
+    const response = fetch(`${SUPABASE_URL}/rest/v1/bug_detection_log?order=detected_at.desc&limit=50`, {
+      headers:{
+        'Authorization': `Bearer ${SUPABASE_KEY}`,
+        'Accept': 'application/json'
+      }
+    }).then(r => r.json()).then(bugs => renderBugList(bugs));
+  }catch(error){
+    console.error('Filter failed:', error);
+  }
+}
+
 init().catch(err => console.error('初期化に失敗しました', err));
 </script>
 
