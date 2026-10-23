@@ -8990,7 +8990,11 @@ function renderVisibleResults(){
   const root = document.getElementById('results');
   updateTagCloudCount();
   const visible = resultsFiltered.slice(0, resultsShownCount);
-  const modeLabel = state.crossMediaSearch ? '作品' : ((CATALOG_MODES.find(([m]) => m === currentCatalogMode()) || [])[1] || '映画');
+  // オーナー指摘(2026-10-23):「ホームのところは映画じゃなくて作品でしょ」。
+  // ホーム画面の検索(homeLandingActive)は映画以外も横断で探せる(8891行の
+  // matchCatalogMode等と同じ扱い)のに、ここだけcrossMediaSearchしか見て
+  // おらず、0件時の案内文が常に「映画が見つかりませんでした」になっていた。
+  const modeLabel = (state.crossMediaSearch || state.homeLandingActive) ? '作品' : ((CATALOG_MODES.find(([m]) => m === currentCatalogMode()) || [])[1] || '映画');
   // 横断検索の結果はメディア種別が混ざるので、カードごとに種別バッジを出す
   // (showTypeBadge)。クリック時もその作品自身の種別で詳細ページを開く
   // 必要があるので、forceModeFnで各カードのmediaTypeInfoを使う。
