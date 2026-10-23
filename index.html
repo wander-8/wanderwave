@@ -978,6 +978,60 @@
   .card-play-btn.is-loading{ opacity:0.6; }
   .card-play-btn.is-playing{ background: var(--plum); border-color: var(--plum); }
   .card-play-btn:active{ transform: scale(0.88); }
+  /* 「こんな音楽もおすすめ」棚専用のコンパクトリスト(2026-10-22、オーナー
+     承認のモックアップ「案2のレイアウト+案1の試聴ボタン」)。他の棚と違い
+     横スクロールのポスターグリッドではなく、曲名・アーティストをテキストで
+     主役にした縦リストにする(ジャケ買いよりも量を見渡しやすくする狙い)。
+     試聴ボタンは既存のcard-play-btn/toggleCardPreview/stopCardPreviewを
+     そのまま使い回す(data-movie-idで動くだけなので、見た目の上書きのみで
+     再生ロジックは一切変更しない)。 */
+  .music-track-list{
+    margin-top: 22px;
+    display:flex; flex-direction:column;
+  }
+  .music-track-row{
+    display:flex; align-items:center; gap:12px;
+    padding: 10px 4px;
+    border-bottom: 1px solid var(--line);
+    cursor:pointer;
+    animation: cardFadeIn 0.4s ease-out both;
+  }
+  .music-track-row:last-child{ border-bottom:none; }
+  .music-track-row:active{ transform: scale(0.98); }
+  .music-track-thumb{
+    position:relative;
+    width:48px; height:48px;
+    border-radius:8px;
+    overflow:hidden;
+    flex-shrink:0;
+    display:flex; align-items:center; justify-content:center;
+    font-family:'M PLUS Rounded 1c', sans-serif;
+    font-weight:700; font-size:16px; color: rgba(255,255,255,0.85);
+  }
+  .music-track-thumb img{
+    position:absolute; inset:0; width:100%; height:100%; object-fit:cover;
+  }
+  .music-track-info{ flex:1; min-width:0; }
+  .music-track-title{
+    font-size:13.5px; font-weight:700; color: var(--ink);
+    white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+  }
+  .music-track-meta{
+    font-size:11.5px; color: var(--ink-soft); margin-top:2px;
+    white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+  }
+  /* グリッドカードのポスター上に絶対配置される.card-play-btnを、リスト行
+     では通常のインラインボタンとして並べ直すための上書き。 */
+  .music-track-row .card-play-btn{
+    position:static; flex-shrink:0;
+    width:32px; height:32px;
+    background: var(--surface);
+    border: 1px solid var(--line);
+    color: var(--ink);
+  }
+  .music-track-row .card-play-btn.is-playing{
+    background: var(--plum); border-color: var(--plum); color:#fff;
+  }
   .series-more-thumb{
     background: var(--surface);
     border: 1.5px dashed var(--line);
@@ -3514,7 +3568,7 @@
          合わせて出す(goDetailWithMode参照)。 -->
     <div id="d-recommended-music-wrap" style="display:none;">
       <div class="section-label">こんな音楽もおすすめ</div>
-      <div class="results" id="d-recommended-music"></div>
+      <div class="music-track-list" id="d-recommended-music"></div>
     </div>
 
   </div>
@@ -6433,6 +6487,43 @@ function buildCardHTML(m, opts){
   `;
 }
 
+// 「こんな音楽もおすすめ」棚専用のコンパクトリスト行(2026-10-22、オーナー
+// 承認のモックアップ「案2のレイアウト+案1の試聴ボタン」)。グリッドの
+// buildCardHTMLとは別の見た目にするが、試聴ボタンは既存のcard-play-btn/
+// toggleCardPreview/stopCardPreviewをそのまま再利用する(data-movie-id一致
+// だけで動くボタンなので、見た目を差し替えても再生ロジックは変わらない)。
+function buildMusicTrackRowHTML(m){
+  const hasPoster = !!m.posterUrl;
+  const img = hasPoster ? `<img src="${m.posterUrl}" alt="" loading="lazy" decoding="async">` : '';
+  // m.titleはingest時点でescapeHtml()済み(plainTitleのコメント参照)なので、
+  // buildCardHTMLと同じくここでも再エスケープしない(すると二重エスケープで
+  // 「&#39;」等が文字化けして見える)。director(アーティスト名)はエスケープ
+  // されていない生データなので、こちらはescapeHtmlが必要。
+  const initial = hasPoster ? '' : (m.title || '♪').charAt(0);
+  const artist = (m.director || '').trim();
+  const meta = [artist, m.year].filter(Boolean).join(' · ');
+  const playBtn = m.isMusic
+    ? `<button type="button" class="card-play-btn" data-movie-id="${m.id}" onclick="event.stopPropagation(); toggleCardPreview(${m.id}, this)" title="試聴する">▶</button>`
+    : '';
+  return `
+    <div class="music-track-row" onclick="goDetailWithMode(${m.id}, 'music')">
+      <div class="music-track-thumb" style="background:${m.posterColor}">${img}${initial}</div>
+      <div class="music-track-info">
+        <div class="music-track-title">${m.title}</div>
+        <div class="music-track-meta">${escapeHtml(meta)}</div>
+      </div>
+      ${playBtn}
+    </div>
+  `;
+}
+
+function renderMusicTrackList(root, list, emptyMessage){
+  if(list.length === 0){
+    root.innerHTML = `<div class="empty">${emptyMessage}</div>`;
+    return;
+  }
+  root.innerHTML = list.map(buildMusicTrackRowHTML).join('');
+}
 
 // マイリストに1曲だけ追加した曲用のカード。track自体はカタログ
 // (MOVIES)に存在しないので、タップしたら元のアルバムの詳細ページへ
@@ -9329,7 +9420,7 @@ async function renderRecommended(currentMovie){
     if(myToken === renderRecommendedToken){
       if(musicList.length){
         musicWrap.style.display = 'block';
-        renderMovieCards(document.getElementById('d-recommended-music'), musicList, '', { forceMode: 'music', inlinePreview: true });
+        renderMusicTrackList(document.getElementById('d-recommended-music'), musicList, '');
       } else {
         musicWrap.style.display = 'none';
       }
