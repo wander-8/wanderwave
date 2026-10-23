@@ -1042,6 +1042,18 @@
     font-size:11px; color:var(--gold); text-decoration:none; cursor:pointer;
   }
   .bug-link:hover{ text-decoration:underline; }
+  /* Catalog review */
+  .review-filter{ display:flex; gap:8px; margin:16px 0; flex-wrap:wrap; }
+  .filter-btn{ padding:8px 16px; border-radius:8px; border:1px solid var(--line); background:transparent; color:var(--ink-soft); cursor:pointer; font-family:inherit; font-size:13px; }
+  .filter-btn.active{ background:var(--plum); color:#fff; border-color:var(--plum); }
+  .review-list{ display:flex; flex-direction:column; gap:12px; margin-top:16px; }
+  .review-item{ padding:12px; border-radius:8px; background:rgba(125, 95, 214, 0.1); border-left:4px solid var(--plum); animation:cardFadeIn 0.4s ease-out both; }
+  .review-title{ font-weight:700; font-size:14px; margin-bottom:4px; color:var(--ink); }
+  .review-meta{ font-size:11px; color:var(--ink-soft); margin-bottom:8px; }
+  .review-judgment{ display:inline-block; padding:2px 8px; border-radius:4px; font-size:11px; font-weight:600; margin-top:8px; }
+  .judgment-accept{ background:rgba(100, 200, 100, 0.3); color:#60c860; }
+  .judgment-reject{ background:rgba(200, 100, 100, 0.3); color:#c86060; }
+  .judgment-manual{ background:rgba(200, 150, 100, 0.3); color:#cc9960; }
   .poster-thumb img{
     position: absolute; inset: 0;
     width: 100%; height: 100%;
@@ -3555,6 +3567,24 @@
       <div class="results" id="d-recommended-music"></div>
     </div>
 
+  </div>
+
+  <!-- ============ CATALOG REVIEW VIEW ============ -->
+  <div class="view" id="view-catalog-review" style="display:none;">
+    <button class="back-btn" onclick="goHome()">← 一覧に戻る</button>
+    <div class="detail-head">
+      <h2>カタログ審査ダッシュボード</h2>
+      <div class="sub">新規作品の自動判定結果を確認・承認</div>
+    </div>
+
+    <div class="review-filter">
+      <button class="filter-btn active" onclick="filterReviews('all')">全て</button>
+      <button class="filter-btn" onclick="filterReviews('accept')">承認待ち</button>
+      <button class="filter-btn" onclick="filterReviews('reject')">却下</button>
+      <button class="filter-btn" onclick="filterReviews('manual_review')">要確認</button>
+    </div>
+
+    <div id="review-list" class="review-list"></div>
   </div>
 
   <!-- ============ BUG DETECTION VIEW ============ -->
@@ -16919,6 +16949,58 @@ function filterBugs(filter){
   }catch(error){
     console.error('Filter failed:', error);
   }
+}
+
+// Catalog review
+let reviewFilterState = 'all';
+
+async function loadCatalogReviews(){
+  try{
+    const response = await fetch(`${SUPABASE_URL}/rest/v1/catalog_review_log?order=created_at.desc&limit=100`, {
+      headers:{
+        'Authorization': `Bearer ${SUPABASE_KEY}`,
+        'Accept': 'application/json'
+      }
+    });
+    if(!response.ok) throw new Error(`HTTP ${response.status}`);
+    const reviews = await response.json();
+    renderReviewList(reviews);
+  }catch(error){
+    console.error('Failed to load reviews:', error);
+    document.getElementById('review-list').innerHTML = `<div class="empty">レビューデータを読み込めませんでした</div>`;
+  }
+}
+
+function renderReviewList(reviews){
+  const container = document.getElementById('review-list');
+  if(!reviews || reviews.length === 0){
+    container.innerHTML = `<div class="empty">新規作品はまだありません</div>`;
+    return;
+  }
+
+  const filtered = reviews.filter(r => reviewFilterState === 'all' || r.judgment === reviewFilterState);
+
+  container.innerHTML = filtered.map(r => {
+    const date = new Date(r.created_at);
+    const jstDate = new Date(date.getTime() + 9*60*60*1000);
+    const dateStr = jstDate.toLocaleDateString('ja-JP');
+
+    return `
+      <div class="review-item">
+        <div class="review-title">${escapeHtml(r.title)}</div>
+        <div class="review-meta">${r.type} • ${r.source} • ${dateStr}</div>
+        <div class="review-judgment judgment-${r.judgment}">${r.judgment === 'accept' ? '✓ 承認待ち' : r.judgment === 'reject' ? '✗ 却下' : '⚠ 要確認'}</div>
+        <div style="font-size:12px; color:var(--ink-soft); margin-top:6px;">${escapeHtml(r.judgment_reason || '')}</div>
+      </div>
+    `;
+  }).join('');
+}
+
+function filterReviews(filter){
+  reviewFilterState = filter;
+  document.querySelectorAll('.filter-btn').forEach(btn => btn.classList.remove('active'));
+  event.target.classList.add('active');
+  loadCatalogReviews();
 }
 
 init().catch(err => console.error('初期化に失敗しました', err));
