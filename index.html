@@ -10839,37 +10839,21 @@ function setCatalogMode(mode, dir){
   const homeView = document.getElementById('view-home');
 
   if(dir){
-    // スワイプ由来: 指を離した方向にそのまま滑り切ってから、中身を差し替えて
-    // 反対側から新しい棚がスライドインしてくるようにする(initCatalogSwipeGesture
-    // の追従と繋がる形で、「送った」手応えが単純なフェードより伝わる)。
-    homeView.style.transition = 'transform 0.2s cubic-bezier(.4,0,.6,1), opacity 0.2s cubic-bezier(.4,0,.6,1)';
-    homeView.style.transform = `translateX(${dir * -140}px)`;
-    homeView.style.opacity = '0';
-    setTimeout(() => {
-      let ok = false;
-      try{
-        renderFeaturedBanner();
-        renderHomeRows();
-        switchView('view-home');
-        updateCatalogModeToggleUI();
-        ok = true;
-      } finally {
-        if(ok){
-          homeView.style.transition = 'none';
-          homeView.style.transform = `translateX(${dir * 140}px)`;
-          void homeView.offsetWidth;
-          homeView.style.transition = 'transform 0.32s cubic-bezier(.22,.8,.32,1), opacity 0.32s cubic-bezier(.22,.8,.32,1)';
-          homeView.style.transform = '';
-          homeView.style.opacity = '';
-        } else {
-          // 描画自体が失敗した場合、画面が滑り切ったまま(見えない状態)で
-          // 固まらないよう即座に戻す。
-          homeView.style.transition = '';
-          homeView.style.transform = '';
-          homeView.style.opacity = '';
-        }
+    // スワイプ由来: シンプルに即座にカテゴリを切り替える
+    let ok = false;
+    try{
+      renderFeaturedBanner();
+      renderHomeRows();
+      switchView('view-home');
+      updateCatalogModeToggleUI();
+      ok = true;
+    } finally {
+      if(!ok){
+        homeView.style.transition = '';
+        homeView.style.transform = '';
+        homeView.style.opacity = '';
       }
-    }, 200);
+    }
     return;
   }
 
