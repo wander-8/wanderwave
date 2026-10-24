@@ -10925,13 +10925,19 @@ const CATALOG_MODES = [
   ['music', '音楽'],
 ];
 
-// カテゴリ付箋を更新
-function updateCatalogBreadcrumb(){
+// カテゴリ付箋を更新（showMode指定時はそのモードのみ表示）
+function updateCatalogBreadcrumb(showMode){
   const breadcrumb = document.getElementById('catalog-breadcrumb');
   if(!breadcrumb) return;
 
   breadcrumb.innerHTML = '';
-  CATALOG_MODES.forEach(([mode, label]) => {
+
+  // showMode が指定されていれば、そのモードのみ表示（詳細ページ用）
+  const modesToShow = showMode
+    ? CATALOG_MODES.filter(([mode]) => mode === showMode)
+    : CATALOG_MODES; // 指定なければ全モード表示（ホーム画面用）
+
+  modesToShow.forEach(([mode, label]) => {
     const item = document.createElement('div');
     item.className = 'catalog-breadcrumb-item';
     if(mode === state.catalogMode) item.classList.add('active');
@@ -11302,6 +11308,7 @@ async function goDetail(id){
 
   renderRecommended(m);
   switchView('view-detail');
+  updateCatalogBreadcrumb(m.mediaType); // 詳細ページでは該当のカテゴリのみ表示
   saveViewState('view-detail', { id });
   feedbackDetailOpen();
 
