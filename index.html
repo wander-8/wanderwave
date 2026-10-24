@@ -1406,11 +1406,11 @@
     transition: transform .2s cubic-bezier(.22,.8,.32,1), color .2s ease;
   }
   .heart-single-btn.lv1{ border-color: var(--love); background: rgba(232,137,158,0.08); color: var(--love); animation: none; }
-  .heart-single-btn.lv1 .heart-icon{ transform: scale(0.85); filter: drop-shadow(0 0 4px rgba(232,137,158,0.5)); }
+  .heart-single-btn.lv1 .heart-icon{ transform: scale(0.85); }
   .heart-single-btn.lv2{ border-color: var(--love); background: rgba(232,137,158,0.16); color: var(--love); animation: none; }
-  .heart-single-btn.lv2 .heart-icon{ transform: scale(1.05); filter: drop-shadow(0 0 6px rgba(232,137,158,0.6)); }
+  .heart-single-btn.lv2 .heart-icon{ transform: scale(1.05); }
   .heart-single-btn.lv3{ border-color: var(--love); background: rgba(232,137,158,0.24); color: var(--love); animation: none; }
-  .heart-single-btn.lv3 .heart-icon{ transform: scale(1.25); filter: drop-shadow(0 0 9px rgba(232,137,158,0.75)); }
+  .heart-single-btn.lv3 .heart-icon{ transform: scale(1.25); }
 
   .heart-single-btn.pop-1{ animation: heartBeat1 0.35s ease; }
   .heart-single-btn.pop-2{ animation: heartBeat2 0.55s ease; }
@@ -10201,9 +10201,10 @@ async function cycleLove(evt){
     // 揺れアニメーションを削除 - ユーザーリクエストで毎回の揺れ軽減
     // void btn.offsetWidth; // restart animation if tapped rapidly
     // btn.classList.add('pop-' + next);
-    spawnFloatingHeart(btn);
-    spawnLoveBubble(btn, next);
-    if(next >= 3) spawnBurst(btn);
+    // エフェクト削除 - ガタガタ原因調査
+    // spawnFloatingHeart(btn);
+    // spawnLoveBubble(btn, next);
+    // if(next >= 3) spawnBurst(btn);
     feedbackLove(next);
   }
 
