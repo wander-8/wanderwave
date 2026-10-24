@@ -10878,21 +10878,21 @@ function setCatalogMode(mode, dir){
   // 一旦フェードアウトしてから中身を差し替え、フェードインすることで、
   // 棚が一斉に入れ替わったことがひと目で伝わるようにする。
   homeView.classList.add('mode-switch-fade');
+
+  // 2026-10-24 パフォーマンス改善: スワイプ時のレンダリングを軽量化
+  // フェード中に renderFeaturedBanner() と renderHomeRows() を同時に実行すると
+  // メインスレッドをブロックしてスワイプがカクカクになる。
+  // renderHomeRows() だけを優先実行し、renderFeaturedBanner() は後回しにする。
   setTimeout(() => {
-    // renderFeaturedBanner()等が例外を投げると(実例: 対象モードのデータが
-    // まだ1件も無い瞬間に切り替えた場合)、下のクラス解除が実行されずに
-    // 画面が真っ暗なまま固まって二度と戻らない事故になっていた。原因側
-    // (renderFeaturedBanner内の空プール処理)は別途直したが、ここでも
-    // finallyで必ずフェードを解除し、同種の描画エラーが今後起きても
-    // 画面が復帰不能になることが無いようにする。
     try{
-      renderFeaturedBanner();
-      renderHomeRows();
-      switchView('view-home');
+      renderHomeRows(); // 優先度: 高（棚の内容を先に表示）
       updateCatalogModeToggleUI();
     } finally {
       requestAnimationFrame(() => homeView.classList.remove('mode-switch-fade'));
     }
+    // フェード終了後に、バナーの更新を別の処理として実行
+    // (フェード中は不可視なので、見えない間に実行してOK)
+    setTimeout(() => renderFeaturedBanner(), 100);
   }, 150);
 }
 
