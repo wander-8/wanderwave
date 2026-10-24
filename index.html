@@ -10972,9 +10972,8 @@ function updateCatalogModeToggleUI(){
     // 従来の0.22sではスムーズすぎて「引っ張られている」感覚が残っていた。
     // 0.08sに短縮することで、指を離した瞬間にピタリと収まる感覚を実現。
     homeView.style.transition = animated
-      ? 'transform 0.08s cubic-bezier(.22,.8,.32,1), opacity 0.08s cubic-bezier(.22,.8,.32,1)'
+      ? 'opacity 0.08s cubic-bezier(.22,.8,.32,1)'
       : '';
-    homeView.style.transform = '';
     homeView.style.opacity = '';
     // スワイプ終了後は will-change を削除してメモリ最適化
     homeView.style.willChange = '';
@@ -11030,11 +11029,12 @@ function updateCatalogModeToggleUI(){
     // 行き過ぎを防ぐ(固定120pxだと画面の広いiPad等では尚更早く頭打ちに
     // なるため、画面幅基準にする)。
     // 2026-10-24: GPU最適化を追加（will-change）してスワイプのフレーム落ちを減少
-    if(!homeView.style.willChange) homeView.style.willChange = 'transform, opacity';
+    if(!homeView.style.willChange) homeView.style.willChange = 'opacity';
+    // サイト固定で opacity のみで表現。フェードイン/アウトで次のカテゴリが見える
     const dragCap = Math.min(window.innerWidth * 0.45, 200);
     const damped = Math.sign(dx) * Math.min(Math.abs(dx) * 0.9, dragCap);
-    homeView.style.transform = `translateX(${damped}px)`;
-    homeView.style.opacity = String(1 - Math.min(Math.abs(damped) / 300, 0.3));
+    // transform を削除。opacity のみで視覚的フィードバックを実現
+    homeView.style.opacity = String(1 - Math.min(Math.abs(damped) / 400, 0.4));
   }, { passive: true });
 
   homeView.addEventListener('touchend', (e) => {
