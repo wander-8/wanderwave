@@ -63,7 +63,11 @@ async function classifyOne(synopsis: string): Promise<string[] | null> {
       tool_choice: { type: "tool", name: "classify_content" },
     }),
   });
-  if (!res.ok) return null;
+  if (!res.ok) {
+    const bodyText = await res.text().catch(() => "");
+    console.error(`classifyOne failed: status=${res.status} body=${bodyText.slice(0, 500)}`);
+    return null;
+  }
   const data = await res.json();
   const toolUse = (data?.content || []).find((c: any) => c.type === "tool_use" && c.name === "classify_content");
   if (!toolUse) return null;
@@ -78,11 +82,36 @@ Deno.serve(async (req: Request) => {
     // 受け付けられるようにしておく(discover function側から挿入直後に
     // まとめて呼べるように。1件ずつ別リクエストにすると新規作品が多い日に
     // 呼び出し回数が増えてしまう)。
-    const { items = [], write = true } = await req.json().catch(() => ({}));
+    // backfill: true の場合はitemsを渡す代わりに、niche_tags未設定の既存行を
+    // このエンドポイント自身がservice role経由で取得する(オーナー指摘:
+    // 2026-10-23「ホーム検索で四肢欠損と検索しても何も出ない」。rakuten-discover-*
+    // への組み込みは新規insert分だけが対象で、取り込み済みの約25,000件の
+    // 既存小説・漫画行(Rakuten由来、既製タグが無い)には遡及適用されていな
+    // かったことが原因と判明。呼び出し側(私)がSELECTのtimeoutに悩まされた
+    // ため、SELECT自体をservice role権限でこちらに寄せる)。毎回「niche_tags
+    // IS NULL」の先頭からlimit件を取るだけなので、書き込み済みの行は次回の
+    // 取得から自然に外れ、offset引数は不要(呼び出し側はwrite:trueのまま
+    // 同じリクエストを処理が尽きる=processed:0になるまで繰り返せばよい)。
+    const { items = [], write = true, backfill = false, mediaTypes = ["novel", "manga"], limit = 30 } = await req.json().catch(() => ({}));
     const supabase = createClient(SUPABASE_URL, SERVICE_ROLE);
 
+    let targets = items;
+    if (backfill) {
+      const { data, error } = await supabase
+        .from("movies")
+        .select("id, synopsis")
+        .is("niche_tags", null)
+        .not("synopsis", "is", null)
+        .neq("synopsis", "")
+        .in("media_type", mediaTypes)
+        .order("id", { ascending: true })
+        .limit(limit);
+      if (error) throw error;
+      targets = (data || []).map((r: any) => ({ movie_id: r.id, synopsis: r.synopsis }));
+    }
+
     const results = [];
-    for (const item of items) {
+    for (const item of targets) {
       const synopsis = (item.synopsis || "").trim();
       if (!synopsis) {
         results.push({ movie_id: item.movie_id, nicheTags: [] });

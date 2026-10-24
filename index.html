@@ -10198,8 +10198,9 @@ async function cycleLove(evt){
   if(next > 0 && evt){
     const btn = evt.currentTarget;
     btn.classList.remove('pop-1', 'pop-2', 'pop-3');
-    void btn.offsetWidth; // restart animation if tapped rapidly
-    btn.classList.add('pop-' + next);
+    // 揺れアニメーションを削除 - ユーザーリクエストで毎回の揺れ軽減
+    // void btn.offsetWidth; // restart animation if tapped rapidly
+    // btn.classList.add('pop-' + next);
     spawnFloatingHeart(btn);
     spawnLoveBubble(btn, next);
     if(next >= 3) spawnBurst(btn);

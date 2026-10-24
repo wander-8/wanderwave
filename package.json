@@ -1,0 +1,16 @@
+{
+  "name": "wander-scripts",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "note:login": "node scripts/save_session.js",
+    "note:import-cookies": "node scripts/import_cookies.js",
+    "note:draft": "node scripts/auto_note_draft.js",
+    "note:post": "node scripts/post_draft.js"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.45.0",
+    "dotenv": "^16.4.5",
+    "playwright": "^1.47.0"
+  }
+}

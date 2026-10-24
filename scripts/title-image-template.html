@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=M+PLUS+Rounded+1c:wght@700;800&family=Baloo+2:wght@600;700&display=swap');
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html, body {
+    width: 1280px; height: 670px; overflow: hidden;
+    background: radial-gradient(circle at 18% 20%, #241a3f 0%, #0c0a1c 48%, #05080f 100%);
+    font-family: 'M PLUS Rounded 1c', sans-serif;
+    position: relative;
+  }
+  .glow-a { position:absolute; width:520px; height:520px; border-radius:50%;
+    background: radial-gradient(circle, rgba(125,95,214,0.55) 0%, rgba(125,95,214,0) 70%);
+    top:-180px; left:-140px; }
+  .glow-b { position:absolute; width:460px; height:460px; border-radius:50%;
+    background: radial-gradient(circle, rgba(232,160,106,0.4) 0%, rgba(232,160,106,0) 70%);
+    bottom:-160px; right:-120px; }
+  .frame {
+    position:absolute; inset:36px;
+    border: 1.5px solid rgba(160,132,242,0.35);
+    border-radius: 18px;
+  }
+  .kicker {
+    position:absolute; top:90px; left:92px;
+    font-family: 'Baloo 2', sans-serif; font-weight:700; font-size:22px;
+    letter-spacing:0.14em; color:#e8899e;
+  }
+  .title {
+    position:absolute; left:90px; right:90px; top:150px;
+    font-size:64px; font-weight:800; line-height:1.38; color:#f3efff;
+    text-shadow: 0 2px 24px rgba(125,95,214,0.45);
+  }
+  .accent-line { position:absolute; left:92px; top:128px; width:64px; height:6px;
+    border-radius:4px; background: linear-gradient(90deg,#e8a06a,#e8899e); }
+  .byline {
+    position:absolute; left:92px; bottom:64px;
+    font-family:'Baloo 2',sans-serif; font-weight:600; font-size:24px; color:#a084f2;
+    letter-spacing:0.08em;
+  }
+</style>
+</head>
+<body>
+  <div class="glow-a"></div>
+  <div class="glow-b"></div>
+  <div class="frame"></div>
+  <div class="kicker">WANDER NOTE</div>
+  <div class="accent-line"></div>
+  <div class="title" id="title-text">「第三次世界大戦」という<br>不安と、どう付き合うか</div>
+  <div class="byline">三善雪世</div>
+</body>
+</html>
