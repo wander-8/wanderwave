@@ -243,35 +243,6 @@
     line-height: 1.5;
   }
 
-  /* 現在地表示：カテゴリ名付箋 */
-  .catalog-breadcrumb{
-    display: flex;
-    gap: 8px;
-    margin-bottom: 12px;
-    overflow-x: auto;
-    padding-bottom: 4px;
-    scroll-behavior: smooth;
-  }
-  .catalog-breadcrumb-item{
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    padding: 6px 12px;
-    background: rgba(125,95,214,0.15);
-    border: 1px solid rgba(125,95,214,0.3);
-    border-radius: 8px;
-    font-size: 13px;
-    font-weight: 500;
-    color: var(--plum-deep);
-    white-space: nowrap;
-    flex-shrink: 0;
-  }
-  .catalog-breadcrumb-item.active{
-    background: var(--plum);
-    border-color: var(--plum);
-    color: #fff;
-  }
-
   /* オーナー指摘(2026-10-22):「検索が目立つようにしたい」。検索欄+感情タグを
      ひとまとめにした「主役」の枠。場面カード等の棚(通常の背景、.section-label
      だけ)と違い、太めの紫アクセント枠+ほのかなグロウで物理的に浮かせる。 */
@@ -3165,9 +3136,6 @@
            しまっていた。検索欄+感情タグをこの枠(.search-hero)でひとまとめに
            囲み、太めのアクセント枠線で「ここがサイトの主役」と視覚的に主張
            させる(場面カード等、他の棚は通常の背景のまま=控えめにする側)。 -->
-      <!-- 現在のカテゴリ表示（付箋） -->
-      <div class="catalog-breadcrumb" id="catalog-breadcrumb"></div>
-
       <div class="search-hero">
         <div class="search-box">
           <div class="search-input-wrap">
@@ -7055,9 +7023,6 @@ function renderHomeRows(){
     applyAvatarPhoto(el, el.dataset.photo, 50, 50, 100);
   });
   initAutoScrollMarquee('review-feed-marquee', 'review-feed-track');
-
-  // カテゴリ付箋を更新
-  updateCatalogBreadcrumb();
 }
 
 // 音楽モードの「こんな場面で聴きたい」場面カードをタップした時の処理。
@@ -10925,27 +10890,6 @@ const CATALOG_MODES = [
   ['music', '音楽'],
 ];
 
-// カテゴリ付箋を更新（showMode指定時はそのモードのみ表示）
-function updateCatalogBreadcrumb(showMode){
-  const breadcrumb = document.getElementById('catalog-breadcrumb');
-  if(!breadcrumb) return;
-
-  breadcrumb.innerHTML = '';
-
-  // showMode が指定されていれば、そのモードのみ表示（詳細ページ用）
-  const modesToShow = showMode
-    ? CATALOG_MODES.filter(([mode]) => mode === showMode)
-    : CATALOG_MODES; // 指定なければ全モード表示（ホーム画面用）
-
-  modesToShow.forEach(([mode, label]) => {
-    const item = document.createElement('div');
-    item.className = 'catalog-breadcrumb-item';
-    if(mode === state.catalogMode) item.classList.add('active');
-    item.textContent = label;
-    item.onclick = () => setCatalogMode(mode);
-    breadcrumb.appendChild(item);
-  });
-}
 // 「ポケットから見えた、あなた向けの○○」棚(renderHomeRows参照)で、
 // director列を流用している作り手の呼び方をモードごとに出し分ける。
 const CATALOG_MODE_CREATOR_LABEL = {
@@ -11308,7 +11252,6 @@ async function goDetail(id){
 
   renderRecommended(m);
   switchView('view-detail');
-  updateCatalogBreadcrumb(m.mediaType); // 詳細ページでは該当のカテゴリのみ表示
   saveViewState('view-detail', { id });
   feedbackDetailOpen();
 
