@@ -10973,6 +10973,8 @@ function updateCatalogModeToggleUI(){
       : '';
     homeView.style.transform = '';
     homeView.style.opacity = '';
+    // スワイプ終了後は will-change を削除してメモリ最適化
+    homeView.style.willChange = '';
   }
 
   homeView.addEventListener('touchstart', (e) => {
@@ -11024,6 +11026,8 @@ function updateCatalogModeToggleUI(){
     // ように」)。ほぼ1:1に近い追従にしつつ、画面幅に応じた上限だけ設けて
     // 行き過ぎを防ぐ(固定120pxだと画面の広いiPad等では尚更早く頭打ちに
     // なるため、画面幅基準にする)。
+    // 2026-10-24: GPU最適化を追加（will-change）してスワイプのフレーム落ちを減少
+    if(!homeView.style.willChange) homeView.style.willChange = 'transform, opacity';
     const dragCap = Math.min(window.innerWidth * 0.45, 200);
     const damped = Math.sign(dx) * Math.min(Math.abs(dx) * 0.9, dragCap);
     homeView.style.transform = `translateX(${damped}px)`;
