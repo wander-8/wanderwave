@@ -7489,13 +7489,12 @@ async function renderHomeGift(){
       </div>`;
     return;
   }
+  // 2026-10-24 改善: 各メディアタイプから 1 つずつ作品を選ぶように改造
+  // (従来は 1 つのメディアタイプに絞って複数件を選んでいた)。
+  // これにより「今日の贯り物」をスワイプすると、映画・アニメ・ドラマ・マンガ・本
+  // などの異なるメディアが順番に出るようになる。
   const diagnosedMovies = (latest.movieIds || []).map(id => MOVIES.find(m => m.id === id)).filter(Boolean);
-  const giftMode = todaysGiftMode(diagnosedMovies);
-  // オーナー指摘:「作品をスライドすると他の項目のおすすめも出るように
-  // してもいいかも」。pickSmartOmikujiCandidatesから続けて何件か引いて
-  // おき(1件目が下のmovieIdと一致)、開封後に横スワイプで切り替えられる
-  // ようにする(onGiftPointerUp参照)。
-  const candidates = await pickSmartOmikujiCandidates(giftMode, latest.topTag, latest.movieIds || [], 5);
+  const candidates = await pickGiftCandidatesByMediaType(latest.topTag, latest.movieIds || []);
   if(myToken !== homeGiftRenderToken) return; // 後から呼ばれた別の表示に上書きされた
   const movieId = candidates[0];
   if(movieId == null){
@@ -14786,6 +14785,29 @@ function todaysGiftMode(diagnosedMovies){
     : [];
   if(typesPresent.length) return typesPresent[dayNum % typesPresent.length];
   return CATALOG_MODES[dayNum % CATALOG_MODES.length][0];
+}
+
+// 2026-10-24: ホーム画面「今日の贈り物」用：各メディアタイプ(映画・アニメ・
+// ドラマ・マンガ・本)から 1 つずつ作品を選ぶ。スワイプで次々と異なるメディア
+// の作品が出るようになる(音楽は除外)。
+async function pickGiftCandidatesByMediaType(topTag, excludeIds){
+  const MEDIA_TYPES_FOR_GIFT = ['movie', 'anime', 'drama', 'manga', 'novel'];
+  const candidates = [];
+
+  for(const mode of MEDIA_TYPES_FOR_GIFT){
+    // 各メディアタイプから 1 つ選ぶ
+    try{
+      const movieIds = await pickSmartOmikujiCandidates(mode, topTag, excludeIds, 1);
+      if(movieIds && movieIds.length > 0){
+        candidates.push(movieIds[0]);
+      }
+    }catch(err){
+      console.error(`${mode}の贈り物選択に失敗:`, err);
+      // エラーでも他のメディアは続行
+    }
+  }
+
+  return candidates.length > 0 ? candidates : [];
 }
 
 // 一覧で選ばせる「おすすめ」ではなく、傾向が近い未選択の作品から1本だけを
