@@ -10968,12 +10968,8 @@ function updateCatalogModeToggleUI(){
   let startX = 0, startY = 0, ignoreSwipe = false, dragging = false;
 
   function resetDrag(animated){
-    // 2026-10-24 改善: スワイプ後の戻り時間を短縮してスナップ感を強調
-    // 従来の0.22sではスムーズすぎて「引っ張られている」感覚が残っていた。
-    // 0.08sに短縮することで、指を離した瞬間にピタリと収まる感覚を実現。
-    homeView.style.transition = animated
-      ? 'opacity 0.08s cubic-bezier(.22,.8,.32,1)'
-      : '';
+    // スワイプ終了後、即座に画面を固定。アニメーション不要。
+    homeView.style.transition = '';
     homeView.style.opacity = '';
     // スワイプ終了後は will-change を削除してメモリ最適化
     homeView.style.willChange = '';
