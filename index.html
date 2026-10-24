@@ -12801,21 +12801,19 @@ async function fetchFreshCatalogAndContinue(FIRST_PAGE_SIZE, plainMovieFilter){
   // 範囲限定版とは別物)。
   const fullStatsPromise = loadFullStatsAndEstimates();
 
-  // stats/estimates全件が終わったら、まず他メディア種別の軽量カタログ
-  // (アニメ・ドラマ・漫画・小説・音楽)を先に取る。以前は映画の残り
-  // 3万5千件超を先に待ってからこれを始めていたため、映画タブは1ページ目で
-  // 即表示できているのに、他タブへ切り替えると実データが1件も無いまま
-  // 映画の残り全件が終わるのを待たされていた(オーナー指摘:「映画と
-  // アニメ以外の表示が遅い」。一度直したつもりが直り切っていなかった
-  // 箇所)。映画の残りページ取得は映画タブの体感には影響しないので、
-  // 他タブの軽量カタログより後でよい。movies本体の残りページ取得
-  // (CONCURRENCY分の接続)と同時に走らせると匿名ロールのstatement_timeout
-  // (3秒)に引っかかる事故が過去に実際に起きているため、引き続き
-  // 1つずつ順番に待つ(どちらもスプラッシュはブロックしないので体感への
-  // 影響は無い)。
-  const nonMovieLoadedPromise = fullStatsPromise.then(({ statsByMovie, estimatesByMovie }) =>
-    broadFetch ? loadNonMovieCatalogInBackground(statsByMovie, estimatesByMovie) : null
-  );
+  // 2026-10-24 パフォーマンス改善: stats/estimatesの取得と他メディア種別の
+  // 軽量カタログ読み込みを並列化。以前は fullStatsPromise を待ってから
+  // nonMovieLoadedPromise を開始していたため、アニメ・マンガ等の表示が
+  // 映画のページ取得に道連れで遅れていた。両方を Promise.all で並列実行
+  // することで、非映画メディアの表示速度を向上させ、レイアウトシフトを減少。
+  const nonMovieLoadedPromise = broadFetch
+    ? fullStatsPromise.then(({ statsByMovie, estimatesByMovie }) =>
+        loadNonMovieCatalogInBackground(statsByMovie, estimatesByMovie)
+      ).catch(err => {
+        console.error('stats/estimates取得に失敗しましたが、他メディア読み込みは続行', err);
+        return loadNonMovieCatalogInBackground({}, {});
+      })
+    : null;
 
   const restMoviesLoadedPromise = reachedEndOnFirstPage
     ? Promise.resolve()
@@ -12860,6 +12858,8 @@ async function loadFullStatsAndEstimates(){
 // 1ページ目より後ろの映画(FIRST_PAGE_SIZE件目以降)を、初回描画を待たせずに
 // 裏で取得してMOVIESに追加結合する。statsByMovie/estimatesByMovieは
 // loadFullStatsAndEstimates()で取得済みの全件版をそのまま使う。
+// 2026-10-24: 非映画読み込みとの競合回避のため、非映画が先に終わったら
+// その分の stats/estimates を後から追加適用する作りに改造。
 async function loadRemainingMoviesInBackground(startOffset, plainMovieFilter, statsByMovie, estimatesByMovie){
   try{
     const restRows = await selectAllRows('movies', MOVIE_LIGHT_COLUMNS, plainMovieFilter, 'id', 2000, startOffset);
@@ -12995,6 +12995,70 @@ async function loadNonMovieCatalogInBackground(statsByMovie, estimatesByMovie){
     }catch(err){
       console.error(`${flag}の残りカタログ読み込みに失敗しました(他の種別には影響させず続行)`, err);
     }
+  }
+
+  nonMovieCatalogLoaded = true;
+}
+
+// 2026-10-24: stats/estimatesに依存せず、非映画カタログの軽量版を先に読み込んで
+// 表示してから、stats/estimatesが来たら後から適用する版。
+async function loadNonMovieCatalogInBackgroundDeferred(nonMovieStatsPromise){
+  const PER_TYPE_FIRST_PAGE_SIZE = 500;
+  const needsBackfill = [];
+  const emptyStats = { statsByMovie: {}, estimatesByMovie: {} };
+  let stats = emptyStats;
+
+  // 非映画カタログを stats/estimates なしで先に取得・表示
+  for(let i = 0; i < NON_MOVIE_TYPE_FLAGS.length; i++){
+    const flag = NON_MOVIE_TYPE_FLAGS[i];
+    try{
+      let firstPageData = null;
+      let lastErr = null;
+      for(let attempt = 0; attempt < 3; attempt++){
+        if(attempt > 0) await new Promise(r => setTimeout(r, 600));
+        const { data, error } = await supabase.from('movies').select(MOVIE_LIGHT_COLUMNS).eq(flag, true).order('id', { ascending: true }).range(0, PER_TYPE_FIRST_PAGE_SIZE - 1);
+        if(!error){ firstPageData = data; lastErr = null; break; }
+        lastErr = error;
+      }
+      if(lastErr) throw lastErr;
+      const firstPageRows = firstPageData || [];
+      // 最初は空の stats/estimates で追加、後で stats が来たら上書きされる
+      MOVIES = MOVIES.concat(firstPageRows.map(row => buildMovieRecord(row, {}, {})));
+      scheduleViewRefresh(true);
+      if(firstPageRows.length === PER_TYPE_FIRST_PAGE_SIZE) needsBackfill.push(flag);
+    }catch(err){
+      console.error(`${flag}のカタログ読み込みに失敗しました(他の種別には影響させず続行)`, err);
+    }
+  }
+  nonMoviePhase1Loaded = true;
+
+  // 残りのカタログを読み込み(stats/estimatesなし)
+  for(const flag of needsBackfill){
+    try{
+      const restRows = await selectAllRows('movies', MOVIE_LIGHT_COLUMNS, (q) => q.eq(flag, true), 'id', 1500, PER_TYPE_FIRST_PAGE_SIZE);
+      const existingIds = new Set(MOVIES.map(m => m.id));
+      const newRecords = restRows.filter(row => !existingIds.has(row.id)).map(row => buildMovieRecord(row, {}, {}));
+      MOVIES = MOVIES.concat(newRecords);
+      scheduleViewRefresh(true);
+    }catch(err){
+      console.error(`${flag}の残りカタログ読み込みに失敗しました(他の種別には影響させず続行)`, err);
+    }
+  }
+
+  // stats/estimatesが揃ったら、既にMOVIESに入っている非映画作品に上書き適用
+  try{
+    stats = await nonMovieStatsPromise;
+    MOVIES.forEach(movie => {
+      if(stats.statsByMovie && stats.statsByMovie[movie.id]){
+        movie.reviewStats = stats.statsByMovie[movie.id];
+      }
+      if(stats.estimatesByMovie && stats.estimatesByMovie[movie.id]){
+        movie.expressionEstimate = stats.estimatesByMovie[movie.id];
+      }
+    });
+    scheduleViewRefresh(false);
+  }catch(err){
+    console.error('非映画カタログへの stats/estimates 適用に失敗しました(既に読み込まれたカタログは保持)', err);
   }
 
   nonMovieCatalogLoaded = true;
