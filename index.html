@@ -6904,14 +6904,9 @@ function renderHomeRows(){
       })()
     : pickWithSeriesCap(newReleasesSorted, 12, 2);
   if(newReleases.length){
-    const modeLabel = (CATALOG_MODES.find(([mode]) => mode === catalogMode) || [])[1] || '';
-    const badgeHTML = modeLabel ? `<div class="category-badge">${modeLabel}</div>` : '';
     html += `
-      <div class="section-label-row" style="align-items: center; gap: 8px;">
-        ${badgeHTML}
-        <div class="section-label">今話題の新作</div>
-      </div>
-      <div class="results">${newReleases.map(m => buildCardHTML(m, { forcePosterHide: true, showCategoryBadge: false })).join('')}</div>
+      <div class="section-label">今話題の新作</div>
+      <div class="results">${newReleases.map(m => buildCardHTML(m, { forcePosterHide: true, showCategoryBadge: true })).join('')}</div>
     `;
   }
 
@@ -6955,14 +6950,12 @@ function renderHomeRows(){
         // 固定の一般論ではなく、実際にこのユーザーのポケットから集計した
         // タグ・ジャンル・作り手の分析結果にする(buildPocketAnalysisSummary)。
         const summary = buildPocketAnalysisSummary(tagWeights, genreWeights, pocketCreators, catalogMode);
-        const badgeHTML = modeLabel ? `<div class="category-badge">${modeLabel}</div>` : '';
         html += `
-          <div class="section-label-row" style="align-items: center; gap: 8px;">
-            ${badgeHTML}
+          <div class="section-label-row">
             <div class="section-label">ポケットから見えた、あなた向けの</div>
             <button class="info-icon" data-summary="${escapeHtml(summary)}" onclick="showInfo('この棚について', this.dataset.summary)">ⓘ</button>
           </div>
-          <div class="results">${personalPicks.map(x => buildCardHTML(x.m, { showCategoryBadge: false })).join('')}</div>
+          <div class="results">${personalPicks.map(x => buildCardHTML(x.m, { showCategoryBadge: true })).join('')}</div>
         `;
       }
     }
