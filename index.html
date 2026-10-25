@@ -3817,6 +3817,18 @@
       </div>
     </div>
 
+    <!-- 契約済みサービス選択セクション -->
+    <div id="subscriptions-section" style="display:none; margin-top: 24px;">
+      <div class="detail-head">
+        <h3 style="margin: 0 0 8px;">あなたが契約しているサービス</h3>
+        <div class="sub" style="margin: 0;">チェックを入れたサービスの作品を、ウィッシュリストで簡単に見つけられます</div>
+      </div>
+      <div id="subscriptions-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 16px;">
+        <!-- JavaScript で dynamically 生成 -->
+      </div>
+      <button class="primary-btn" style="width: 100%; margin-top: 16px;" onclick="saveSubscriptions()">保存</button>
+    </div>
+
     <div id="profile-pocket-section" style="display:none;">
       <div class="pocket-divider"></div>
 
@@ -11456,6 +11468,83 @@ async function loadServiceLinks(m){
   }
 }
 
+async function loadSubscriptionsUI(){
+  try {
+    // サービス一覧を取得
+    const servicesRes = await fetch(
+      'https://wjhvifdbttlijxnreaha.supabase.co/rest/v1/services?active=eq.true&select=id,name',
+      {
+        headers: {
+          'apikey': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndqaHZpZmRidHRsaWp4bnJlYWhhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3MDM4NDMxOTIsImV4cCI6MTkzMTYxOTE5Mn0.NVPW0LLk9rkPQVpL4WwTB6CZxBHkiTL8qVaLVlQCJPo'
+        }
+      }
+    );
+    const services = await servicesRes.json();
+
+    // ユーザーの user_subscriptions を取得
+    const userId = (await supabase.auth.getSession()).data.session?.user?.id;
+    if (!userId) {
+      document.getElementById('subscriptions-section').style.display = 'none';
+      return;
+    }
+
+    const { data: userSubs } = await supabase
+      .from('user_subscriptions')
+      .select('service_id, subscribed')
+      .eq('user_id', userId);
+
+    const subMap = {};
+    (userSubs || []).forEach(sub => {
+      subMap[sub.service_id] = sub.subscribed;
+    });
+
+    // チェックボックスを生成
+    const grid = document.getElementById('subscriptions-grid');
+    grid.innerHTML = services.map(service => `
+      <label style="display: flex; align-items: center; padding: 12px; background: rgba(160,132,242,0.1); border-radius: 6px; cursor: pointer;">
+        <input type="checkbox" data-service-id="${service.id}" ${subMap[service.id] ? 'checked' : ''} style="margin-right: 8px; cursor: pointer;">
+        <span style="flex: 1;">${service.name}</span>
+      </label>
+    `).join('');
+
+    document.getElementById('subscriptions-section').style.display = 'block';
+  } catch (err) {
+    console.error('Failed to load subscriptions UI:', err);
+    document.getElementById('subscriptions-section').style.display = 'none';
+  }
+}
+
+async function saveSubscriptions(){
+  try {
+    const userId = (await supabase.auth.getSession()).data.session?.user?.id;
+    if (!userId) return;
+
+    const checkboxes = document.querySelectorAll('#subscriptions-grid input[type="checkbox"]');
+    const updates = [];
+
+    checkboxes.forEach(cb => {
+      const serviceId = parseInt(cb.dataset.serviceId);
+      const subscribed = cb.checked;
+      updates.push({
+        user_id: userId,
+        service_id: serviceId,
+        subscribed: subscribed
+      });
+    });
+
+    // Upsert: 既存レコードは更新、ない場合は作成
+    const { error } = await supabase
+      .from('user_subscriptions')
+      .upsert(updates, { onConflict: 'user_id,service_id' });
+
+    if (error) throw error;
+    alert('保存しました！');
+  } catch (err) {
+    console.error('Failed to save subscriptions:', err);
+    alert('保存に失敗しました');
+  }
+}
+
 async function loadMovieReviews(m){
   const reviewsEl = document.getElementById('d-reviews');
   reviewsEl.innerHTML = '<div class="empty" style="padding:16px 0;">読み込み中...</div>';
@@ -13907,6 +13996,8 @@ function goProfile(){
     endOnboardingWizard();
     pocketSectionEl.style.display = 'block';
     document.getElementById('logout-btn').style.display = 'block';
+
+    loadSubscriptionsUI();
 
     renderProfileMenuSummaries();
     renderViewingRecord();
