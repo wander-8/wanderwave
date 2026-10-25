@@ -949,6 +949,23 @@
     font-size:11px; font-weight:700; color:#fff;
     text-shadow: 0 1px 2px rgba(0,0,0,0.4);
   }
+
+  /* カテゴリ付箋 - 「今愛されてる作品」など用 */
+  .category-badge{
+    position: absolute;
+    top: 8px;
+    left: 8px;
+    z-index: 3;
+    padding: 8px 16px;
+    background: rgba(232,137,158,0.9);
+    color: #fff;
+    font-size: 14px;
+    font-weight: 600;
+    border-radius: 6px;
+    backdrop-filter: blur(4px);
+    box-shadow: 0 2px 8px rgba(232,137,158,0.3);
+  }
+
   /* マイリストの中身一覧だけで出す、1件ずつ外すための×ボタン(オーナー
      要望:「リスト内の作品、削除できるボタンと機能を追加してほしい」)。
      カード全体のonclick(詳細ページへ)より手前に浮かせ、タップ時は
@@ -6480,6 +6497,10 @@ function buildCardHTML(m, opts){
   // カードに種別バッジを出す(通常の一覧はモード単一なので不要)。
   const typeInfo = (opts && opts.showTypeBadge) ? mediaTypeInfo(m) : null;
   const typeBadge = typeInfo ? `<div class="result-type-badge" style="background:${typeInfo.color};">${typeInfo.label}</div>` : '';
+
+  // カテゴリ付箋（showCategoryBadge が有効な場合）
+  const modeLabel = (opts && opts.showCategoryBadge) ? (CATALOG_MODES.find(([mode]) => mode === m.mediaType) || [])[1] : null;
+  const categoryBadge = modeLabel ? `<div class="category-badge">${modeLabel}</div>` : '';
   // マイリストの中身一覧(renderListDetail)からだけ、1件ずつ外す×ボタンを
   // 出す(オーナー要望:「リスト内の作品、削除できるボタンと機能」)。
   // ポケットの一覧(renderPocketView)でも同じ見た目で、中身を自分で
@@ -6503,7 +6524,7 @@ function buildCardHTML(m, opts){
   const musicHighlightClass = (opts && opts.highlightMusic && m.isMusic) ? ' home-mood-music-highlight' : '';
   return `
     <div class="result-card${musicHighlightClass}" onclick="${clickHandler}">
-      <div class="poster-thumb" style="background:${m.posterColor}">${posterImg}${initialOrTitle}${typeBadge}${removeBtn}${playBtn}</div>
+      <div class="poster-thumb" style="background:${m.posterColor}">${posterImg}${initialOrTitle}${typeBadge}${categoryBadge}${removeBtn}${playBtn}</div>
       ${overlayTitle ? '' : `<div class="result-title">${m.title}</div>`}
       ${isLean ? '' : `
       <div class="result-year">${m.year}</div>
@@ -6861,7 +6882,7 @@ function renderHomeRows(){
             <div class="section-label">ポケットから見えた、あなた向けの${modeLabel}</div>
             <button class="info-icon" data-summary="${escapeHtml(summary)}" onclick="showInfo('この棚について', this.dataset.summary)">ⓘ</button>
           </div>
-          <div class="results">${personalPicks.map(x => buildCardHTML(x.m)).join('')}</div>
+          <div class="results">${personalPicks.map(x => buildCardHTML(x.m, { showCategoryBadge: true })).join('')}</div>
         `;
       }
     }
