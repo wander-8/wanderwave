@@ -3299,6 +3299,11 @@
       <div id="service-links-list" style="display: flex; flex-direction: column; gap: 8px;"></div>
     </div>
 
+    <!-- アフィリエイトリンク -->
+    <div id="affiliate-links-section" style="display:none; margin: 24px 0; padding: 16px; background: linear-gradient(135deg, #e8899e, #d4699a); border-radius: 8px; text-align: center;">
+      <div id="affiliate-links-list"></div>
+    </div>
+
     <div class="add-list-text-link-row">
       <!-- ポケット専用のワンタップ・ハートボタン(オーナー仕様:「配置:
            作品詳細ページのリンクの左。今あるリンクで作ってたポケットに
@@ -11309,6 +11314,7 @@ async function goDetail(id){
   resetEpisodesUI(m);
   resetTracksUI(m);
   loadServiceLinks(m);
+  loadAffiliateLinks(m);
   updateWishlistButtonState(m);
   resetReviewsUI();
   autoPlayAlbumPreview(m);
@@ -11514,6 +11520,48 @@ async function loadServiceLinks(m){
   } catch (err) {
     console.error('Failed to load service links:', err);
     document.getElementById('service-links-section').style.display = 'none';
+  }
+}
+
+async function loadAffiliateLinks(m){
+  const mediaId = m.id;
+  const mediaType = m.mediaType || m.type || '';
+
+  if (!mediaId || !mediaType) {
+    document.getElementById('affiliate-links-section').style.display = 'none';
+    return;
+  }
+
+  try {
+    const affiliateResponse = await fetch(
+      `https://wjhvifdbttlijxnreaha.supabase.co/rest/v1/service_links?media_id=eq.${mediaId}&media_type=eq.${mediaType}&url=is.not.null&select=service_name,url`,
+      {
+        headers: {
+          'apikey': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndqaHZpZmRidHRsaWp4bnJlYWhhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3MDM4NDMxOTIsImV4cCI6MTkzMTYxOTE5Mn0.NVPW0LLk9rkPQVpL4WwTB6CZxBHkiTL8qVaLVlQCJPo'
+        }
+      }
+    );
+
+    const affiliates = await affiliateResponse.json();
+    const section = document.getElementById('affiliate-links-section');
+    const linksList = document.getElementById('affiliate-links-list');
+
+    if (affiliates && affiliates.length > 0) {
+      linksList.innerHTML = affiliates.map(affiliate => `
+        <a href="${affiliate.url}" target="_blank" rel="nofollow"
+           style="display: inline-block; padding: 12px 24px; background: rgba(0,0,0,0.2); border-radius: 4px; color: white; text-decoration: none; font-weight: 600; transition: all 0.2s; margin: 4px;"
+           onmouseover="this.style.background='rgba(0,0,0,0.4)'"
+           onmouseout="this.style.background='rgba(0,0,0,0.2)'">
+          🎵 ${affiliate.service_name} で視聴する
+        </a>
+      `).join('');
+      section.style.display = 'block';
+    } else {
+      section.style.display = 'none';
+    }
+  } catch (err) {
+    console.error('Failed to load affiliate links:', err);
+    document.getElementById('affiliate-links-section').style.display = 'none';
   }
 }
 
