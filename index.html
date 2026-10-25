@@ -3291,6 +3291,14 @@
       </div>
     </div>
 
+    <!-- このサービスで見る -->
+    <div id="service-links-section" style="display:none; margin: 24px 0; padding: 16px; background: rgba(160,132,242,0.1); border-radius: 8px;">
+      <div class="detail-head" style="margin-bottom: 12px;">
+        <h3 style="margin: 0; font-size: 16px;">このサービスで見る</h3>
+      </div>
+      <div id="service-links-list" style="display: flex; flex-direction: column; gap: 8px;"></div>
+    </div>
+
     <div class="add-list-text-link-row">
       <!-- ポケット専用のワンタップ・ハートボタン(オーナー仕様:「配置:
            作品詳細ページのリンクの左。今あるリンクで作ってたポケットに
@@ -11240,6 +11248,7 @@ async function goDetail(id){
   resetTrailerUI(m);
   resetEpisodesUI(m);
   resetTracksUI(m);
+  loadServiceLinks(m);
   resetReviewsUI();
   autoPlayAlbumPreview(m);
 
@@ -11370,6 +11379,46 @@ function rebuildReviewsList(){
   reviewsList = [...wanderReviewRows, ...tmdbReviewRows];
   reviewsPage = 0;
   renderVisibleReviews();
+}
+
+async function loadServiceLinks(m){
+  const mediaType = m.mediaType || m.type || '';
+  const mediaId = String(m.id);
+
+  try {
+    const response = await fetch(
+      `https://wjhvifdbttlijxnreaha.supabase.co/rest/v1/service_links?media_id=eq.${mediaId}&media_type=eq.${mediaType}&active=eq.true&select=*`,
+      {
+        headers: {
+          'apikey': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndqaHZpZmRidHRsaWp4bnJlYWhhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3MDM4NDMxOTIsImV4cCI6MTkzMTYxOTE5Mn0.NVPW0LLk9rkPQVpL4WwTB6CZxBHkiTL8qVaLVlQCJPo'
+        }
+      }
+    );
+
+    const links = await response.json();
+    const section = document.getElementById('service-links-section');
+    const linksList = document.getElementById('service-links-list');
+
+    if (links && links.length > 0) {
+      linksList.innerHTML = links.map(link => `
+        <a href="${link.url}" target="_blank" rel="noopener noreferrer"
+           style="display: flex; align-items: center; padding: 10px; background: rgba(160,132,242,0.2); border-radius: 6px; text-decoration: none; color: var(--ink); transition: background 0.2s;">
+          <span style="flex: 1;">${link.service_name}で見る</span>
+          <svg style="width: 16px; height: 16px; opacity: 0.7;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
+            <polyline points="15 3 21 3 21 9"></polyline>
+            <line x1="10" y1="14" x2="21" y2="3"></line>
+          </svg>
+        </a>
+      `).join('');
+      section.style.display = 'block';
+    } else {
+      section.style.display = 'none';
+    }
+  } catch (err) {
+    console.error('Failed to load service links:', err);
+    document.getElementById('service-links-section').style.display = 'none';
+  }
 }
 
 async function loadMovieReviews(m){
