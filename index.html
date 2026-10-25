@@ -13258,17 +13258,11 @@ async function fetchFreshCatalogAndContinue(FIRST_PAGE_SIZE, plainMovieFilter){
   const fullStatsPromise = loadFullStatsAndEstimates();
 
   // 2026-10-24 パフォーマンス改善: stats/estimatesの取得と他メディア種別の
-  // 軽量カタログ読み込みを並列化。以前は fullStatsPromise を待ってから
-  // nonMovieLoadedPromise を開始していたため、アニメ・マンガ等の表示が
-  // 映画のページ取得に道連れで遅れていた。両方を Promise.all で並列実行
-  // することで、非映画メディアの表示速度を向上させ、レイアウトシフトを減少。
+  // 軽量カタログ読み込みを並列化。さらに 2026-10-25 で Deferred版に変更：
+  // 非映画カタログを stats/estimates なしで先に取得・表示してから、
+  // stats が揃ったら後から上書き。これにより初期表示をさらに高速化。
   const nonMovieLoadedPromise = broadFetch
-    ? fullStatsPromise.then(({ statsByMovie, estimatesByMovie }) =>
-        loadNonMovieCatalogInBackground(statsByMovie, estimatesByMovie)
-      ).catch(err => {
-        console.error('stats/estimates取得に失敗しましたが、他メディア読み込みは続行', err);
-        return loadNonMovieCatalogInBackground({}, {});
-      })
+    ? loadNonMovieCatalogInBackgroundDeferred(fullStatsPromise)
     : null;
 
   const restMoviesLoadedPromise = reachedEndOnFirstPage
