@@ -3308,6 +3308,7 @@
         <svg class="pocket-heart-icon" viewBox="0 0 32 30" fill="currentColor"><path d="M16 27 C6 20 2 13 2 8.5 C2 4 5.5 1 9.5 1 C12.5 1 15 2.8 16 5.5 C17 2.8 19.5 1 22.5 1 C26.5 1 30 4 30 8.5 C30 13 26 20 16 27 Z"/></svg>
         <span id="pocket-heart-label">ポケットに入れる</span>
       </button>
+      <button class="add-list-text-link" id="wishlist-btn" onclick="addToWishlist()" style="display:none;">⭐ ウィッシュリストに追加</button>
       <button class="add-list-text-link" onclick="openAddToListModal()">+ リストに追加</button>
     </div>
 
@@ -11261,6 +11262,7 @@ async function goDetail(id){
   resetEpisodesUI(m);
   resetTracksUI(m);
   loadServiceLinks(m);
+  updateWishlistButtonState(m);
   resetReviewsUI();
   autoPlayAlbumPreview(m);
 
@@ -11542,6 +11544,76 @@ async function saveSubscriptions(){
   } catch (err) {
     console.error('Failed to save subscriptions:', err);
     alert('保存に失敗しました');
+  }
+}
+
+async function updateWishlistButtonState(m){
+  const btn = document.getElementById('wishlist-btn');
+  const session = (await supabase.auth.getSession()).data.session;
+
+  if(!session){
+    btn.style.display = 'none';
+    return;
+  }
+
+  btn.style.display = 'inline-block';
+
+  // すでにウィッシュリストに入っているか確認
+  const { data } = await supabase
+    .from('wishlists')
+    .select('id')
+    .eq('user_id', session.user.id)
+    .eq('media_id', String(m.id))
+    .eq('media_type', m.mediaType || m.type);
+
+  if(data && data.length > 0){
+    btn.textContent = '✓ ウィッシュリスト済み';
+    btn.disabled = true;
+    btn.style.opacity = '0.6';
+  } else {
+    btn.textContent = '⭐ ウィッシュリストに追加';
+    btn.disabled = false;
+    btn.style.opacity = '1';
+  }
+}
+
+async function addToWishlist(){
+  const session = (await supabase.auth.getSession()).data.session;
+  if(!session) {
+    alert('ウィッシュリストに追加するには、ログインが必要です');
+    return;
+  }
+
+  const m = MOVIES.find(x => x.id === state.currentMovieId);
+  if(!m) return;
+
+  try {
+    const { error } = await supabase
+      .from('wishlists')
+      .insert({
+        user_id: session.user.id,
+        media_id: String(m.id),
+        media_type: m.mediaType || m.type
+      });
+
+    if(error && error.code === '23505'){
+      // Already in wishlist
+      alert('すでにウィッシュリストに入っています');
+      return;
+    }
+
+    if(error) throw error;
+
+    // ボタン状態を更新
+    const btn = document.getElementById('wishlist-btn');
+    btn.textContent = '✓ ウィッシュリスト済み';
+    btn.disabled = true;
+    btn.style.opacity = '0.6';
+
+    alert('ウィッシュリストに追加しました！');
+  } catch(err) {
+    console.error('Failed to add to wishlist:', err);
+    alert('ウィッシュリストへの追加に失敗しました');
   }
 }
 
