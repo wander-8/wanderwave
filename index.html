@@ -6904,14 +6904,9 @@ function renderHomeRows(){
       })()
     : pickWithSeriesCap(newReleasesSorted, 12, 2);
   if(newReleases.length){
-    const modeLabel = (CATALOG_MODES.find(([mode]) => mode === catalogMode) || [])[1] || '';
-    const badgeHTML = modeLabel ? `<div class="category-badge">${modeLabel}</div>` : '';
     html += `
-      <div class="section-label-row" style="align-items: center; gap: 8px;">
-        ${badgeHTML}
-        <div class="section-label">今話題の新作</div>
-      </div>
-      <div class="results">${newReleases.map(m => buildCardHTML(m, { forcePosterHide: true, showCategoryBadge: false })).join('')}</div>
+      <div class="section-label">今話題の新作</div>
+      <div class="results">${newReleases.map(m => buildCardHTML(m, { forcePosterHide: true, showCategoryBadge: true })).join('')}</div>
     `;
   }
 
