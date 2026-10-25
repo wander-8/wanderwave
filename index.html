@@ -4253,6 +4253,42 @@
     <div id="viewing-record-grid" class="pocket-grid"></div>
   </div>
 
+  <div class="view" id="view-wishlist">
+    <button class="back-btn" onclick="goHome()">← 一覧に戻る</button>
+    <div class="detail-head">
+      <h2>ウィッシュリスト</h2>
+      <div class="sub" id="wishlist-sub">気になる作品をまとめて、どのサービスで見られるか確認できます</div>
+    </div>
+
+    <!-- 契約済みサービスの簡易表示 -->
+    <div id="wishlist-subs-summary" style="margin: 16px 0; padding: 12px; background: rgba(160,132,242,0.1); border-radius: 6px;">
+      <div style="font-size: 13px; color: var(--ink-soft); margin-bottom: 6px;">あなたの契約済みサービス：</div>
+      <div id="wishlist-subs-tags" style="display: flex; flex-wrap: wrap; gap: 6px;"></div>
+    </div>
+
+    <!-- 見られる作品 -->
+    <div id="wishlist-available-section" style="display: none;">
+      <div class="section-label-row" style="margin-top: 24px;">
+        <div class="section-label" style="color: var(--safe);">✓ 見られます</div>
+      </div>
+      <div id="wishlist-available-grid" class="pocket-grid" style="margin-top: 12px;"></div>
+    </div>
+
+    <!-- 要契約 -->
+    <div id="wishlist-unavailable-section" style="display: none;">
+      <div class="section-label-row" style="margin-top: 24px;">
+        <div class="section-label" style="color: var(--unsafe);">△ 要契約</div>
+      </div>
+      <div id="wishlist-unavailable-grid" class="pocket-grid" style="margin-top: 12px;"></div>
+    </div>
+
+    <!-- 空の状態 -->
+    <div id="wishlist-empty" style="text-align: center; padding: 40px 20px; color: var(--ink-soft);">
+      <div style="font-size: 14px; margin-bottom: 8px;">ウィッシュリストに作品がまだありません</div>
+      <div style="font-size: 12px;">気になる作品の詳細ページから「ウィッシュリストに追加」してください</div>
+    </div>
+  </div>
+
 </div>
 
 <!-- <button class="fab" onclick="goAdd()">+ 映画を追加</button> 承認フローが整うまで一時的に非表示 -->
@@ -11614,6 +11650,113 @@ async function addToWishlist(){
   } catch(err) {
     console.error('Failed to add to wishlist:', err);
     alert('ウィッシュリストへの追加に失敗しました');
+  }
+}
+
+function goWishlist(){
+  showView('view-wishlist');
+  loadWishlistData();
+}
+
+async function loadWishlistData(){
+  const session = (await supabase.auth.getSession()).data.session;
+  const emptyEl = document.getElementById('wishlist-empty');
+  const availableSecEl = document.getElementById('wishlist-available-section');
+  const unavailableSecEl = document.getElementById('wishlist-unavailable-section');
+
+  if(!session){
+    emptyEl.style.display = 'block';
+    availableSecEl.style.display = 'none';
+    unavailableSecEl.style.display = 'none';
+    return;
+  }
+
+  try {
+    // ウィッシュリスト作品を取得
+    const { data: wishlistItems } = await supabase
+      .from('wishlists')
+      .select('media_id, media_type')
+      .eq('user_id', session.user.id);
+
+    if(!wishlistItems || wishlistItems.length === 0){
+      emptyEl.style.display = 'block';
+      availableSecEl.style.display = 'none';
+      unavailableSecEl.style.display = 'none';
+      return;
+    }
+
+    // ユーザーの契約済みサービスを取得
+    const { data: userSubs } = await supabase
+      .from('user_subscriptions')
+      .select('service_id')
+      .eq('user_id', session.user.id)
+      .eq('subscribed', true);
+
+    const subServiceIds = new Set((userSubs || []).map(s => s.service_id));
+
+    // 契約済みサービスの名前を表示
+    if(userSubs && userSubs.length > 0){
+      const { data: services } = await supabase
+        .from('services')
+        .select('id, name')
+        .in('id', Array.from(subServiceIds));
+
+      const tagsHtml = services.map(s =>
+        `<span style="display: inline-block; padding: 4px 8px; background: rgba(79,157,137,0.2); border-radius: 4px; font-size: 12px;">${s.name}</span>`
+      ).join('');
+      document.getElementById('wishlist-subs-tags').innerHTML = tagsHtml || '<span style="color: var(--ink-soft);">契約済みサービスなし</span>';
+    }
+
+    // ウィッシュリスト作品をフィルタリング
+    const availableItems = [];
+    const unavailableItems = [];
+
+    for(const item of wishlistItems){
+      const movie = MOVIES.find(m => String(m.id) === item.media_id && (m.mediaType || m.type) === item.media_type);
+      if(!movie) continue;
+
+      // このサービスの対応サービスを取得
+      const { data: services } = await supabase
+        .from('services')
+        .select('id, name, categories')
+        .eq('active', true);
+
+      const matchingServices = services.filter(s =>
+        s.categories && s.categories.includes(item.media_type)
+      );
+
+      const hasAvailableService = matchingServices.some(s => subServiceIds.has(s.id));
+
+      if(hasAvailableService){
+        availableItems.push(movie);
+      } else {
+        unavailableItems.push(movie);
+      }
+    }
+
+    emptyEl.style.display = 'none';
+
+    // 見られる作品を表示
+    if(availableItems.length > 0){
+      availableSecEl.style.display = 'block';
+      document.getElementById('wishlist-available-grid').innerHTML = availableItems
+        .map(m => buildCardHTML(m, { onClick: () => goDetail(m.id) }))
+        .join('');
+    } else {
+      availableSecEl.style.display = 'none';
+    }
+
+    // 要契約の作品を表示
+    if(unavailableItems.length > 0){
+      unavailableSecEl.style.display = 'block';
+      document.getElementById('wishlist-unavailable-grid').innerHTML = unavailableItems
+        .map(m => buildCardHTML(m, { onClick: () => goDetail(m.id) }))
+        .join('');
+    } else {
+      unavailableSecEl.style.display = 'none';
+    }
+  } catch(err){
+    console.error('Failed to load wishlist:', err);
   }
 }
 
