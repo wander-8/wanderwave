@@ -966,6 +966,20 @@
     box-shadow: 0 2px 8px rgba(232,137,158,0.3);
   }
 
+  /* カテゴリリボンバッジ - V字型（左上） */
+  .category-ribbon{
+    position: absolute;
+    top: 8px;
+    left: -4px;
+    z-index: 3;
+    padding: 4px 10px 4px 10px;
+    background: #e8899e;
+    color: #fff;
+    font-size: 10px;
+    font-weight: 700;
+    clip-path: polygon(15% 0, 100% 0, 100% 100%, 15% 100%, 0 50%);
+  }
+
   /* マイリストの中身一覧だけで出す、1件ずつ外すための×ボタン(オーナー
      要望:「リスト内の作品、削除できるボタンと機能を追加してほしい」)。
      カード全体のonclick(詳細ページへ)より手前に浮かせ、タップ時は
@@ -6571,6 +6585,10 @@ function buildCardHTML(m, opts){
   const typeInfo = (opts && opts.showTypeBadge) ? mediaTypeInfo(m) : null;
   const typeBadge = typeInfo ? `<div class="result-type-badge" style="background:${typeInfo.color};">${typeInfo.label}</div>` : '';
 
+  // カテゴリリボンバッジ（showCategoryBadge が有効な場合）
+  const modeLabel = (opts && opts.showCategoryBadge) ? (CATALOG_MODES.find(([mode]) => mode === m.mediaType) || [])[1] : null;
+  const categoryBadge = modeLabel ? `<div class="category-ribbon">${modeLabel}</div>` : '';
+
   // マイリストの中身一覧(renderListDetail)からだけ、1件ずつ外す×ボタンを
   // 出す(オーナー要望:「リスト内の作品、削除できるボタンと機能」)。
   // ポケットの一覧(renderPocketView)でも同じ見た目で、中身を自分で
@@ -6594,7 +6612,7 @@ function buildCardHTML(m, opts){
   const musicHighlightClass = (opts && opts.highlightMusic && m.isMusic) ? ' home-mood-music-highlight' : '';
   return `
     <div class="result-card${musicHighlightClass}" onclick="${clickHandler}">
-      <div class="poster-thumb" style="background:${m.posterColor}">${posterImg}${initialOrTitle}${typeBadge}${removeBtn}${playBtn}</div>
+      <div class="poster-thumb" style="background:${m.posterColor}">${posterImg}${initialOrTitle}${typeBadge}${categoryBadge}${removeBtn}${playBtn}</div>
       ${overlayTitle ? '' : `<div class="result-title">${m.title}</div>`}
       ${isLean ? '' : `
       <div class="result-year">${m.year}</div>
@@ -6903,7 +6921,7 @@ function renderHomeRows(){
   if(newReleases.length){
     html += `
       <div class="section-label">今話題の新作</div>
-      <div class="results">${newReleases.map(m => buildCardHTML(m, { forcePosterHide: true })).join('')}</div>
+      <div class="results">${newReleases.map(m => buildCardHTML(m, { forcePosterHide: true, showCategoryBadge: true })).join('')}</div>
     `;
   }
 
