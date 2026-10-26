@@ -11499,10 +11499,10 @@ function loadAffiliateLinks(m){
   if (Array.isArray(affiliates) && affiliates.length > 0) {
     linksList.innerHTML = affiliates.map(affiliate => `
       <a href="${affiliate.url}" target="_blank" rel="nofollow"
-         style="display: inline; margin-right: 16px; color: var(--ink); text-decoration: none; font-weight: 500; border-bottom: 1px solid var(--plum); transition: opacity 0.2s;"
-         onmouseover="this.style.opacity='0.7'"
-         onmouseout="this.style.opacity='1'">
-        ${affiliate.service_name}
+         style="display: inline-block; padding: 8px 16px; margin-right: 12px; color: white; text-decoration: none; font-weight: 600; background: linear-gradient(135deg, var(--plum), var(--gold)); border-radius: 20px; transition: all 0.3s; box-shadow: 0 2px 8px rgba(160,132,242,0.3);"
+         onmouseover="this.style.transform='scale(1.05)'; this.style.boxShadow='0 4px 16px rgba(160,132,242,0.5)'"
+         onmouseout="this.style.transform='scale(1)'; this.style.boxShadow='0 2px 8px rgba(160,132,242,0.3)'">
+        ✨ ${affiliate.service_name}
       </a>
     `).join('');
     section.style.display = 'block';
