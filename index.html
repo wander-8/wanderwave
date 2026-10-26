@@ -950,21 +950,6 @@
     text-shadow: 0 1px 2px rgba(0,0,0,0.4);
   }
 
-  /* カテゴリ付箋 - 「今愛されてる作品」など用 */
-  .category-badge{
-    position: absolute;
-    top: 8px;
-    left: 8px;
-    z-index: 3;
-    padding: 8px 16px;
-    background: rgba(232,137,158,0.9);
-    color: #fff;
-    font-size: 14px;
-    font-weight: 600;
-    border-radius: 6px;
-    backdrop-filter: blur(4px);
-    box-shadow: 0 2px 8px rgba(232,137,158,0.3);
-  }
 
 
   /* マイリストの中身一覧だけで出す、1件ずつ外すための×ボタン(オーナー
@@ -6948,10 +6933,8 @@ function renderHomeRows(){
         // 固定の一般論ではなく、実際にこのユーザーのポケットから集計した
         // タグ・ジャンル・作り手の分析結果にする(buildPocketAnalysisSummary)。
         const summary = buildPocketAnalysisSummary(tagWeights, genreWeights, pocketCreators, catalogMode);
-        const badgeHTML = modeLabel ? `<div class="category-badge">${modeLabel}</div>` : '';
         html += `
           <div class="section-label-row" style="align-items: center; gap: 8px;">
-            ${badgeHTML}
             <div class="section-label">ポケットから見えた、あなた向けの</div>
             <button class="info-icon" data-summary="${escapeHtml(summary)}" onclick="showInfo('この棚について', this.dataset.summary)">ⓘ</button>
           </div>
