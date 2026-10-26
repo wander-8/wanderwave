@@ -11486,14 +11486,7 @@ function loadAffiliateLinks(m){
   console.log('[DEBUG] Affiliate response:', affiliates);
 
   if (Array.isArray(affiliates) && affiliates.length > 0) {
-    linksList.innerHTML = affiliates.map(affiliate => `
-      <a href="${affiliate.url}" target="_blank" rel="nofollow"
-         style="display: inline-block; padding: 12px 24px; background: rgba(0,0,0,0.2); border-radius: 4px; color: white; text-decoration: none; font-weight: 600; transition: all 0.2s; margin: 4px;"
-         onmouseover="this.style.background='rgba(0,0,0,0.4)'"
-         onmouseout="this.style.background='rgba(0,0,0,0.2)'">
-        🎵 ${affiliate.service_name} で視聴する
-      </a>
-    `).join('');
+    linksList.innerHTML = affiliates.map(affiliate => `<a href="${affiliate.url}" target="_blank" rel="nofollow" style="display:inline-block;padding:6px 12px;background:rgba(0,0,0,0.15);border-radius:4px;color:white;text-decoration:none;font-weight:600;transition:all 0.2s;margin:2px;" onmouseover="this.style.background='rgba(0,0,0,0.3)'" onmouseout="this.style.background='rgba(0,0,0,0.15)'">🎵 ${affiliate.service_name} で視聴する</a>`).join('');
     section.style.display = 'block';
   } else {
     section.style.display = 'none';
