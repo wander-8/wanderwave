@@ -8857,7 +8857,9 @@ function renderResults(){
     // フィールド」だけを使う(normalizeForSearchをここで呼び直さない)。
     // 以前はここで毎回normalizeForSearchを呼んでおり、あらすじ(最大400字)
     // まで含め全作品を正規化し直していたため、検索1文字目で固まっていた。
-    const matchQuery = keywordTerms
+    const matchQuery = state.semanticMatches
+      ? state.semanticMatches.has(m.id)
+      : keywordTerms
       ? (() => {
           const score = keywordTerms.reduce((n, term, i) =>
             n + (termMatchesMovie(m, term, keywordTermsVibeKws[i], keywordTermsShortTitleRe[i]) ? 1 : 0), 0);
