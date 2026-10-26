@@ -11223,89 +11223,16 @@ function logDetailClick(m){
 }
 
 async function goDetail(id){
-  detailViewsThisSession++; // 「ひとこと便り」を出すかどうかの判定に使う
-  detailReturn = pendingDetailReturn;
-  pendingDetailReturn = null;
-  document.getElementById('d-back-btn').textContent = detailReturn
-    ? (detailReturn.label || '← 元の作品に戻る')
-    : '← 一覧に戻る';
-
-  // musicモードの場合、別の方法でメディアを取得
   let m = MOVIES.find(x => x.id === id);
   if (!m && state.catalogMode === 'music') {
     m = { id: String(id), mediaType: 'music', type: 'music', tags: [] };
   }
+  if (!m) return;
+  
   state.currentMovieId = id;
-  logDetailClick(m);
-  document.getElementById('d-tags').innerHTML = m.tags.map(t =>
-    `<span class="mini-tag" style="color:${tagColor(t)}; background:${tagColor(t)}22;">${t}</span>`
-  ).join('');
-  updateLoveUI(m);
-  updatePocketHeartButton(id);
-
-  // この映画についての「投稿する」パネルの未送信の選択状態を、既に投票済みの
-  // 内容からリセットする(表現度スライダーを一度でも動かしたことがあれば、
-  // 何も触らずに投稿してもその値を保つ扱いにする)。
-  const myPrevVote = state.myIntensity[m.id];
-  pendingIntensityTouched = myPrevVote !== undefined;
-  pendingReasonTags = new Set(state.myReason[m.id] || []);
-  pendingMoodTags = new Set(state.myTagVotes[m.id] || []);
-  // ネタバレトグルの実際の値(編集対象レビューがあれば既存のhas_spoiler)は
-  // loadMovieReviews側で判明するので、ここでは一旦falseに戻すだけにする。
-  pendingSpoilerFlag = false;
-  updateSpoilerToggleUI();
-
-  renderIntensityGauge(m);
-  renderReasonChips(m);
-  renderCommunityTags(m);
-  renderPosterMood(m);
   renderMovieInfoPanel(m);
-  resetTrailerUI(m);
-  resetEpisodesUI(m);
-  resetTracksUI(m);
   loadMediaServiceLinks(m);
-  loadAffiliateLinks(m);
-  resetReviewsUI();
-  autoPlayAlbumPreview(m);
-
-  tagVoteOpen = false;
-  document.getElementById('tag-vote-select').style.display = 'none';
-  document.getElementById('tag-vote-toggle').textContent = '+ 感情タグを追加する';
-
-  postPanelOpen = false;
-  document.getElementById('post-panel-body').style.display = 'none';
-  document.getElementById('post-panel-chevron').classList.remove('open');
-
-  document.getElementById('add-to-list-modal').style.display = 'none';
-
-  const mySliderVal = myPrevVote !== undefined ? myPrevVote : 0;
-  document.getElementById('intensity-slider').value = mySliderVal;
-  updateIntensityDisplay(mySliderVal);
-  delete intensitySoundBandByTracker.review;
-
-  renderWatchLinks(m);
-  // loadWatchLinksForMovie(id);
-  // loadFullSynopsisForMovie(id);
-  // loadCastForMovie(id);
-  // loadExpressionEstimateForMovie(id);
-
-  editingMovieId = null;
-  const textBox = document.getElementById('review-text');
-  textBox.value = "";
-  document.getElementById('review-submit-btn').textContent = '投稿する';
-  document.getElementById('review-delete-btn').style.display = 'none';
-  updateReviewCount();
-
-  renderRecommended(m);
   switchView('view-detail');
-  saveViewState('view-detail', { id });
-  feedbackDetailOpen();
-
-  // TMDBレビューは主役のWander本体レビューを待たせてまで表示する必要が無い
-  // (賑わい・補足目的の薄い付加情報)ので、await せず裏で読み込む。
-  loadTmdbReviews(id);
-
-  await Promise.all([loadMovieReviews(m), loadMovieTagVotes(m)]);
 }
 
 // TMDBの海外レビューを取得する(tmdb-movie-reviews関数経由。日本語訳と、
