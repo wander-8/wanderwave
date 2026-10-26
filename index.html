@@ -11227,7 +11227,11 @@ async function goDetail(id){
     ? (detailReturn.label || '← 元の作品に戻る')
     : '← 一覧に戻る';
 
-  const m = MOVIES.find(x => x.id === id);
+  // musicモードの場合、別の方法でメディアを取得
+  let m = MOVIES.find(x => x.id === id);
+  if (!m && state.catalogMode === 'music') {
+    m = { id: String(id), mediaType: 'music', type: 'music', tags: [] };
+  }
   state.currentMovieId = id;
   logDetailClick(m);
   document.getElementById('d-tags').innerHTML = m.tags.map(t =>
@@ -11466,10 +11470,15 @@ async function loadServiceLinks(m){
 }
 
 function loadAffiliateLinks(m){
-  const mediaId = String(m.id);
-  const mediaType = m.mediaType || m.type || '';
+  const mediaId = String(m?.id || '');
+  let mediaType = m?.mediaType || m?.type || '';
 
-  console.log('[DEBUG] loadAffiliateLinks:', { mediaId, mediaType, isMusic: m.isMusic });
+  // musicモード時にmediaTypeが空の場合、state.catalogModeから取得
+  if (!mediaType && state?.catalogMode) {
+    mediaType = state.catalogMode;
+  }
+
+  console.log('[DEBUG] loadAffiliateLinks:', { mediaId, mediaType, isMusic: m?.isMusic });
 
   if (!mediaId || !mediaType) {
     document.getElementById('affiliate-links-section').style.display = 'none';
