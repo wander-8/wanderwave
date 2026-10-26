@@ -3285,14 +3285,6 @@
       <div id="service-links-list" style="display: flex; flex-direction: column; gap: 8px;"></div>
     </div>
 
-    <!-- media別service links (music.jp等) -->
-    <div id="media-service-links-section" style="display:none; margin: 24px 0; padding: 16px; background: rgba(160,132,242,0.1); border-radius: 8px;">
-      <div class="detail-head" style="margin-bottom: 12px;">
-        <h3 style="margin: 0; font-size: 16px;">このサービスで見る</h3>
-      </div>
-      <div id="media-service-links-list" style="display: flex; flex-direction: column; gap: 8px;"></div>
-    </div>
-
     <div class="add-list-text-link-row">
       <!-- ポケット専用のワンタップ・ハートボタン(オーナー仕様:「配置:
            作品詳細ページのリンクの左。今あるリンクで作ってたポケットに
@@ -3584,6 +3576,11 @@
     <div id="d-recommended-music-wrap" style="display:none;">
       <div class="section-label">こんな音楽もおすすめ</div>
       <div class="results" id="d-recommended-music"></div>
+    </div>
+
+    <!-- アフィリエイトリンク -->
+    <div id="affiliate-links-section" style="display:none; margin: 16px 0 0 0; padding: 8px 12px; background: rgba(232, 137, 158, 0.2); border-radius: 4px; text-align: center; font-size: 12px;">
+      <div id="affiliate-links-list"></div>
     </div>
 
   </div>
@@ -4344,12 +4341,12 @@ const INITIAL_AUTH_REDIRECT_SEARCH = window.location.search || '';
 // 「愛を送る」だけは登録不要のゲスト機能として自動匿名サインインを使うが、
 // 診断・ポケット・レビュー・映画追加などはメール登録(マジックリンク)必須。
 const AFFILIATE_LINKS = [
-  { media_id: '43130', media_type: 'music', service_name: 'music.jp', url: 'https://t.afi-b.com/visit.php?a=910480V-3352534i&p=N997123a' },
-  { media_id: '96731', media_type: 'music', service_name: 'music.jp', url: 'https://t.afi-b.com/visit.php?a=910480V-3352534i&p=N997123a' },
-  { media_id: '96732', media_type: 'music', service_name: 'music.jp', url: 'https://t.afi-b.com/visit.php?a=910480V-3352534i&p=N997123a' },
-  { media_id: '96725', media_type: 'music', service_name: 'music.jp', url: 'https://t.afi-b.com/visit.php?a=910480V-3352534i&p=N997123a' },
-  { media_id: '96722', media_type: 'music', service_name: 'music.jp', url: 'https://t.afi-b.com/visit.php?a=910480V-3352534i&p=N997123a' },
-  { media_id: '96720', media_type: 'music', service_name: 'music.jp', url: 'https://t.afi-b.com/visit.php?a=910480V-3352534i&p=N997123a' }
+  { media_id: '43130', media_type: 'music', service_name: 'music.jp', url: 'https://t.afi-b.com/visit.php?a=910480' },
+  { media_id: '96731', media_type: 'music', service_name: 'music.jp', url: 'https://t.afi-b.com/visit.php?a=910480' },
+  { media_id: '96732', media_type: 'music', service_name: 'music.jp', url: 'https://t.afi-b.com/visit.php?a=910480' },
+  { media_id: '96725', media_type: 'music', service_name: 'music.jp', url: 'https://t.afi-b.com/visit.php?a=910480' },
+  { media_id: '96722', media_type: 'music', service_name: 'music.jp', url: 'https://t.afi-b.com/visit.php?a=910480' },
+  { media_id: '96720', media_type: 'music', service_name: 'music.jp', url: 'https://t.afi-b.com/visit.php?a=910480' }
 ];
 
 const supabase = window.supabase.createClient(
@@ -11223,22 +11220,84 @@ function logDetailClick(m){
 }
 
 async function goDetail(id){
-  let m = MOVIES.find(x => x.id === id);
-  if (!m && state.catalogMode === 'music') {
-    m = { id: String(id), mediaType: 'music', type: 'music', tags: [], title: id, poster_path: null };
-  }
-  if (!m) return;
+  detailViewsThisSession++; // 「ひとこと便り」を出すかどうかの判定に使う
+  detailReturn = pendingDetailReturn;
+  pendingDetailReturn = null;
+  document.getElementById('d-back-btn').textContent = detailReturn
+    ? (detailReturn.label || '← 元の作品に戻る')
+    : '← 一覧に戻る';
 
+  const m = MOVIES.find(x => x.id === id);
   state.currentMovieId = id;
-
-  document.getElementById('d-back-btn').textContent = '← 一覧に戻る';
-  document.getElementById('d-tags').innerHTML = (m.tags || []).map(t =>
+  logDetailClick(m);
+  document.getElementById('d-tags').innerHTML = m.tags.map(t =>
     `<span class="mini-tag" style="color:${tagColor(t)}; background:${tagColor(t)}22;">${t}</span>`
   ).join('');
+  updateLoveUI(m);
+  updatePocketHeartButton(id);
 
+  // この映画についての「投稿する」パネルの未送信の選択状態を、既に投票済みの
+  // 内容からリセットする(表現度スライダーを一度でも動かしたことがあれば、
+  // 何も触らずに投稿してもその値を保つ扱いにする)。
+  const myPrevVote = state.myIntensity[m.id];
+  pendingIntensityTouched = myPrevVote !== undefined;
+  pendingReasonTags = new Set(state.myReason[m.id] || []);
+  pendingMoodTags = new Set(state.myTagVotes[m.id] || []);
+  // ネタバレトグルの実際の値(編集対象レビューがあれば既存のhas_spoiler)は
+  // loadMovieReviews側で判明するので、ここでは一旦falseに戻すだけにする。
+  pendingSpoilerFlag = false;
+  updateSpoilerToggleUI();
+
+  renderIntensityGauge(m);
+  renderReasonChips(m);
+  renderCommunityTags(m);
+  renderPosterMood(m);
   renderMovieInfoPanel(m);
-  // loadMediaServiceLinks(m);
+  resetTrailerUI(m);
+  resetEpisodesUI(m);
+  resetTracksUI(m);
+  loadAffiliateLinks(m);
+  resetReviewsUI();
+  autoPlayAlbumPreview(m);
+
+  tagVoteOpen = false;
+  document.getElementById('tag-vote-select').style.display = 'none';
+  document.getElementById('tag-vote-toggle').textContent = '+ 感情タグを追加する';
+
+  postPanelOpen = false;
+  document.getElementById('post-panel-body').style.display = 'none';
+  document.getElementById('post-panel-chevron').classList.remove('open');
+
+  document.getElementById('add-to-list-modal').style.display = 'none';
+
+  const mySliderVal = myPrevVote !== undefined ? myPrevVote : 0;
+  document.getElementById('intensity-slider').value = mySliderVal;
+  updateIntensityDisplay(mySliderVal);
+  delete intensitySoundBandByTracker.review;
+
+  renderWatchLinks(m);
+  loadWatchLinksForMovie(id);
+  loadFullSynopsisForMovie(id);
+  loadCastForMovie(id);
+  loadExpressionEstimateForMovie(id);
+
+  editingMovieId = null;
+  const textBox = document.getElementById('review-text');
+  textBox.value = "";
+  document.getElementById('review-submit-btn').textContent = '投稿する';
+  document.getElementById('review-delete-btn').style.display = 'none';
+  updateReviewCount();
+
+  renderRecommended(m);
   switchView('view-detail');
+  saveViewState('view-detail', { id });
+  feedbackDetailOpen();
+
+  // TMDBレビューは主役のWander本体レビューを待たせてまで表示する必要が無い
+  // (賑わい・補足目的の薄い付加情報)ので、await せず裏で読み込む。
+  loadTmdbReviews(id);
+
+  await Promise.all([loadMovieReviews(m), loadMovieTagVotes(m)]);
 }
 
 // TMDBの海外レビューを取得する(tmdb-movie-reviews関数経由。日本語訳と、
@@ -11330,72 +11389,113 @@ function rebuildReviewsList(){
   renderVisibleReviews();
 }
 
+async function loadServiceLinks(m){
+  const mediaType = m.mediaType || m.type || '';
+  const movieTags = m.tags || [];
 
-function loadMediaServiceLinks(m){
-  const section = document.getElementById('media-service-links-section');
-  const linksList = document.getElementById('media-service-links-list');
-  if (!section || !linksList) return;
-  const links = AFFILIATE_LINKS;
+  try {
+    // サービス一覧を取得
+    const servicesResponse = await fetch(
+      'https://wjhvifdbttlijxnreaha.supabase.co/rest/v1/services?active=eq.true&select=*',
+      {
+        headers: {
+          'apikey': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndqaHZpZmRidHRsaWp4bnJlYWhhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3MDM4NDMxOTIsImV4cCI6MTkzMTYxOTE5Mn0.NVPW0LLk9rkPQVpL4WwTB6CZxBHkiTL8qVaLVlQCJPo'
+        }
+      }
+    );
 
-  if (Array.isArray(links) && links.length > 0) {
-    linksList.innerHTML = links.map(link => `
-      <a href="${link.url}" target="_blank" rel="nofollow noopener noreferrer"
-         style="display: flex; align-items: center; padding: 12px; background: rgba(160,132,242,0.15); border-radius: 6px; text-decoration: none; color: var(--ink); transition: all 0.2s; border: 1px solid rgba(160,132,242,0.3);"
-         onmouseover="this.style.background='rgba(160,132,242,0.25)'"
-         onmouseout="this.style.background='rgba(160,132,242,0.15)'">
-        <div style="flex: 1;">
-          <div style="font-weight: 600;">${link.service_name}</div>
-        </div>
-        <svg style="width: 18px; height: 18px; opacity: 0.6; margin-left: 8px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
-          <polyline points="15 3 21 3 21 9"></polyline>
-          <line x1="10" y1="14" x2="21" y2="3"></line>
-        </svg>
-      </a>
-    `).join('');
-    section.style.display = 'block';
-  } else {
-    section.style.display = 'none';
+    const services = await servicesResponse.json();
+    if (!Array.isArray(services) || services.length === 0) {
+      document.getElementById('service-links-section').style.display = 'none';
+      return;
+    }
+
+    // 作品のタグとメディアタイプで、最適なサービスをスコアリング
+    const scoredServices = services
+      .map(service => {
+        let score = 0;
+
+        // カテゴリマッチ（高スコア）
+        if (service.categories && service.categories.includes(mediaType)) {
+          score += 10;
+        }
+
+        // タグマッチング（マッチ数でスコア）
+        if (service.recommended_tags && Array.isArray(service.recommended_tags)) {
+          const tagMatches = movieTags.filter(tag =>
+            service.recommended_tags.some(st => st.includes(tag) || tag.includes(st))
+          ).length;
+          score += tagMatches * 5;
+        }
+
+        return { ...service, score };
+      })
+      .filter(s => s.score > 0)
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 3); // 最大3個に絞る
+
+    const section = document.getElementById('service-links-section');
+    const linksList = document.getElementById('service-links-list');
+
+    if (scoredServices && scoredServices.length > 0) {
+      linksList.innerHTML = scoredServices.map(service => `
+        <a href="https://www.${service.name.toLowerCase().replace(/[・\s]/g, '')}.jp" target="_blank" rel="noopener noreferrer"
+           style="display: flex; align-items: center; padding: 12px; background: rgba(160,132,242,0.15); border-radius: 6px; text-decoration: none; color: var(--ink); transition: all 0.2s; border: 1px solid rgba(160,132,242,0.3);"
+           onmouseover="this.style.background='rgba(160,132,242,0.25)'"
+           onmouseout="this.style.background='rgba(160,132,242,0.15)'">
+          <div style="flex: 1;">
+            <div style="font-weight: 600; margin-bottom: 2px;">${service.name}</div>
+            <div style="font-size: 12px; opacity: 0.7;">報酬: ${service.reward_amount}</div>
+          </div>
+          <svg style="width: 18px; height: 18px; opacity: 0.6; margin-left: 8px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
+            <polyline points="15 3 21 3 21 9"></polyline>
+            <line x1="10" y1="14" x2="21" y2="3"></line>
+          </svg>
+        </a>
+      `).join('');
+      section.style.display = 'block';
+    } else {
+      section.style.display = 'none';
+    }
+  } catch (err) {
+    console.error('Failed to load service links:', err);
+    document.getElementById('service-links-section').style.display = 'none';
   }
 }
 
 function loadAffiliateLinks(m){
-  const mediaId = String(m?.id || '');
-  let mediaType = m?.mediaType || m?.type || '';
+  const mediaId = String(m.id);
+  const mediaType = m.mediaType || m.type || '';
 
-  // musicモード時にmediaTypeが空の場合、state.catalogModeから取得
-  if (!mediaType && state?.catalogMode) {
-    mediaType = state.catalogMode;
-  }
-
-  console.log('[DEBUG] loadAffiliateLinks:', { mediaId, mediaType, title: m?.title });
+  console.log('[DEBUG] loadAffiliateLinks:', { mediaId, mediaType, isMusic: m.isMusic });
 
   if (!mediaId || !mediaType) {
     document.getElementById('affiliate-links-section').style.display = 'none';
     return;
   }
 
+  const affiliates = AFFILIATE_LINKS.filter(link =>
+    link.media_id === mediaId && link.media_type === mediaType
+  );
+
   const section = document.getElementById('affiliate-links-section');
   const linksList = document.getElementById('affiliate-links-list');
 
-  // musicの場合、タイトルからmusic.jp検索URLを生成
-  if (mediaType === 'music' && m?.title) {
-    const searchQuery = encodeURIComponent(m.title);
-    const musicJpUrl = `https://music-book.jp/search?q=${searchQuery}&utm_source=wanderwave&utm_medium=affiliate`;
-    linksList.innerHTML = `<a href="${musicJpUrl}" target="_blank" rel="nofollow" style="display:inline-block;padding:6px 12px;background:rgba(0,0,0,0.15);border-radius:4px;color:white;text-decoration:none;font-weight:600;transition:all 0.2s;margin:2px;" onmouseover="this.style.background='rgba(0,0,0,0.3)'" onmouseout="this.style.background='rgba(0,0,0,0.15)'">🎵 music.jp で視聴する</a>`;
+  console.log('[DEBUG] Affiliate response:', affiliates);
+
+  if (Array.isArray(affiliates) && affiliates.length > 0) {
+    linksList.innerHTML = affiliates.map(affiliate => `
+      <a href="${affiliate.url}" target="_blank" rel="nofollow"
+         style="display: inline-block; padding: 12px 24px; background: rgba(0,0,0,0.2); border-radius: 4px; color: white; text-decoration: none; font-weight: 600; transition: all 0.2s; margin: 4px;"
+         onmouseover="this.style.background='rgba(0,0,0,0.4)'"
+         onmouseout="this.style.background='rgba(0,0,0,0.2)'">
+        🎵 ${affiliate.service_name} で視聴する
+      </a>
+    `).join('');
     section.style.display = 'block';
   } else {
-    // その他のメディアタイプはembedded AFFILIATE_LINKSを使用
-    const affiliates = AFFILIATE_LINKS.filter(link =>
-      link.media_id === mediaId && link.media_type === mediaType
-    );
-    console.log('[DEBUG] Affiliate response:', affiliates);
-    if (Array.isArray(affiliates) && affiliates.length > 0) {
-      linksList.innerHTML = affiliates.map(affiliate => `<a href="${affiliate.url}" target="_blank" rel="nofollow" style="display:inline-block;padding:6px 12px;background:rgba(0,0,0,0.15);border-radius:4px;color:white;text-decoration:none;font-weight:600;transition:all 0.2s;margin:2px;" onmouseover="this.style.background='rgba(0,0,0,0.3)'" onmouseout="this.style.background='rgba(0,0,0,0.15)'">🎵 ${affiliate.service_name} で視聴する</a>`).join('');
-      section.style.display = 'block';
-    } else {
-      section.style.display = 'none';
-    }
+    section.style.display = 'none';
   }
 }
 
