@@ -97,31 +97,10 @@ function stripHtml(html: string): string {
   return html.replace(/<[^>]+>/g, "").replace(/\s+/g, " ").trim();
 }
 
-// 480文字で単純に切り詰めると文の途中(単語の途中)で切れ、その壊れた
-// 英文を翻訳した結果も途中で切れた日本語になってしまう(実例:「Perfect
-// Girlfriend Online」のあらすじが「小説「ラブパッチf」で終わっていた。
-// オーナー指摘)。tmdb-movie-reviewsと同じく、文の区切り(. ! ?)が
-// 見つかればそこで切る。
-function trimToSentenceBoundary(text: string, maxLen: number): string {
-  if (text.length <= maxLen) return text;
-  const cut = text.slice(0, maxLen);
-  const lastPunct = Math.max(cut.lastIndexOf(". "), cut.lastIndexOf("! "), cut.lastIndexOf("? "));
-  return lastPunct > maxLen * 0.5 ? cut.slice(0, lastPunct + 1) : cut;
-}
-
-// 翻訳後の日本語あらすじをSYNOPSIS_MAX_LENで切る時も、単純なsliceだと
-// 文の途中で切れる。日本語の句点(。！？)で同様に区切る。
-function trimToSentenceBoundaryJa(text: string, maxLen: number): string {
-  if (text.length <= maxLen) return text;
-  const cut = text.slice(0, maxLen);
-  const lastPunct = Math.max(cut.lastIndexOf("。"), cut.lastIndexOf("！"), cut.lastIndexOf("？"));
-  return lastPunct > maxLen * 0.5 ? cut.slice(0, lastPunct + 1) : cut;
-}
-
 // AniListのdescriptionは英語であることが多く、他の取り込み(映画/アニメ/ドラマ)と
 // 同じくMyMemory APIで日本語化する(サイト内の表記を日本語に揃えるため)。
 async function translateToJa(text: string): Promise<string> {
-  const trimmed = trimToSentenceBoundary(text, 480);
+  const trimmed = text.slice(0, 480);
   try {
     const url = new URL("https://api.mymemory.translated.net/get");
     url.searchParams.set("q", trimmed);
@@ -198,7 +177,7 @@ async function selectAllRows(supabase: any, table: string, columns: string): Pro
   let all: any[] = [];
   let from = 0;
   while (true) {
-    const { data, error } = await supabase.from(table).select(columns).order("id", { ascending: true }).range(from, from + PAGE_SIZE - 1);
+    const { data, error } = await supabase.from(table).select(columns).range(from, from + PAGE_SIZE - 1);
     if (error) throw error;
     all = all.concat(data || []);
     if (!data || data.length < PAGE_SIZE) break;
@@ -281,18 +260,7 @@ const fresh = candidates.filter((c: any) => {
       seenInBatch.add(key);
 
       const genres: string[] = c.genres || [];
-      // オーナー指摘(2026-10-22):「異世界転生とかって単独でカテゴリーされて
-      // るだろうし、そっちの情報の方が信頼できる」。AniListの細かいトロープ
-      // タグはニッチ・フェチ属性検索の土台になるため、isMediaSpoilerでの
-      // 除外をやめ、上限も40件まで緩める(design spec コンポーネントA-1)。
-      // ただし検索マッチングの裏データとしてのみ使い、カード等のUIにタグ名を
-      // そのまま表示しない制約は維持する。保存先はkeywords列(TMDB由来の
-      // SEOキーワードという別の意味を持つ既存列)ではなく、新規の
-      // niche_tags列に分離する。tags(スポイラー除外済み)はestimateExpression
-      // の表現度推定にこれまで通り使うため、従来の変数のまま残す。
-      const allTags = (c.tags || []).slice().sort((a: any, b: any) => (b.rank || 0) - (a.rank || 0));
-      const nicheTags: string[] = allTags.slice(0, 40).map((t: any) => t.name);
-      const tags: string[] = allTags.filter((t: any) => !t.isMediaSpoiler).map((t: any) => t.name);
+      const tags: string[] = (c.tags || []).filter((t: any) => !t.isMediaSpoiler).map((t: any) => t.name);
       const emotionTags = pickEmotionTags(genres);
       if (emotionTags.length === 0) {
         skipped.push({ id: c.id, title, reason: "no_genre_mapping" });
@@ -312,7 +280,7 @@ const fresh = candidates.filter((c: any) => {
         // 既に日本語(ひらがな/カタカナ/漢字)を含む場合は翻訳せずそのまま使う。
         const looksJapanese = /[぀-ヿ一-鿿]/.test(plain);
         const translated = looksJapanese ? plain : await translateToJa(plain);
-        synopsis = trimToSentenceBoundaryJa(translated, SYNOPSIS_MAX_LEN);
+        synopsis = translated.slice(0, SYNOPSIS_MAX_LEN);
       }
       const country = countryNameJa(c.countryOfOrigin);
       const coverUrl = c.coverImage?.extraLarge || c.coverImage?.large || null;
@@ -331,7 +299,6 @@ const fresh = candidates.filter((c: any) => {
         japan_release_checked_at: null,
         keywords: tags.slice(0, 15),
         keywords_checked_at: new Date().toISOString(),
-        niche_tags: nicheTags,
         series: null,
         series_checked_at: null,
         media_type: "manga",

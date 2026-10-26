@@ -9,16 +9,6 @@ const RAKUTEN_ENDPOINT = "https://openapi.rakuten.co.jp/services/api/BooksBook/S
 const SITE_URL = "https://wander-8.site/";
 const SYNOPSIS_MAX_LEN = 400;
 
-// 単純なsliceだと400文字ちょうどで文の途中(単語の途中)で切れてしまう
-// ことがある(オーナー指摘: あらすじが途中で切れている作品がある)。
-// 日本語の句点(。！？)が見つかればそこで切る。
-function trimToSentenceBoundaryJa(text: string, maxLen: number): string {
-  if (text.length <= maxLen) return text;
-  const cut = text.slice(0, maxLen);
-  const lastPunct = Math.max(cut.lastIndexOf("。"), cut.lastIndexOf("！"), cut.lastIndexOf("？"));
-  return lastPunct > maxLen * 0.5 ? cut.slice(0, lastPunct + 1) : cut;
-}
-
 // カタログ代表(最も若い巻)としてまとめた1件が、たまたまitemCaptionの
 // 無い巻だったためあらすじが空のままの作品がある。同じシリーズの別の巻に
 // あらすじが付いていることが多いので、タイトルで再検索し、巻数違い等を
@@ -90,10 +80,6 @@ function normalizeTitle(t: string): string {
   return (t || "").trim().toLowerCase();
 }
 
-function isRealIsbn(isbn: string | null | undefined): boolean {
-  return !!isbn && /^97[89]/.test(isbn);
-}
-
 Deno.serve(async (req: Request) => {
   try {
     const {
@@ -108,7 +94,7 @@ Deno.serve(async (req: Request) => {
 
     const { data: rows, error } = await supabase
       .from("movies")
-      .select("id, title, isbn")
+      .select("id, title")
       .eq(flagCol, true)
       .or("synopsis.is.null,synopsis.eq.")
       .gt("id", after_id)
@@ -118,51 +104,24 @@ Deno.serve(async (req: Request) => {
 
     const results: any[] = [];
     for (const r of rows || []) {
+      const data: any = await rakutenFetch({ booksGenreId, title: r.title, hits: "10", sort: "sales" });
+      await sleep(400);
+      if (data?.error) {
+        results.push({ id: r.id, title: r.title, error: data.status });
+        continue;
+      }
+      const items = (data?.Items || []).map((w: any) => w.Item);
+      const targetNorm = normalizeTitle(r.title);
       let caption: string | null = null;
-      let matchedVia: string | null = null;
-      let isbnDebug: any = null;
-
-      // ISBN(movies.isbnに本物のISBNが記録済みの行)があれば、そちらを先に
-      // 試す。タイトル完全一致より信頼できる(ISBNは一意なので、全集・改版・
-      // 別表記などタイトルのゆらぎでマッチしない問題が起きない)。
-      // オーナー指摘を受けた作業で判明:タイトル完全一致だけでは残っている
-      // 分(改版・全◯巻セット等)のヒット率が0.2%程度まで落ちていた。
-      if (isRealIsbn(r.isbn)) {
-        const isbnData: any = await rakutenFetch({ isbnjan: r.isbn, hits: "1" });
-        await sleep(400);
-        isbnDebug = { error: isbnData?.error || false, status: isbnData?.status, itemCount: (isbnData?.Items || []).length };
-        if (!isbnData?.error) {
-          const item = ((isbnData?.Items || [])[0] || {}).Item;
-          isbnDebug.hasCaption = !!(item?.itemCaption || "").trim();
-          const c = (item?.itemCaption || "").trim();
-          if (c) {
-            caption = trimToSentenceBoundaryJa(c, SYNOPSIS_MAX_LEN);
-            matchedVia = "isbn";
-          }
+      for (const item of items) {
+        if (normalizeTitle(stripVolumeSuffix(item.title)) !== targetNorm) continue;
+        const c = (item.itemCaption || "").trim();
+        if (c) {
+          caption = c.slice(0, SYNOPSIS_MAX_LEN);
+          break;
         }
       }
-
-      if (!caption) {
-        const data: any = await rakutenFetch({ booksGenreId, title: r.title, hits: "10", sort: "sales" });
-        await sleep(400);
-        if (data?.error) {
-          results.push({ id: r.id, title: r.title, error: data.status });
-          continue;
-        }
-        const items = (data?.Items || []).map((w: any) => w.Item);
-        const targetNorm = normalizeTitle(r.title);
-        for (const item of items) {
-          if (normalizeTitle(stripVolumeSuffix(item.title)) !== targetNorm) continue;
-          const c = (item.itemCaption || "").trim();
-          if (c) {
-            caption = trimToSentenceBoundaryJa(c, SYNOPSIS_MAX_LEN);
-            matchedVia = "title";
-            break;
-          }
-        }
-      }
-
-      results.push({ id: r.id, title: r.title, found: !!caption, synopsis: caption, matchedVia, isbnDebug });
+      results.push({ id: r.id, title: r.title, found: !!caption, synopsis: caption });
       if (caption && !dry_run) {
         const { error: updErr } = await supabase.from("movies").update({ synopsis: caption }).eq("id", r.id);
         if (updErr) throw updErr;
