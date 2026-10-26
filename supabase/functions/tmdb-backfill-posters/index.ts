@@ -39,11 +39,21 @@ async function tmdbFetch(path: string, params: Record<string, string>) {
 // 先頭candidateとして紛れ込み、無関係な映画にその画像が貼られる事故が起きる
 // (実際に「愛のむき出し」にアダルト作品のポスターが誤って設定されていた)。
 // このアプリは一般作品のみを対象にしているため、常にfalseにする。
+// TMDbのyearパラメータは厳密な絞り込みではなく優先ヒントにすぎないため、
+// 短い/ありふれたタイトルではyear指定時でも無関係な人気作がresults[0]に
+// 来ることがある(実例:「Home」(2009のフランス映画)の検索が「ホーム・
+// アローン2」(1992)を返し、無関係なポスターが貼られる事故。tmdb-movie-
+// metadata等複数の関数で共通のバグだったとオーナー指摘で発覚)。年指定の
+// 検索でも、実際のrelease_dateが指定年と一致する候補だけを信頼する。
 async function searchMovie(title: string, year: number | null): Promise<any | null> {
   if (year) {
     for (const language of ["ja-JP", "en-US"]) {
       const data = await tmdbFetch("/search/movie", { query: title, include_adult: "false", language, year: String(year) });
-      if (data?.results?.length) return data.results[0];
+      const corroborated = (data?.results || []).find((c: any) => {
+        const cy = c.release_date ? parseInt(String(c.release_date).slice(0, 4), 10) : null;
+        return cy != null && Math.abs(cy - year) <= 1;
+      });
+      if (corroborated) return corroborated;
     }
   }
   const candidates: any[] = [];
