@@ -11281,7 +11281,7 @@ async function goDetail(id){
   delete intensitySoundBandByTracker.review;
 
   renderWatchLinks(m);
-  loadMediaServiceLinks(m).catch(() => {});
+  // loadMediaServiceLinks(m);
   loadWatchLinksForMovie(id);
   loadFullSynopsisForMovie(id);
   loadCastForMovie(id);
