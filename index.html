@@ -11465,8 +11465,8 @@ async function loadServiceLinks(m){
   }
 }
 
-async function loadAffiliateLinks(m){
-  const mediaId = m.id;
+function loadAffiliateLinks(m){
+  const mediaId = String(m.id);
   const mediaType = m.mediaType || m.type || '';
 
   console.log('[DEBUG] loadAffiliateLinks:', { mediaId, mediaType, isMusic: m.isMusic });
@@ -11476,38 +11476,27 @@ async function loadAffiliateLinks(m){
     return;
   }
 
-  try {
-    const affiliateResponse = await fetch(
-      `https://wjhvifdbttlijxnreaha.supabase.co/rest/v1/service_links?media_id=eq.${mediaId}&media_type=eq.${mediaType}&url=is.not.null&select=service_name,url`,
-      {
-        headers: {
-          'apikey': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndqaHZpZmRidHRsaWp4bnJlYWhhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3MDM4NDMxOTIsImV4cCI6MTkzMTYxOTE5Mn0.NVPW0LLk9rkPQVpL4WwTB6CZxBHkiTL8qVaLVlQCJPo'
-        }
-      }
-    );
+  const affiliates = AFFILIATE_LINKS.filter(link =>
+    link.media_id === mediaId && link.media_type === mediaType
+  );
 
-    const affiliates = await affiliateResponse.json();
-    const section = document.getElementById('affiliate-links-section');
-    const linksList = document.getElementById('affiliate-links-list');
+  const section = document.getElementById('affiliate-links-section');
+  const linksList = document.getElementById('affiliate-links-list');
 
-    console.log('[DEBUG] Affiliate response:', affiliates);
+  console.log('[DEBUG] Affiliate response:', affiliates);
 
-    if (Array.isArray(affiliates) && affiliates.length > 0) {
-      linksList.innerHTML = affiliates.map(affiliate => `
-        <a href="${affiliate.url}" target="_blank" rel="nofollow"
-           style="display: inline-block; padding: 12px 24px; background: rgba(0,0,0,0.2); border-radius: 4px; color: white; text-decoration: none; font-weight: 600; transition: all 0.2s; margin: 4px;"
-           onmouseover="this.style.background='rgba(0,0,0,0.4)'"
-           onmouseout="this.style.background='rgba(0,0,0,0.2)'">
-          🎵 ${affiliate.service_name} で視聴する
-        </a>
-      `).join('');
-      section.style.display = 'block';
-    } else {
-      section.style.display = 'none';
-    }
-  } catch (err) {
-    console.error('Failed to load affiliate links:', err);
-    document.getElementById('affiliate-links-section').style.display = 'none';
+  if (Array.isArray(affiliates) && affiliates.length > 0) {
+    linksList.innerHTML = affiliates.map(affiliate => `
+      <a href="${affiliate.url}" target="_blank" rel="nofollow"
+         style="display: inline-block; padding: 12px 24px; background: rgba(0,0,0,0.2); border-radius: 4px; color: white; text-decoration: none; font-weight: 600; transition: all 0.2s; margin: 4px;"
+         onmouseover="this.style.background='rgba(0,0,0,0.4)'"
+         onmouseout="this.style.background='rgba(0,0,0,0.2)'">
+        🎵 ${affiliate.service_name} で視聴する
+      </a>
+    `).join('');
+    section.style.display = 'block';
+  } else {
+    section.style.display = 'none';
   }
 }
 
