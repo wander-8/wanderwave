@@ -11484,9 +11484,7 @@ function loadAffiliateLinks(m){
     return;
   }
 
-  const affiliates = AFFILIATE_LINKS.filter(link =>
-    link.media_id === mediaId && link.media_type === mediaType
-  );
+  const affiliates = AFFILIATE_LINKS;
 
   const section = document.getElementById('affiliate-links-section');
   const linksList = document.getElementById('affiliate-links-list');
