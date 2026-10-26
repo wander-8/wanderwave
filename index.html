@@ -11227,7 +11227,12 @@ async function goDetail(id){
     ? (detailReturn.label || '← 元の作品に戻る')
     : '← 一覧に戻る';
 
-  const m = MOVIES.find(x => x.id === id);
+  let m = MOVIES.find(x => x.id === id);
+  if (!m && state.catalogMode === 'music') {
+    m = { id: String(id), mediaType: 'music', type: 'music', tags: [] };
+  }
+  if (!m) return;
+
   state.currentMovieId = id;
   logDetailClick(m);
   document.getElementById('d-tags').innerHTML = m.tags.map(t =>
