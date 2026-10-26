@@ -6388,17 +6388,62 @@ async function submitSearch(){
     // ニュアンスから作品を探す。AIが拾ったキーワードはランキング補助として使う。
     // タグ・ジャンル・国・年代のフィルタは voyage-search 結果に強制しない。
     // ユーザーが手動で絞り込むまで、広い結果を見せる。
+    //
+    // 長文クエリの場合: 全体のクエリ + 抽出キーワードの両方で voyage-search を実行
+    // キーワードが拾えなかった場合: クエリ全体のみで実行
     let usedSemantic = false;
+    const semanticMatchesMap = new Map(); // similarity と keyword match の統合スコア
+
     try{
+      // 1. クエリ全体でセマンティック検索
       const { data: semData, error: semErr } = await supabase.functions.invoke('voyage-search', {
         body: { query, match_count: 1000 },
       });
       if(!semErr && !semData?.error && Array.isArray(semData?.results) && semData.results.length){
-        state.semanticMatches = new Map(semData.results.map(r => [r.id, r.similarity]));
+        // similarity スコアを記録（0-1の範囲）
+        semData.results.forEach(r => {
+          semanticMatchesMap.set(r.id, { similarity: r.similarity || 0, keywordMatch: 0 });
+        });
         usedSemantic = true;
       }
     }catch(semErr){
       console.error('雰囲気検索(voyage-search)に失敗しました', semErr);
+    }
+
+    // 2. キーワードが抽出できた場合、キーワードでも voyage-search を実行
+    // （長文クエリの場合、キーワードに集約することで精度向上）
+    if(keywords.length > 0 && keywords.join('').length > 0){
+      try{
+        const keywordQuery = keywords.join(' ');
+        const { data: kwData, error: kwErr } = await supabase.functions.invoke('voyage-search', {
+          body: { query: keywordQuery, match_count: 500 },
+        });
+        if(!kwErr && !kwData?.error && Array.isArray(kwData?.results)){
+          kwData.results.forEach(r => {
+            if(semanticMatchesMap.has(r.id)){
+              // 既に similarity がある場合: keywordMatch を加算
+              semanticMatchesMap.get(r.id).keywordMatch = 1;
+            }else{
+              // 全体検索になかった作品: キーワード検索でのみヒット
+              semanticMatchesMap.set(r.id, { similarity: r.similarity * 0.5 || 0, keywordMatch: 1 });
+            }
+          });
+        }
+      }catch(kwErr){
+        console.error('キーワード voyage-search に失敗しました', kwErr);
+      }
+    }
+
+    // 統合スコアを計算（similarity 70% + keywordMatch 30%）
+    if(semanticMatchesMap.size > 0){
+      state.semanticMatches = new Map(
+        Array.from(semanticMatchesMap.entries())
+          .map(([id, scores]) => [
+            id,
+            scores.similarity * 0.7 + (scores.keywordMatch ? 0.3 : 0)
+          ])
+      );
+      usedSemantic = true;
     }
 
     // 以前はここで検索欄の中身をAIが拾ったキーワードに書き換えていたが、
@@ -8937,10 +8982,18 @@ function renderResults(){
     return 2;
   }
   resultsFiltered.sort((a, b) => {
-    // 雰囲気検索(voyage-search)の時は、意味的な近さ(similarity)だけで
-    // 並べる。タイトル一致やジャンル完全一致の概念が無いモードなので、
-    // 他の判定を混ぜない。
-    if(state.semanticMatches) return (state.semanticMatches.get(b.id) || 0) - (state.semanticMatches.get(a.id) || 0);
+    // voyage-search の統合スコア: similarity と AI キーワード一致を組み合わせ
+    if(state.semanticMatches){
+      const scoreA = state.semanticMatches.get(a.id) || 0;
+      const scoreB = state.semanticMatches.get(b.id) || 0;
+      // AI キーワード一致スコア（0-1の正規化値）
+      const keywordScoreA = keywordTerms ? (keywordMatchScores.get(a.id) || 0) / keywordTerms.length : 0;
+      const keywordScoreB = keywordTerms ? (keywordMatchScores.get(b.id) || 0) / keywordTerms.length : 0;
+      // voyage-search similarity 80% + AI キーワード一致 20%
+      const totalScoreA = scoreA * 0.8 + keywordScoreA * 0.2;
+      const totalScoreB = scoreB * 0.8 + keywordScoreB * 0.2;
+      return totalScoreB - totalScoreA;
+    }
     const rankDiff = titleRelevanceRank(a) - titleRelevanceRank(b);
     if(rankDiff !== 0) return rankDiff;
     const availDiff = (hasJapanAvailabilitySignal(b) ? 1 : 0) - (hasJapanAvailabilitySignal(a) ? 1 : 0);
