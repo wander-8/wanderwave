@@ -11460,6 +11460,8 @@ async function loadAffiliateLinks(m){
   const mediaId = m.id;
   const mediaType = m.mediaType || m.type || '';
 
+  console.log('[DEBUG] loadAffiliateLinks:', { mediaId, mediaType, isMusic: m.isMusic });
+
   if (!mediaId || !mediaType) {
     document.getElementById('affiliate-links-section').style.display = 'none';
     return;
@@ -11478,6 +11480,8 @@ async function loadAffiliateLinks(m){
     const affiliates = await affiliateResponse.json();
     const section = document.getElementById('affiliate-links-section');
     const linksList = document.getElementById('affiliate-links-list');
+
+    console.log('[DEBUG] Affiliate response:', affiliates);
 
     if (Array.isArray(affiliates) && affiliates.length > 0) {
       linksList.innerHTML = affiliates.map(affiliate => `
