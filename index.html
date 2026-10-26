@@ -11474,23 +11474,9 @@ async function loadServiceLinks(m){
 }
 
 function loadMediaServiceLinks(m){
-  const mediaId = String(m?.id || '');
-  let mediaType = m?.mediaType || m?.type || '';
-
-  if (!mediaType && state?.catalogMode) {
-    mediaType = state.catalogMode;
-  }
-
-  if (!mediaId || !mediaType) {
-    document.getElementById('media-service-links-section').style.display = 'none';
-    return;
-  }
-
   const section = document.getElementById('media-service-links-section');
   const linksList = document.getElementById('media-service-links-list');
-  const links = AFFILIATE_LINKS.filter(link =>
-    link.media_id === mediaId && link.media_type === mediaType
-  );
+  const links = AFFILIATE_LINKS;
 
   if (Array.isArray(links) && links.length > 0) {
     linksList.innerHTML = links.map(link => `
