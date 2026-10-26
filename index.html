@@ -11476,6 +11476,7 @@ async function loadServiceLinks(m){
 function loadMediaServiceLinks(m){
   const section = document.getElementById('media-service-links-section');
   const linksList = document.getElementById('media-service-links-list');
+  if (!section || !linksList) return;
   const links = AFFILIATE_LINKS;
 
   if (Array.isArray(links) && links.length > 0) {
