@@ -6394,7 +6394,7 @@ async function submitSearch(){
     if(keywords.length === 0 && !state.decadeFilter){
       try{
         const { data: semData, error: semErr } = await supabase.functions.invoke('voyage-search', {
-          body: { query, match_count: 200 },
+          body: { query, match_count: 500 },
         });
         if(!semErr && !semData?.error && Array.isArray(semData?.results) && semData.results.length){
           state.semanticMatches = new Map(semData.results.map(r => [r.id, r.similarity]));
