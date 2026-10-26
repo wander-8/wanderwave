@@ -11225,11 +11225,17 @@ function logDetailClick(m){
 async function goDetail(id){
   let m = MOVIES.find(x => x.id === id);
   if (!m && state.catalogMode === 'music') {
-    m = { id: String(id), mediaType: 'music', type: 'music', tags: [] };
+    m = { id: String(id), mediaType: 'music', type: 'music', tags: [], title: id, poster_path: null };
   }
   if (!m) return;
-  
+
   state.currentMovieId = id;
+
+  document.getElementById('d-back-btn').textContent = '← 一覧に戻る';
+  document.getElementById('d-tags').innerHTML = (m.tags || []).map(t =>
+    `<span class="mini-tag" style="color:${tagColor(t)}; background:${tagColor(t)}22;">${t}</span>`
+  ).join('');
+
   renderMovieInfoPanel(m);
   // loadMediaServiceLinks(m);
   switchView('view-detail');
