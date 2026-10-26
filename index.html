@@ -6380,29 +6380,25 @@ async function submitSearch(){
     state.activeCountries = new Set();
     state.decadeFilter = (data.decade != null && decades.includes(data.decade)) ? data.decade : 0;
     state.queryKeywords = keywords;
-    state.query = keywords.join(' ');
+    state.query = query;
     state.crossMediaSearch = false;
     state.semanticMatches = null;
 
-    // オーナー指摘(自動化パック):「言葉にできない焦燥感」のような、
-    // ai-searchが具体的な手がかりを1つも拾えない(searchTerms空配列、
-    // decadeも無し)曖昧な文章の時は、今まで「特に手がかりが見つかりません
-    // でした」のまま検索自体が成立していなかった。ここだけ、文章全体の
-    // 雰囲気で近い作品を探すベクトル検索(voyage-search)にフォールバック
-    // する(意味的に近い候補をsimilarity順で返す。文字一致ではない)。
+    // 長文検索をメインに: voyage-search(セマンティック検索)で長文全体の
+    // ニュアンスから作品を探す。AIが拾ったキーワードはランキング補助として使う。
+    // タグ・ジャンル・国・年代のフィルタは voyage-search 結果に強制しない。
+    // ユーザーが手動で絞り込むまで、広い結果を見せる。
     let usedSemantic = false;
-    if(keywords.length === 0 && !state.decadeFilter){
-      try{
-        const { data: semData, error: semErr } = await supabase.functions.invoke('voyage-search', {
-          body: { query, match_count: 500 },
-        });
-        if(!semErr && !semData?.error && Array.isArray(semData?.results) && semData.results.length){
-          state.semanticMatches = new Map(semData.results.map(r => [r.id, r.similarity]));
-          usedSemantic = true;
-        }
-      }catch(semErr){
-        console.error('雰囲気検索(voyage-search)に失敗しました', semErr);
+    try{
+      const { data: semData, error: semErr } = await supabase.functions.invoke('voyage-search', {
+        body: { query, match_count: 1000 },
+      });
+      if(!semErr && !semData?.error && Array.isArray(semData?.results) && semData.results.length){
+        state.semanticMatches = new Map(semData.results.map(r => [r.id, r.similarity]));
+        usedSemantic = true;
       }
+    }catch(semErr){
+      console.error('雰囲気検索(voyage-search)に失敗しました', semErr);
     }
 
     // 以前はここで検索欄の中身をAIが拾ったキーワードに書き換えていたが、
@@ -8897,18 +8893,16 @@ function renderResults(){
               || queryAliasNorms.some(alias =>
                 (m.castNorm && m.castNorm.some(a => a.includes(alias)))
                 || (m.directorNorm && m.directorNorm.includes(alias))));
-    const matchTags = state.activeTags.size === 0 || [...state.activeTags].every(t => m.tags.includes(t));
-    // 表現度フィルターは、タグを選んでいるかどうかに関係なく、選択中の
-    // バンドだけで判定する(以前はactiveTags.size===0の時に無条件で
-    // スルーしてしまい、タグなしの文字検索では一切効かないバグがあった)。
-    // 0(こだわらない)なら全件通す。それ以外はそのバンドの作品だけを通す。
+    // voyage-search(セマンティック検索)の結果は、タグ・ジャンル・国フィルタを
+    // 強制しない。ユーザーが手動で絞り込むまで広い結果を見せる。
+    // キーワード検索の場合は従来通りタグフィルタを適用する。
+    const matchTags = !state.semanticMatches || state.activeTags.size === 0
+      || [...state.activeTags].every(t => m.tags.includes(t));
     const matchIntensity = state.intensityFilter === 0 || movieIntensityBand(m) === state.intensityFilter;
     const matchDecade = state.decadeFilter === 0 || movieDecadeBand(m) === state.decadeFilter;
-    // ジャンル・国は「いずれか一致でOK」(OR)。1本の映画が複数のジャンル・
-    // 制作国を持つのは普通なので、感情タグの「全て一致」(AND)とは別の扱い。
-    const matchGenre = state.activeGenres.size === 0
+    const matchGenre = !state.semanticMatches || state.activeGenres.size === 0
       || (m.genre && m.genre.some(g => state.activeGenres.has(g)));
-    const matchCountry = state.activeCountries.size === 0
+    const matchCountry = !state.semanticMatches || state.activeCountries.size === 0
       || (m.country && [...state.activeCountries].some(c => m.country.includes(c)));
     // アニメ・ドラマは専用モードからのみ見せる方針だが、隠しプレビュー
     // フラグが立っている端末(オーナーの確認用)だけは検索からも見つけられる
