@@ -11484,10 +11484,15 @@ function loadAffiliateLinks(m){
     return;
   }
 
-  const affiliates = AFFILIATE_LINKS;
-
   const section = document.getElementById('affiliate-links-section');
   const linksList = document.getElementById('affiliate-links-list');
+
+  const seen = new Set();
+  const affiliates = AFFILIATE_LINKS.filter(link => {
+    if (seen.has(link.service_name)) return false;
+    seen.add(link.service_name);
+    return true;
+  });
 
   console.log('[DEBUG] Affiliate response:', affiliates);
 
