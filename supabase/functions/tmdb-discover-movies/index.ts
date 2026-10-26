@@ -67,15 +67,6 @@ function countryNameJa(iso: string, fallback: string): string {
 
 const SYNOPSIS_MAX_LEN = 400;
 
-// TMDbはソフトコア/ピンク映画やヘンタイ作品にadult:trueを付けないことが多く、
-// include_adult:falseだけでは実際のポルノ作品を防げない。2026-09-27に
-// 「レイプゾンビ LUST OF THE DEAD」シリーズ等、この基準でmoviesテーブルから
-// 約500件削除した実例に合わせ、同じキーワード集合で取り込み時にも除外する。
-const ADULT_CONTENT_KEYWORDS = new Set([
-  "softcore", "hentai", "pink film", "ecchi", "adult animation",
-  "animated porn", "roman porno", "unsimulated sex", "erotica",
-]);
-
 // TMDbのコレクション名は「〇〇 Collection」「〇〇コレクション」という
 // 接尾辞つきで返るため、表示・同一シリーズ判定の両方で扱いやすいように外す。
 function cleanSeriesName(name: string): string {
@@ -126,28 +117,8 @@ function pickEmotionTags(genreIds: number[]): string[] {
   return order.sort((a, b) => freq[b] - freq[a]).slice(0, 3);
 }
 
-// 480文字で単純に切り詰めると文の途中(単語の途中)で切れ、その壊れた
-// 英文を翻訳した結果も途中で切れた日本語になってしまう(オーナー指摘:
-// あらすじが途中で切れている作品がある)。tmdb-movie-reviewsと同じく、
-// 文の区切り(. ! ?)が見つかればそこで切る。
-function trimToSentenceBoundary(text: string, maxLen: number): string {
-  if (text.length <= maxLen) return text;
-  const cut = text.slice(0, maxLen);
-  const lastPunct = Math.max(cut.lastIndexOf(". "), cut.lastIndexOf("! "), cut.lastIndexOf("? "));
-  return lastPunct > maxLen * 0.5 ? cut.slice(0, lastPunct + 1) : cut;
-}
-// 日本語側(ja-JPのoverviewそのもの、または翻訳済みの文)をSYNOPSIS_MAX_LEN
-// で切る時も、単純なsliceだと文の途中で切れる。日本語の句点(。！？)で
-// 同様に区切る。
-function trimToSentenceBoundaryJa(text: string, maxLen: number): string {
-  if (text.length <= maxLen) return text;
-  const cut = text.slice(0, maxLen);
-  const lastPunct = Math.max(cut.lastIndexOf("。"), cut.lastIndexOf("！"), cut.lastIndexOf("？"));
-  return lastPunct > maxLen * 0.5 ? cut.slice(0, lastPunct + 1) : cut;
-}
-
 async function translateToJa(text: string): Promise<string> {
-  const trimmed = trimToSentenceBoundary(text, 480);
+  const trimmed = text.slice(0, 480);
   try {
     const url = new URL("https://api.mymemory.translated.net/get");
     url.searchParams.set("q", trimmed);
@@ -189,7 +160,7 @@ async function selectAllRows(supabase: any, table: string, columns: string): Pro
   let all: any[] = [];
   let from = 0;
   while (true) {
-    const { data, error } = await supabase.from(table).select(columns).order("id", { ascending: true }).range(from, from + PAGE_SIZE - 1);
+    const { data, error } = await supabase.from(table).select(columns).range(from, from + PAGE_SIZE - 1);
     if (error) throw error;
     all = all.concat(data || []);
     if (!data || data.length < PAGE_SIZE) break;
@@ -212,20 +183,15 @@ Deno.serve(async (req: Request) => {
       primary_release_date_gte = null,
       primary_release_date_lte = null,
       with_original_language = null,
-      // 自動の日次取り込み用。1日に入れる件数を抑えたい(「少しずつでいい」との
-      // オーナー要望)ため、新規候補が見つかった順に先頭N件だけを詳細取得・
-      // 挿入する。nullなら従来通り無制限。
-      limit = null,
     } = await req.json().catch(() => ({}));
 
     const supabase = createClient(SUPABASE_URL, SERVICE_ROLE);
 
     // 重複チェック用に既存作品の(タイトル正規化, 公開年)を一度だけ取得しておく
-    const existingRows = await selectAllRows(supabase, "movies", "title, release_year, tmdb_id");
+    const existingRows = await selectAllRows(supabase, "movies", "title, release_year");
     const existingKeys = new Set(
       existingRows.map((r: any) => `${normalizeTitle(r.title)}|${r.release_year}`),
     );
-    const existingTmdbIds = new Set(existingRows.map((r: any) => r.tmdb_id).filter((v: any) => v != null));
 
     // 1) TMDbのdiscoverでページ分の候補一覧を取得
     const candidates: any[] = [];
@@ -250,32 +216,24 @@ Deno.serve(async (req: Request) => {
     const fresh = candidates.filter((c: any) => {
       const year = c.release_date ? parseInt(String(c.release_date).slice(0, 4), 10) : null;
       const key = `${normalizeTitle(c.title)}|${year}`;
-      return !existingKeys.has(key) && !existingTmdbIds.has(c.id);
+      return !existingKeys.has(key);
     });
 
     // 3) 詳細情報(監督・出演・制作国・あらすじ)を取得し、挿入用の行を組み立てる
-    const limited = limit != null ? fresh.slice(0, limit) : fresh;
     const rows: any[] = [];
     const skipped: any[] = [];
     const CONCURRENCY = 3;
-    for (let i = 0; i < limited.length; i += CONCURRENCY) {
-      const chunk = limited.slice(i, i + CONCURRENCY);
+    for (let i = 0; i < fresh.length; i += CONCURRENCY) {
+      const chunk = fresh.slice(i, i + CONCURRENCY);
       const chunkRows = await Promise.all(
         chunk.map(async (c: any) => {
-          const [details, credits, releaseDates, keywordsRes, watchProviders] = await Promise.all([
+          const [details, credits, releaseDates, keywordsRes] = await Promise.all([
             tmdbFetch(`/movie/${c.id}`, { language: "ja-JP" }),
             tmdbFetch(`/movie/${c.id}/credits`, { language: "ja-JP" }),
             tmdbFetch(`/movie/${c.id}/release_dates`, {}),
             tmdbFetch(`/movie/${c.id}/keywords`, {}),
-            tmdbFetch(`/movie/${c.id}/watch/providers`, {}),
           ]);
           if (!details) return null;
-
-          const rawKeywordNames: string[] = (keywordsRes?.keywords || []).map((k: any) => String(k.name || "").toLowerCase());
-          if (rawKeywordNames.some((k) => ADULT_CONTENT_KEYWORDS.has(k))) {
-            skipped.push({ tmdb_id: c.id, title: c.title, reason: "adult_content_keyword" });
-            return null;
-          }
 
           const genreIds: number[] = (details.genres || []).map((g: any) => g.id);
           const emotionTags = pickEmotionTags(genreIds);
@@ -293,12 +251,10 @@ Deno.serve(async (req: Request) => {
             const detailsEn = await tmdbFetch(`/movie/${c.id}`, { language: "en-US" });
             if (detailsEn?.overview) overviewJa = await translateToJa(detailsEn.overview);
           }
-          const synopsis = trimToSentenceBoundaryJa(overviewJa, SYNOPSIS_MAX_LEN);
+          const synopsis = overviewJa.slice(0, SYNOPSIS_MAX_LEN);
           const japanReleaseDate = extractJapanReleaseDate(releaseDates?.results || []);
           const keywords = (keywordsRes?.keywords || []).slice(0, 15).map((k: any) => k.name);
           const series = details.belongs_to_collection?.name ? cleanSeriesName(details.belongs_to_collection.name) : null;
-          const vodFlatrate = (watchProviders?.results?.JP?.flatrate || []).map((p: any) => p.provider_name);
-          const vodWatchLink = watchProviders?.results?.JP?.link || null;
 
           return {
             title: details.title || c.title,
@@ -313,16 +269,9 @@ Deno.serve(async (req: Request) => {
             japan_release_date: japanReleaseDate,
             japan_release_checked_at: new Date().toISOString(),
             keywords: keywords.length ? keywords : null,
-            // オーナー指摘(2026-10-22):TMDBのkeywordsは既にニッチなトロープ
-            // 情報を含んでおり、ニッチ属性検索の土台としてそのままniche_tags
-            // にも反映する(design spec A-2)。keywords列自体の意味は変えない。
-            niche_tags: keywords.length ? keywords : null,
             keywords_checked_at: new Date().toISOString(),
             series,
             series_checked_at: new Date().toISOString(),
-            vod_flatrate: vodFlatrate,
-            vod_watch_link: vodWatchLink,
-            vod_checked_at: new Date().toISOString(),
             tmdb_id: c.id,
             tmdb_vote_count: c.vote_count,
             tmdb_vote_average: c.vote_average,
@@ -335,16 +284,7 @@ Deno.serve(async (req: Request) => {
 
     let inserted = 0;
     if (!dry_run && rows.length > 0) {
-      // 以前はtmdb_idも挿入時に剥がしていたため、保存された行には一切
-      // tmdb_idが残らず、次回以降の実行でexistingTmdbIdsが機能しなかった。
-      // TMDbはタイトル文字列を日によって微妙に変えて返すことがあり(実例:
-      // 「パイレーツ・オブ・カリビアン」→「パイレーツ・オブ・カリビアン／
-      // 呪われた海賊たち」)、タイトル+公開年の一致だけでは重複を防げず、
-      // 同じ作品(tmdb_id=22)が3日連続で毎日1件ずつ重複登録される事故に
-      // なっていた(オーナー指摘:「年代もタイトルも全く同じ作品があった」)。
-      // tmdb-discover-anime/dramaと同じく、tmdb_idは保持して次回の重複
-      // チェックに使えるようにする。
-      const insertPayload = rows.map(({ tmdb_vote_count, tmdb_vote_average, ...rest }) => rest);
+      const insertPayload = rows.map(({ tmdb_id, tmdb_vote_count, tmdb_vote_average, ...rest }) => rest);
       const { error: insertErr } = await supabase.from("movies").insert(insertPayload);
       if (insertErr) throw insertErr;
       inserted = insertPayload.length;

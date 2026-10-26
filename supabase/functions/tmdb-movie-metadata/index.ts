@@ -37,23 +37,11 @@ async function tmdbFetch(path: string, params: Record<string, string>) {
 
 // include_adult:falseで固定(trueだとタイトルの一部一致だけでアダルト作品が
 // 紛れ込み、無関係な映画に誤ったデータを紐付ける事故になるため)
-// TMDbのsearch/movieのyearパラメータは厳密な絞り込みではなく優先ヒントに
-// すぎないため、"Home"のような短い/ありふれたタイトルではyear指定時でも
-// 無関係な人気作(例:「ホーム・アローン2」)がresults[0]に来ることがある。
-// 以前はこれを無条件にyearCorroborated:trueとして信頼していたため、
-// 「Home」(2009のフランス映画)のような行に無関係な別作品のtmdb_idが
-// 書き込まれる事故が起きていた(オーナー指摘で発覚、ドラえもん関連作品の
-// 英題重複の調査中に発見)。年指定の検索でも、実際のrelease_dateが
-// 指定年と一致する候補だけを信頼する(無ければ下のフォールバックに進む)。
 async function searchMovie(title: string, year: number | null): Promise<{ result: any; yearCorroborated: boolean } | null> {
   if (year) {
     for (const language of ["ja-JP", "en-US"]) {
       const data = await tmdbFetch("/search/movie", { query: title, include_adult: "false", language, year: String(year) });
-      const corroborated = (data?.results || []).find((c: any) => {
-        const cy = c.release_date ? parseInt(String(c.release_date).slice(0, 4), 10) : null;
-        return cy != null && Math.abs(cy - year) <= 1;
-      });
-      if (corroborated) return { result: corroborated, yearCorroborated: true };
+      if (data?.results?.length) return { result: data.results[0], yearCorroborated: true };
     }
   }
 
@@ -72,113 +60,6 @@ async function searchMovie(title: string, year: number | null): Promise<{ result
   return null;
 }
 
-// ja-JPのoverviewが空の作品だけを狙って直す専用モード。tmdb_idは既に
-// 確定済みなので検索をやり直さず、/movie/{tmdb_id}をja-JP→(空なら)en-USで
-// 取得してsynopsisだけ埋める。director/cast/countryは既に正しく入って
-// いる行が対象なので触らない。
-// 過去のバグ(2件): (1) media_typeで絞っていなかったため、novel/manga/music
-// 側に紛れ込んだ誤ったtmdb_id(例:小説「極北」にtmdb_id=453755が入っていた
-// 実例を確認済み)にも構わずTMDBのmovieデータを取得・書き込みしてしまう
-// 事故リスクがあった。movie/tvのみに対象を絞る。
-// (2) media_typeを見ず常に/movieエンドポイントを叩いていたため、tv行は
-// 絶対に正しいデータを取れない(TVは/tv/{id}という別エンドポイント・別
-// IDネームスペース)。media_typeごとに正しいエンドポイントを選ぶ。
-// (3) google-books-crosscheckのrecoverIsbnで発覚したのと同じ「見つから
-// なかった行に何も書き込まないと、offset=0の自己完結型バックフィルが
-// 同じ行を永遠に再試行し続けて先に進めなくなる」バグのクラスを踏まないよう、
-// TMDB側に本当にoverviewが無かった場合(一時的な障害ではない)もsynopsis_
-// checked_atを立てて窓を進める。
-async function fillMissingSynopsis(supabase: any, offset: number, limit: number, write: boolean) {
-  const { data, error } = await supabase
-    .from("movies")
-    .select("id, title, tmdb_id, media_type")
-    .in("media_type", ["movie", "tv"])
-    .not("tmdb_id", "is", null)
-    .or("synopsis.is.null,synopsis.eq.")
-    .is("synopsis_checked_at", null)
-    .order("id", { ascending: true })
-    .range(offset, offset + limit - 1);
-  if (error) throw error;
-  const todo = data || [];
-
-  const results = [];
-  const CONCURRENCY = 3;
-  for (let i = 0; i < todo.length; i += CONCURRENCY) {
-    const chunk = todo.slice(i, i + CONCURRENCY);
-    const chunkResults = await Promise.all(
-      chunk.map(async (m: any) => {
-        const endpoint = m.media_type === "tv" ? "/tv" : "/movie";
-        let details = await tmdbFetch(`${endpoint}/${m.tmdb_id}`, { language: "ja-JP" });
-        let overview = details?.overview || null;
-        if (!overview) {
-          const enDetails = await tmdbFetch(`${endpoint}/${m.tmdb_id}`, { language: "en-US" });
-          overview = enDetails?.overview || null;
-        }
-        if (write) {
-          const update: Record<string, unknown> = { synopsis_checked_at: new Date().toISOString() };
-          if (overview) update.synopsis = overview;
-          await supabase.from("movies").update(update).eq("id", m.id);
-        }
-        return { movie_id: m.id, title: m.title, tmdb_id: m.tmdb_id, media_type: m.media_type, synopsis: overview, found: !!details };
-      }),
-    );
-    results.push(...chunkResults);
-    await sleep(150);
-  }
-  return results;
-}
-
-// 見放題(flatrate)の配信先と、その「視聴ページリンク」(watch/providersの
-// results.JP.link)をJP向けに取得して保存する。TMDbの無料APIは各配信
-// サービス(Netflix/Amazon等)への直接ディープリンクを提供しない(JustWatchの
-// 有料/提携APIのみ)ため、実際にユーザーが配信先へ辿り着ける唯一の公式
-// リンクはこのTMDb自身の視聴ページ(themoviedb.org/movie/{id}/watch)になる
-// (オーナーに直接確認済み:「自動リンクがいい」。NetflixやAmazon自体へは
-// 直接飛ばず、このTMDbページ経由のワンクッションになることは説明済み)。
-// 配信状況は常に変動するため、一度確認したら終わりにはせず、
-// RECHECK_INTERVAL_DAYSより古い行は自動的に再チェック対象に戻す
-// (オーナー指摘:「常に情報は変動するから自動で削除追加できるように
-// しておいて」)。未確認(vod_checked_at IS NULL)を最優先し、その次に
-// 確認が一番古い行から順に回す。
-const RECHECK_INTERVAL_DAYS = 30;
-async function fillVodFlatrate(supabase: any, offset: number, limit: number, write: boolean) {
-  const cutoff = new Date(Date.now() - RECHECK_INTERVAL_DAYS * 24 * 60 * 60 * 1000).toISOString();
-  const { data, error } = await supabase
-    .from("movies")
-    .select("id, title, tmdb_id")
-    .eq("media_type", "movie")
-    .not("tmdb_id", "is", null)
-    .or(`vod_checked_at.is.null,vod_checked_at.lt.${cutoff}`)
-    .order("vod_checked_at", { ascending: true, nullsFirst: true })
-    .range(offset, offset + limit - 1);
-  if (error) throw error;
-  const todo = data || [];
-
-  const results = [];
-  const CONCURRENCY = 3;
-  for (let i = 0; i < todo.length; i += CONCURRENCY) {
-    const chunk = todo.slice(i, i + CONCURRENCY);
-    const chunkResults = await Promise.all(
-      chunk.map(async (m: any) => {
-        const wp = await tmdbFetch(`/movie/${m.tmdb_id}/watch/providers`, {});
-        const flatrate = (wp?.results?.JP?.flatrate || []).map((p: any) => p.provider_name);
-        const watchLink = wp?.results?.JP?.link || null;
-        if (write) {
-          await supabase.from("movies").update({
-            vod_flatrate: flatrate,
-            vod_watch_link: watchLink,
-            vod_checked_at: new Date().toISOString(),
-          }).eq("id", m.id);
-        }
-        return { movie_id: m.id, title: m.title, tmdb_id: m.tmdb_id, flatrate, watchLink };
-      }),
-    );
-    results.push(...chunkResults);
-    await sleep(150);
-  }
-  return results;
-}
-
 Deno.serve(async (req: Request) => {
   try {
     const {
@@ -187,8 +68,6 @@ Deno.serve(async (req: Request) => {
       ids = null,
       tmdb_id_overrides = null,
       debug_title = null,
-      target = "no_director",
-      write = false,
     } = await req.json().catch(() => ({}));
 
     if (debug_title) {
@@ -197,21 +76,6 @@ Deno.serve(async (req: Request) => {
     }
 
     const supabase = createClient(SUPABASE_URL, SERVICE_ROLE);
-
-    if (!ids && target === "missing_synopsis") {
-      const results = await fillMissingSynopsis(supabase, offset, limit, write);
-      return new Response(JSON.stringify({ offset, limit, processed: results.length, write, results }), {
-        headers: { "Content-Type": "application/json" },
-      });
-    }
-
-    if (!ids && target === "vod_flatrate") {
-      const results = await fillVodFlatrate(supabase, offset, limit, write);
-      return new Response(JSON.stringify({ offset, limit, processed: results.length, write, results }), {
-        headers: { "Content-Type": "application/json" },
-      });
-    }
-
     let todo: any[];
     if (ids) {
       const { data, error } = await supabase.from("movies").select("id, title, release_year").in("id", ids);
@@ -248,24 +112,11 @@ Deno.serve(async (req: Request) => {
             tmdbFetch(`/movie/${match.id}/credits`, { language: "ja-JP" }),
           ]);
 
-          // TMDbのoverviewは言語ごとの翻訳データで、日本語訳が存在しない
-          // 作品(特に邦画以外)ではja-JPのoverviewが空文字列になる。これを
-          // 無条件にnullへ変換していたため、英語版にはあらすじがあるのに
-          // 日本語版が未翻訳なだけの作品まで「あらすじ無し」として保存
-          // される事故が起きていた(オーナー指摘で発覚、tmdb_id紐付け済み
-          // なのにsynopsisがnullの行の99.5%で裏付けを確認)。ja-JPが空の
-          // 場合のみen-USへフォールバックする。
-          let overview = details?.overview || null;
-          if (!overview) {
-            const enDetails = await tmdbFetch(`/movie/${match.id}`, { language: "en-US" });
-            overview = enDetails?.overview || null;
-          }
-
           const directors = (credits?.crew || []).filter((c: any) => c.job === "Director").map((c: any) => c.name);
           const cast = (credits?.cast || []).slice(0, 5).map((c: any) => c.name);
           const countries = (details?.production_countries || []).map((c: any) => c.name);
 
-          const row = {
+          return {
             movie_id: m.id,
             title: m.title,
             release_year: m.release_year,
@@ -276,27 +127,15 @@ Deno.serve(async (req: Request) => {
             director: directors.join("、") || null,
             cast: cast.length ? cast : null,
             country: countries.join("・") || null,
-            synopsis: overview,
+            synopsis: details?.overview || null,
           };
-
-          if (write) {
-            await supabase.from("movies").update({
-              tmdb_id: row.tmdb_id,
-              director: row.director,
-              cast_members: row.cast,
-              country: row.country,
-              synopsis: row.synopsis,
-            }).eq("id", m.id);
-          }
-
-          return row;
         }),
       );
       results.push(...chunkResults);
       await sleep(150);
     }
 
-    return new Response(JSON.stringify({ offset, limit, processed: todo.length, write, results }), {
+    return new Response(JSON.stringify({ offset, limit, processed: todo.length, results }), {
       headers: { "Content-Type": "application/json" },
     });
   } catch (err) {

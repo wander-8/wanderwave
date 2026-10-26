@@ -92,17 +92,9 @@ Deno.serve(async (req: Request) => {
           } else {
             notFound++;
           }
-          // オーナー指摘(2026-10-22):TMDBのkeywordsは既にニッチなトロープ
-          // 情報(reincarnation, pregnancy等)を含んでおり、ニッチ属性検索の
-          // 土台としてそのままniche_tagsにも反映する(design spec A-2)。
-          // keywords列自体の意味・既存の参照箇所は変更しない、コピーするだけ。
           const { error: updateErr } = await supabase
             .from("movies")
-            .update({
-              keywords: keywords.length ? keywords : null,
-              niche_tags: keywords.length ? keywords : null,
-              keywords_checked_at: new Date().toISOString(),
-            })
+            .update({ keywords: keywords.length ? keywords : null, keywords_checked_at: new Date().toISOString() })
             .eq("id", m.id);
           if (!updateErr) updated++;
         }),
