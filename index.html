@@ -11654,11 +11654,26 @@ async function loadMovieReviews(m){
     const reviews = data || [];
     if(state.currentMovieId !== m.id) return; // 別の映画に移動していたら反映しない
 
+    // ブロック済みユーザーのレビューを除外
+    const userId = await currentUserId();
+    let blockedUserIds = new Set();
+    if(userId){
+      try{
+        const { data: blockedUsers } = await supabase
+          .from('blocked_users')
+          .select('blocked_user_id')
+          .eq('blocker_id', userId);
+        blockedUserIds = new Set((blockedUsers || []).map(b => b.blocked_user_id));
+      }catch(err){
+        console.warn('ブロック一覧の読み込み失敗（通常表示は続行）', err);
+      }
+    }
+
     // 通報が一定数集まって非表示(is_hidden)になったレビューは、一覧からは
     // 除外する(オーナー:「一定数の報告で非表示にして」)。ただし投稿者
     // 本人が「自分の投稿」として編集・削除できる必要があるため、その判定
     // (下のmyReview)は非表示分も含めた全件(reviews)から探す。
-    wanderReviewRows = reviews.filter(r => !r.is_hidden);
+    wanderReviewRows = reviews.filter(r => !r.is_hidden && !blockedUserIds.has(r.user_id));
     rebuildReviewsList();
 
     const myReview = userId ? reviews.find(r => r.user_id === userId) : null;
@@ -11713,7 +11728,8 @@ function renderVisibleReviews(){
       <div class="r-header">
         <div class="avatar" id="r-avatar-${start + i}" style="background:${hasPhoto ? 'transparent' : avatarColor};">${hasPhoto ? '' : escapeHtml(name.charAt(0))}</div>
         <div class="r-name">${escapeHtml(name)}</div>
-        ${r.id != null ? `<button type="button" class="r-report-btn" onclick="event.stopPropagation(); openReportModal(${r.id})" title="このレビューを報告する">⚑ 報告</button>` : ''}
+        ${r.user_id ? `<button type="button" class="r-block-btn" onclick="event.stopPropagation(); blockUser('${r.user_id}', '${escapeHtml(name)}')" title="このユーザーをブロック">🚫</button>` : ''}
+        ${r.id != null ? `<button type="button" class="r-report-btn" onclick="event.stopPropagation(); openReportModal(${r.id})" title="このレビューを報告する">⚑</button>` : ''}
       </div>
       <div class="r-body-wrap">
         <div class="r-body${isSpoiler ? ' spoiler-hidden' : ''}" id="${bodyId}" data-full="${escapeHtml(text)}" data-preview="${escapeHtml(text.slice(0, REVIEW_PREVIEW_LEN))}" data-expanded="0">${escapeHtml(isLong ? text.slice(0, REVIEW_PREVIEW_LEN) + '…' : text)}</div>
@@ -11910,7 +11926,56 @@ function hasSevereContent(text){
   return SEVERE_BLOCK_WORDS.some(w => text.includes(w));
 }
 
+// XSS 防止：HTML エスケープ
+function escapeHtml(text){
+  const map = {
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#039;'
+  };
+  return text.replace(/[&<>"']/g, char => map[char]);
+}
+
+// 悪用パターン検出：スター評価とレビューのギャップ
+function hasRatingGapAbuse(rating, reviewText){
+  const positiveWords = ['素晴らしい', '最高', '感動', '面白い', '良い', '好き', '楽しい', 'おすすめ'];
+  const negativeWords = ['つまらない', '最悪', 'クソ', 'ひどい', '駄作', 'うざい', 'がっかり'];
+
+  const hasPositive = positiveWords.some(w => reviewText.includes(w));
+  const hasNegative = negativeWords.some(w => reviewText.includes(w));
+
+  // 高評価なのに否定的なレビューが多い、またはその逆
+  if(rating >= 4 && hasNegative && !hasPositive) return true;
+  if(rating <= 2 && hasPositive && !hasNegative) return true;
+  return false;
+}
+
 let editingMovieId = null;
+
+async function blockUser(userId, userName){
+  if(!await requireVerifiedUser()) return;
+
+  if(!confirm(`${escapeHtml(userName)}さんをブロックしますか？ブロックされたユーザーのレビューは表示されなくなります。`)) return;
+
+  try{
+    const { data: { session } } = await supabase.auth.getSession();
+    const { error } = await supabase.functions.invoke('block-user', {
+      body: { blocked_user_id: userId, reason: 'user_action' },
+      headers: session ? { Authorization: `Bearer ${session.access_token}` } : undefined
+    });
+
+    if(error) throw error;
+    showToast(`${escapeHtml(userName)}さんをブロックしました`);
+    // ブロック後、レビューを再読み込み
+    const m = MOVIES.find(x => x.id === state.currentMovieId);
+    if(m) await loadMovieReviews(m);
+  }catch(err){
+    console.error('ブロック失敗:', err);
+    showToast('ブロックに失敗しました。もう一度試してください。');
+  }
+}
 
 async function deleteReview(movieId){
   const m = MOVIES.find(x => x.id === movieId);
@@ -11953,6 +12018,46 @@ async function submitReview(force){
     if(hasSevereContent(text)){
       showToast('この内容は投稿できません');
       return;
+    }
+
+    // AI モデレーション（Claude による詳細審査）
+    try{
+      const { data: aiModResult } = await supabase.functions.invoke('ai-moderation', {
+        body: { review_text: text, movie_review_id: null }
+      });
+
+      if(aiModResult?.severity === 'block'){
+        showToast('この内容は投稿できません（違反内容が検出されました）');
+        return;
+      }
+      if(!force && aiModResult?.severity === 'warn'){
+        showReconsiderModal();
+        return;
+      }
+    }catch(err){
+      console.warn('AI モデレーション失敗（通常投稿は続行）', err);
+    }
+
+    // スパム検出
+    try{
+      const userId = await currentUserId();
+      const { data: spamResult } = await supabase.functions.invoke('check-spam', {
+        body: { user_id: userId, movie_id: m.id, review_text: text }
+      });
+
+      if(spamResult?.is_spam){
+        showToast('スパムと判定されました。内容を確認してください。');
+        return;
+      }
+    }catch(err){
+      console.warn('スパム検出失敗（通常投稿は続行）', err);
+    }
+
+    // 悪用パターン検出：スター評価とレビューのギャップ
+    const rating = state.myRating[m.id] || 0;
+    if(hasRatingGapAbuse(rating, text)){
+      showToast('評価とレビュー内容がギャップしています。確認してください。');
+      if(!force) return;
     }
 
     if(!force && hasNegativeTone(text)){
