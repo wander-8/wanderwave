@@ -58,10 +58,15 @@ Deno.serve(async (req) => {
   const { genre = "romance", limit = 100, dry_run = false, pages = [1] } = await req.json().catch(() => ({}));
 
   try {
-    // 既存の小説を dedup 用に取得
-    const existingRows = await selectAllRows(supabase, "movies", "title, release_year, media_type");
+    // 既存の小説を dedup 用に取得（novel のみ）
+    const { data: existingRows, error: fetchErr } = await supabase
+      .from("movies")
+      .select("title, release_year")
+      .eq("media_type", "novel");
+    if (fetchErr) throw fetchErr;
+
     const existingKeys = new Set(
-      existingRows.map((r: any) => `${normalizeTitle(r.title)}|${r.release_year}|novel`),
+      (existingRows || []).map((r: any) => `${normalizeTitle(r.title)}|${r.release_year}|novel`),
     );
 
     const candidates: any[] = [];
@@ -102,7 +107,7 @@ Deno.serve(async (req) => {
         }
       }
 
-      await sleep(1000); // Syosetu のレート制限
+      await sleep(300); // Syosetu レート制限対応
     }
 
     // 既存作品との重複を除外
