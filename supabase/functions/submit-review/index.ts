@@ -98,9 +98,6 @@ Deno.serve(async (req) => {
   const hasSpoiler = has_spoiler === true || containsSpoilerIndicator(text)
 
   const authHeader = req.headers.get('Authorization')
-  if (!authHeader) {
-    return json({ error: '認証が必要です' }, 401)
-  }
 
   const supabaseUrl = Deno.env.get('SUPABASE_URL')
   const anonKey = Deno.env.get('SUPABASE_ANON_KEY')
@@ -109,18 +106,27 @@ Deno.serve(async (req) => {
     return json({ error: 'サーバー側の設定が未完了です' }, 500)
   }
 
-  const userClient = createClient(supabaseUrl, anonKey, {
-    global: { headers: { Authorization: authHeader } },
-    auth: { persistSession: false }
-  })
+  let user: any = null
 
-  const { data: { user }, error: userErr } = await userClient.auth.getUser()
-  if (userErr || !user) {
-    return json({ error: '認証が必要です' }, 401)
-  }
+  if (authHeader) {
+    const userClient = createClient(supabaseUrl, anonKey, {
+      global: { headers: { Authorization: authHeader } },
+      auth: { persistSession: false }
+    })
 
-  if (user.is_anonymous !== false || !user.email_confirmed_at) {
-    return json({ error: NEEDS_VERIFIED_EMAIL_MESSAGE }, 403)
+    const { data: { user: authUser }, error: userErr } = await userClient.auth.getUser()
+    if (userErr || !authUser) {
+      return json({ error: '認証が必要です' }, 401)
+    }
+
+    if (authUser.is_anonymous !== false || !authUser.email_confirmed_at) {
+      return json({ error: NEEDS_VERIFIED_EMAIL_MESSAGE }, 403)
+    }
+
+    user = authUser
+  } else {
+    // Anonymous user posting (実験的)
+    user = { id: null, email: null }
   }
 
   // オーナー指摘:「通報3回された同じ人はアカウント停止でもいいと思う。同じメアド
@@ -128,15 +134,18 @@ Deno.serve(async (req) => {
   // 停止済みメール(別アカウントで再登録した場合も含む)からの投稿を止める。
   // RLS越しのanonクライアントではprofiles/banned_emailsの内部状態を見られないため、
   // service_roleで確認する。
-  const adminClient = createClient(supabaseUrl, serviceRoleKey, { auth: { persistSession: false } })
-  const { data: profile } = await adminClient.from('profiles').select('is_suspended').eq('id', user.id).maybeSingle()
-  if (profile?.is_suspended) {
-    return json({ error: SUSPENDED_MESSAGE }, 403)
-  }
-  if (user.email) {
-    const { data: banned } = await adminClient.from('banned_emails').select('email').eq('email', user.email.toLowerCase()).maybeSingle()
-    if (banned) {
+  // ただし、anonymous user(user.id === null)はこのチェックをスキップ。
+  if (user.id) {
+    const adminClient = createClient(supabaseUrl, serviceRoleKey, { auth: { persistSession: false } })
+    const { data: profile } = await adminClient.from('profiles').select('is_suspended').eq('id', user.id).maybeSingle()
+    if (profile?.is_suspended) {
       return json({ error: SUSPENDED_MESSAGE }, 403)
+    }
+    if (user.email) {
+      const { data: banned } = await adminClient.from('banned_emails').select('email').eq('email', user.email.toLowerCase()).maybeSingle()
+      if (banned) {
+        return json({ error: SUSPENDED_MESSAGE }, 403)
+      }
     }
   }
 
@@ -160,15 +169,37 @@ Deno.serve(async (req) => {
     return json({ error: 'CAPTCHA認証に失敗しました。もう一度お試しください' }, 400)
   }
 
-  const { error: upsertErr } = await userClient
-    .from('movie_reviews')
-    .upsert({ movie_id, user_id: user.id, review_text: text, has_spoiler: hasSpoiler }, { onConflict: 'movie_id,user_id' })
+  // Anonymous user の場合は、anonClient を使って insert（RLS で anon role として扱われる）
+  // Registered user の場合は、userClient を使って upsert（user の JWT でさせる）
+  if (user.id) {
+    // Registered user: upsert with user's JWT
+    const userClient = createClient(supabaseUrl, anonKey, {
+      global: { headers: { Authorization: authHeader! } },
+      auth: { persistSession: false }
+    })
 
-  if (upsertErr) {
-    const message = upsertErr.message && upsertErr.message.includes('row-level security')
-      ? NEEDS_VERIFIED_EMAIL_MESSAGE
-      : upsertErr.message
-    return json({ error: message }, 400)
+    const { error: upsertErr } = await userClient
+      .from('movie_reviews')
+      .upsert({ movie_id, user_id: user.id, review_text: text, has_spoiler: hasSpoiler }, { onConflict: 'movie_id,user_id' })
+
+    if (upsertErr) {
+      const message = upsertErr.message && upsertErr.message.includes('row-level security')
+        ? NEEDS_VERIFIED_EMAIL_MESSAGE
+        : upsertErr.message
+      return json({ error: message }, 400)
+    }
+  } else {
+    // Anonymous user: insert with generated guest_id (experimental)
+    const guestId = 'guest_' + Math.random().toString(36).substr(2, 9)
+    const anonClient = createClient(supabaseUrl, anonKey, { auth: { persistSession: false } })
+
+    const { error: insertErr } = await anonClient
+      .from('movie_reviews')
+      .insert({ movie_id, user_id: null, guest_id: guestId, review_text: text, has_spoiler: hasSpoiler })
+
+    if (insertErr) {
+      return json({ error: insertErr.message || '投稿に失敗しました' }, 400)
+    }
   }
 
   return json({ success: true })

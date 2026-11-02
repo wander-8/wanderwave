@@ -11966,9 +11966,8 @@ function applySetDelta(counts, prevSet, nextSet){
 }
 
 async function submitReview(force){
-  if(!requireVerifiedUser()) return;
-
   const text = document.getElementById('review-text').value.trim();
+
   // 文章を書かず、感情タグや表現度だけ送りたい時もあるので、本文が空でも
   // それ以外に送るものが無い時だけ止める(文章だけを必須にしない)。
   const hasMoodTagSelection = pendingMoodTags.size > 0;
