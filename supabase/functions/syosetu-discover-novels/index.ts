@@ -4,6 +4,7 @@ import { createClient } from "jsr:@supabase/supabase-js@2";
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
+// GitHub Actions auto-deployment pipeline enabled
 // 小説家になろう API: https://dev.syosetu.com/man/api/
 // 最も人気・最新の小説を取得。フリー API なので制限あり（30件/1リクエスト）
 const SYOSETU_API = "https://api.syosetu.com/novels/1_0/api/";
