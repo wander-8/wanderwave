@@ -506,17 +506,9 @@
   .catalog-mode-drawer-backdrop{ display:none; }
   .catalog-mode-drawer{ display:none; }
   @media (min-width: 1360px){
-    /* 広い画面ではアプリ版(ハンバーガー)を隠し、PC版だけを出す。
-       以前はleft:28pxで画面の生の左端に固定していたが、.appは
-       max-width:1100pxで中央寄せ(左端は常に50vw - 550px)なので、
-       ブラウザ幅が広いほど.appの左端だけがどんどん右へ動き、固定された
-       このメニューとの間に大きな空白ができてしまっていた(オーナー指摘:
-       「メニューとサイトに間が空いてる」、実機のスクリーンショットで確認)。
-       .appの左端と同じ式(50vw - 550px)を基準に、メニュー自身の幅ぶん
-       (約108px)+小さい余白(8px)を引いた位置に置くことで、ブラウザ幅が
-       どれだけ広くても.appのすぐ左に吸い付いたままにする。 */
+    /* 広い画面ではアプリ版(ハンバーガー)を隠し、PC版だけを出す。 */
     .catalog-mode-toggle.enabled{ display:none; }
-    .catalog-mode-toggle-side.enabled{
+    .catalog-mode-toggle-side{
       display:block; position:fixed; top:170px; left:calc(50vw - 550px - 116px); z-index:40;
     }
   }
