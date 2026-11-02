@@ -75,17 +75,31 @@ Deno.serve(async (req) => {
   } = await req.json().catch(() => ({}));
 
   try {
-    // 既存のアニメを dedup 用に取得（anime のみ、title と year のみ）
-    const { data: existingRows, error: fetchErr } = await supabase
-      .from("movies")
-      .select("title, release_year")
-      .eq("media_type", "anime");
-    if (fetchErr) throw fetchErr;
+    // 既存のアニメを pagination で取得（large table scan 回避）
+    const existingKeys = new Set<string>();
+    let offset = 0;
+    const pageSize = 500;
+    let hasMore = true;
 
-    const existingKeys = new Set(
-      (existingRows || []).map((r: any) => `${normalizeTitle(r.title)}|${r.release_year}|anime`),
-    );
-    // mal_id は別の方法で確認（今回は簡略化）
+    while (hasMore) {
+      const { data: rows, error: fetchErr } = await supabase
+        .from("movies")
+        .select("title, release_year")
+        .eq("media_type", "anime")
+        .range(offset, offset + pageSize - 1);
+      if (fetchErr) throw fetchErr;
+
+      if (!rows || rows.length === 0) {
+        hasMore = false;
+      } else {
+        rows.forEach((r: any) => {
+          existingKeys.add(`${normalizeTitle(r.title)}|${r.release_year}|anime`);
+        });
+        offset += pageSize;
+        if (rows.length < pageSize) hasMore = false;
+      }
+    }
+
     const existingMalIds = new Set();
 
     const candidates: any[] = [];

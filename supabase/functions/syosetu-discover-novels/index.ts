@@ -58,16 +58,30 @@ Deno.serve(async (req) => {
   const { genre = "romance", limit = 100, dry_run = false, pages = [1] } = await req.json().catch(() => ({}));
 
   try {
-    // 既存の小説を dedup 用に取得（novel のみ）
-    const { data: existingRows, error: fetchErr } = await supabase
-      .from("movies")
-      .select("title, release_year")
-      .eq("media_type", "novel");
-    if (fetchErr) throw fetchErr;
+    // 既存の小説を pagination で取得（large table scan 回避）
+    const existingKeys = new Set<string>();
+    let offset = 0;
+    const pageSize = 500;
+    let hasMore = true;
 
-    const existingKeys = new Set(
-      (existingRows || []).map((r: any) => `${normalizeTitle(r.title)}|${r.release_year}|novel`),
-    );
+    while (hasMore) {
+      const { data: rows, error: fetchErr } = await supabase
+        .from("movies")
+        .select("title, release_year")
+        .eq("media_type", "novel")
+        .range(offset, offset + pageSize - 1);
+      if (fetchErr) throw fetchErr;
+
+      if (!rows || rows.length === 0) {
+        hasMore = false;
+      } else {
+        rows.forEach((r: any) => {
+          existingKeys.add(`${normalizeTitle(r.title)}|${r.release_year}|novel`);
+        });
+        offset += pageSize;
+        if (rows.length < pageSize) hasMore = false;
+      }
+    }
 
     const candidates: any[] = [];
 
