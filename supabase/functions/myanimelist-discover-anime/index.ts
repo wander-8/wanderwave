@@ -19,20 +19,13 @@ async function jikanFetch(endpoint: string, params: Record<string, string> = {})
     url.searchParams.set(k, v);
   }
 
-  for (let attempt = 0; attempt < 3; attempt++) {
-    try {
-      const res = await fetch(url.toString());
-      if (res.ok) return await res.json();
-      if (res.status === 429) {
-        await sleep(2000);
-        continue;
-      }
-      return null;
-    } catch {
-      await sleep(1000 * (attempt + 1));
-    }
+  try {
+    const res = await fetch(url.toString());
+    if (res.ok) return await res.json();
+    return null;
+  } catch {
+    return null;
   }
-  return null;
 }
 
 function normalizeTitle(s: string): string {
@@ -115,7 +108,7 @@ Deno.serve(async (req) => {
         candidates.push(...result.data);
       }
 
-      await sleep(500); // Jikan のレート制限対応
+      await sleep(100); // Minimal rate limit
     }
 
     // 既存作品との重複を除外
