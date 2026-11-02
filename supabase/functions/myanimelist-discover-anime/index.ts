@@ -78,10 +78,11 @@ Deno.serve(async (req) => {
     // 既存のアニメを pagination で取得（large table scan 回避）
     const existingKeys = new Set<string>();
     let offset = 0;
-    const pageSize = 500;
+    const pageSize = 1000; // larger batches = fewer roundtrips
     let hasMore = true;
+    let pageCount = 0;
 
-    while (hasMore) {
+    while (hasMore && pageCount < 50) { // safety limit: max 50 pages
       const { data: rows, error: fetchErr } = await supabase
         .from("movies")
         .select("title, release_year")
@@ -96,6 +97,7 @@ Deno.serve(async (req) => {
           existingKeys.add(`${normalizeTitle(r.title)}|${r.release_year}|anime`);
         });
         offset += pageSize;
+        pageCount++;
         if (rows.length < pageSize) hasMore = false;
       }
     }
