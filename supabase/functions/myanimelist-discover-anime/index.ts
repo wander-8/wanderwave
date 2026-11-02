@@ -76,6 +76,7 @@ Deno.serve(async (req) => {
 
   try {
     // Load existing titles once at start (O(1) lookup instead of O(n) per-row scan)
+    console.log("Loading existing titles...");
     const { data: existingRecords, error: fetchErr } = await supabase
       .from("movies")
       .select("title")
@@ -85,6 +86,7 @@ Deno.serve(async (req) => {
     const existingTitles = new Set(
       (existingRecords || []).map((r: any) => normalizeTitle(r.title))
     );
+    console.log(`Loaded ${existingTitles.size} existing anime titles`);
 
     const candidates: any[] = [];
 
@@ -101,18 +103,27 @@ Deno.serve(async (req) => {
         params.status = status;
       }
 
+      console.log("Jikan request:", params);
       const result = await jikanFetch("/anime", params);
+      console.log("Jikan response received:", result?.data?.length || 0, "items");
+
       if (result?.data && Array.isArray(result.data)) {
         candidates.push(...result.data);
+        console.log(`Page ${page}: added ${result.data.length} candidates`);
+      } else {
+        console.warn("Jikan API returned no data or malformed response", result);
       }
       // removed sleep: retry logic was moved up, no rate limit needed here
     }
+
+    console.log("Total candidates fetched:", candidates.length);
 
     // Filter to fresh candidates only (using pre-cached titles)
     const fresh = candidates.filter((c: any) => {
       if (!c.title) return false;
       return !existingTitles.has(normalizeTitle(c.title));
     });
+    console.log("After dedup filter:", fresh.length, "fresh candidates");
 
     // 詳細情報を組み立て
     const rows: any[] = [];

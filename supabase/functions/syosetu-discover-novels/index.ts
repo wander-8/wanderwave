@@ -62,6 +62,7 @@ Deno.serve(async (req) => {
 
   try {
     // Load existing titles once at start (O(1) lookup instead of O(n) per-row scan)
+    console.log("Loading existing titles...");
     const { data: existingRecords, error: fetchErr } = await supabase
       .from("movies")
       .select("title")
@@ -71,6 +72,7 @@ Deno.serve(async (req) => {
     const existingTitles = new Set(
       (existingRecords || []).map((r: any) => normalizeTitle(r.title))
     );
+    console.log(`Loaded ${existingTitles.size} existing novel titles`);
 
     const candidates: any[] = [];
 
