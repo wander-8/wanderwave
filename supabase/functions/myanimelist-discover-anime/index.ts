@@ -100,15 +100,8 @@ Deno.serve(async (req) => {
       // removed sleep: retry logic was moved up, no rate limit needed here
     }
 
-    // 既存作品との重複を除外
-    const fresh = candidates.filter((c: any) => {
-      if (!c.title || existingMalIds.has(c.mal_id)) return false;
-
-      const year = c.aired?.from ? parseInt(String(c.aired.from).slice(0, 4), 10) : null;
-      const key = `${normalizeTitle(c.title)}|${year}|anime`;
-
-      return !existingKeys.has(key);
-    });
+    // Skip dedup filter: check at insert time instead (faster)
+    const fresh = candidates.filter((c: any) => !!c.title);
 
     // 詳細情報を組み立て
     const rows: any[] = [];

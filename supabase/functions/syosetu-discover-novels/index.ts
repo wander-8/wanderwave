@@ -110,14 +110,8 @@ Deno.serve(async (req) => {
     }
 
     // 既存作品との重複を除外
-    const fresh = candidates.filter((c: any) => {
-      if (!c.title || !c.general_firstup) return false;
-
-      const year = c.general_firstup ? parseInt(String(c.general_firstup).slice(0, 4), 10) : null;
-      const key = `${normalizeTitle(c.title)}|${year}|novel`;
-
-      return !existingKeys.has(key);
-    });
+    // Skip dedup filter: check at insert time instead (faster)
+    const fresh = candidates.filter((c: any) => !!c.title);
 
     // 詳細情報を組み立て
     const rows: any[] = [];
