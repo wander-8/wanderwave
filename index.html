@@ -12091,7 +12091,6 @@ async function submitReview(force){
 
     // 表現度・当てはまるもの・感情タグは、以前は触るたびに個別送信していたが、
     // 今はレビュー本文と同じこのタイミングでまとめて1回で送信する。
-    const userId = await currentUserId();
     const writes = [];
     if(newIntensity !== undefined){
       writes.push(upsertMyReview(m.id, { expression_level: newIntensity, reason_tags: [...pendingReasonTags] }));
