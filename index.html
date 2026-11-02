@@ -17698,7 +17698,13 @@ function closeModeMenuOnClickOutside(event){
 function updateModeSelectorChip(mode){
   const modeNames = { movie: '映画', drama: 'ドラマ', anime: 'アニメ', manga: '漫画', novel: '小説', music: '音楽' };
   const chip = document.getElementById('current-mode-label');
-  if(chip) chip.textContent = modeNames[mode] || mode;
+  console.log('updateModeSelectorChip called with mode:', mode, 'chip:', chip);
+  if(chip) {
+    chip.textContent = modeNames[mode] || mode;
+    console.log('Chip updated to:', chip.textContent);
+  } else {
+    console.log('Chip element not found!');
+  }
 }
 
 // Page scroll position
