@@ -6372,10 +6372,22 @@ async function submitSearch(){
     // 合わせてもらうための語彙ヒント。チップへの変換はしない(絞り込みチップ
     // 自体は廃止済み)ので、enumで縛る必要は無く参考情報として渡すだけでよい。
     const genres = availableGenres();
+    const mode = currentCatalogMode();
 
-    const { data, error } = await supabase.functions.invoke('ai-search', {
-      body: { query, decades, genres, mode: currentCatalogMode() },
-    });
+    let data, error;
+    const cacheKey = `search_${query}_${mode}`;
+    const cachedResult = sessionStorage.getItem(cacheKey);
+
+    if(cachedResult){
+      ({ data } = JSON.parse(cachedResult));
+    }else{
+      ({ data, error } = await supabase.functions.invoke('ai-search', {
+        body: { query, decades, genres, mode },
+      }));
+      if(!error && data){
+        try{ sessionStorage.setItem(cacheKey, JSON.stringify({ data })); }catch(e){}
+      }
+    }
     if(error) throw error;
     if(data?.error) throw new Error(data.error);
 
