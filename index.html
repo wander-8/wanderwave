@@ -520,6 +520,24 @@
       display:block; position:fixed; top:170px; left:calc(50vw - 550px - 116px); z-index:40;
     }
   }
+
+  /* ---- Mode Tab Bar (A案: Header 下の Tab Bar) ---- */
+  .mode-tab-bar{
+    display:flex; gap:4px; padding:12px 0; border-bottom:1px solid var(--line);
+    overflow-x:auto; scroll-behavior:smooth;
+    -webkit-overflow-scrolling: touch;
+  }
+  .mode-tab{
+    background:none; border:none; padding:8px 14px; border-radius:20px;
+    color:var(--ink-soft); font-size:13px; font-weight:500; cursor:pointer;
+    font-family:inherit; white-space:nowrap; transition:all 0.2s;
+    border-bottom:2px solid transparent;
+  }
+  .mode-tab:hover{ color:var(--ink); }
+  .mode-tab.active{
+    color:var(--plum-deep); background:rgba(224, 172, 79, 0.1); border-bottom-color:var(--plum-deep);
+  }
+
   .catalog-mode-menu{
     display:none; flex-direction:column; gap:3px;
     position:absolute; top:40px; left:0; z-index:50;
@@ -3099,21 +3117,23 @@
     <div class="topbar">
       <div class="topbar-left">
         <div class="logo logo-driftwood-header" onclick="goHome()"><img src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==" alt="Wander" class="header-logo-img"></div>
-        <!-- 映画⇔アニメ等の切り替え(アプリ版=狭い画面)。ハンバーガーボタン
-             自体はヘッダーの通常の流れの中に置き、開くドロワー本体は
-             #view-homeの外側(catalog-mode-drawer)にある。 -->
-        <div class="catalog-mode-toggle" id="catalog-mode-toggle-inline">
-          <button class="catalog-mode-hamburger-btn" id="catalog-mode-hamburger-btn" onclick="toggleCatalogModeMenu()" aria-label="表示を切り替える" title="表示を切り替える">
-            <svg viewBox="0 0 24 24" width="34" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="4" y1="7" x2="20" y2="7"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="17" x2="20" y2="17"/></svg>
-          </button>
-          <span id="mode-label" style="font-size:13px; margin-left:8px; color:var(--ink); font-weight:500;">映画</span>
-        </div>
       </div>
       <div class="profile-chip" onclick="onProfileChipTap()">
         <div class="avatar" id="header-avatar">?</div>
         <span id="header-name">ゲスト</span>
         <span class="trust" id="header-trust">信頼度 0</span>
       </div>
+    </div>
+
+    <!-- Mode selector: Header 下の Tab Bar（A案）
+         content-first な配置：content を見てから mode を選択できる -->
+    <div class="mode-tab-bar" id="mode-tab-bar">
+      <button class="mode-tab active" data-mode="movie" onclick="switchCatalogMode('movie')">映画</button>
+      <button class="mode-tab" data-mode="tv" onclick="switchCatalogMode('tv')">ドラマ</button>
+      <button class="mode-tab" data-mode="anime" onclick="switchCatalogMode('anime')">アニメ</button>
+      <button class="mode-tab" data-mode="manga" onclick="switchCatalogMode('manga')">漫画</button>
+      <button class="mode-tab" data-mode="novel" onclick="switchCatalogMode('novel')">小説</button>
+      <button class="mode-tab" data-mode="music" onclick="switchCatalogMode('music')">音楽</button>
     </div>
 
     <div class="featured-banner" id="featured-banner"></div>
@@ -10819,6 +10839,26 @@ function toggleCatalogModeMenu(){
   });
   const backdrop = document.getElementById('catalog-mode-drawer-backdrop');
   if(backdrop) backdrop.classList.toggle('open', catalogModeMenuOpen);
+}
+
+// Tab Bar: mode を切り替えて UI を更新
+function switchCatalogMode(mode){
+  // 既存の mode 切り替え logic を呼ぶ（catalog mode menu item click handler と同じ）
+  const modeMap = { movie: 0, tv: 1, anime: 2, drama: 3, manga: 4, novel: 5, music: 6 };
+  const idx = modeMap[mode];
+  if(idx === undefined) return;
+
+  // Tab bar の active を更新
+  document.querySelectorAll('.mode-tab').forEach(tab => {
+    tab.classList.toggle('active', tab.dataset.mode === mode);
+  });
+
+  // 既存のメニュー item click を処理（現在の catalog-mode-menu-item と同じロジック）
+  const menuItem = document.querySelector(`.catalog-mode-menu-item[onclick*="handleSelectCatalogMode(${idx})"]`);
+  if(menuItem) menuItem.click();
+
+  // Menu を閉じる
+  closeCatalogModeMenu();
 }
 
 // メニュー/ドロワーの外をタップ/クリックしたら閉じる。ドロワー本体は
