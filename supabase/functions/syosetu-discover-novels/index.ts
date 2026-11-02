@@ -180,7 +180,12 @@ Deno.serve(async (req) => {
         duplicates_skipped: fresh.length > 0 ? candidates.length - fresh.length : 0,
         would_insert: rows.length,
         inserted: !dry_run && rows.length > 0 ? rows.length : 0,
-        rows: rows.slice(0, 10), // Preview of first 10
+        rows: rows.slice(0, 5),
+        _debug: {
+          existingKeysCount: existingKeys.size,
+          genreCode,
+          pagesRequested: pages,
+        },
       }),
       { headers: { "Content-Type": "application/json" } },
     );
