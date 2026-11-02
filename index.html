@@ -3056,6 +3056,169 @@
     0%, 100%{ transform: translateY(0) rotate(-2deg); }
     50%{ transform: translateY(-4px) rotate(2deg); }
   }
+
+  /* ---- Mode Selector (Model 3: Header Chip + Popover/Bottom Sheet) ---- */
+  .mode-selector-chip{
+    background: rgba(255,255,255,0.12);
+    border: 1px solid rgba(255,255,255,0.2);
+    color: var(--ink);
+    padding: 4px 10px;
+    border-radius: 12px;
+    font-size: 12px;
+    cursor: pointer;
+    margin-left: 8px;
+    transition: all 0.2s ease;
+    white-space: nowrap;
+  }
+  .mode-selector-chip:hover{
+    background: rgba(255,255,255,0.16);
+    border-color: rgba(255,255,255,0.3);
+  }
+  .mode-selector-chip:active{
+    transform: scale(0.92);
+  }
+
+  /* Desktop: Popover */
+  .mode-selector-popover{
+    display: none;
+    position: fixed;
+    top: 70px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: var(--bg);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 8px;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.4);
+    z-index: 100;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    width: 200px;
+  }
+  .mode-selector-popover.open{
+    display: grid;
+    animation: popoverSlideDown 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  }
+  @keyframes popoverSlideDown{
+    0%{ opacity: 0; transform: translateX(-50%) translateY(-12px) scale(0.95); }
+    100%{ opacity: 1; transform: translateX(-50%) translateY(0) scale(1); }
+  }
+  .mode-selector-item{
+    padding: 8px 12px;
+    border-radius: 8px;
+    border: 1px solid var(--line);
+    background: rgba(255,255,255,0.03);
+    color: var(--ink);
+    font-size: 12px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+  .mode-selector-item:hover{
+    background: rgba(255,255,255,0.08);
+    border-color: var(--plum);
+  }
+  .mode-selector-item:active{
+    transform: scale(0.96);
+  }
+  .mode-selector-item.active{
+    background: var(--plum);
+    color: #fff;
+    border-color: var(--plum);
+    animation: itemPop 0.3s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+  }
+  @keyframes itemPop{
+    0%{ transform: scale(0.9); }
+    60%{ transform: scale(1.08); }
+    100%{ transform: scale(1); }
+  }
+
+  /* Mobile: Bottom Sheet */
+  .mode-selector-sheet-backdrop{
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.4);
+    z-index: 99;
+  }
+  .mode-selector-sheet-backdrop.open{
+    display: block;
+    animation: backdropFadeIn 0.3s ease-out forwards;
+  }
+  @keyframes backdropFadeIn{
+    0%{ opacity: 0; }
+    100%{ opacity: 1; }
+  }
+  .mode-selector-bottom-sheet{
+    display: none;
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    background: var(--bg);
+    border-top: 1px solid var(--line);
+    border-radius: 20px 20px 0 0;
+    padding: 20px;
+    z-index: 101;
+  }
+  .mode-selector-bottom-sheet.open{
+    display: block;
+    animation: sheetSlideUp 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  }
+  @keyframes sheetSlideUp{
+    0%{ opacity: 0; transform: translateY(100%); }
+    100%{ opacity: 1; transform: translateY(0); }
+  }
+  .mode-selector-sheet-handle{
+    width: 36px;
+    height: 4px;
+    background: var(--line);
+    border-radius: 2px;
+    margin: 0 auto 16px;
+  }
+  .mode-selector-sheet-title{
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--ink);
+    margin-bottom: 16px;
+    text-align: center;
+  }
+  .mode-selector-sheet-grid{
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 12px;
+  }
+  .mode-selector-sheet-item{
+    padding: 16px 12px;
+    border-radius: 10px;
+    border: 1px solid var(--line);
+    background: rgba(255,255,255,0.03);
+    color: var(--ink);
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+  }
+  .mode-selector-sheet-item:active{
+    transform: scale(0.94);
+  }
+  .mode-selector-sheet-item.active{
+    background: var(--plum);
+    color: #fff;
+    border-color: var(--plum);
+    animation: itemPop 0.35s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+  }
+
+  /* Desktop: Show popover, hide bottom sheet */
+  @media (min-width: 860px){
+    .mode-selector-popover{ position: absolute; }
+  }
+  @media (max-width: 859px){
+    .mode-selector-popover{ display: none !important; }
+  }
 </style>
 <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
 </head>
@@ -3117,6 +3280,9 @@
     <div class="topbar">
       <div class="topbar-left">
         <div class="logo logo-driftwood-header" onclick="goHome()"><img src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==" alt="Wander" class="header-logo-img"></div>
+        <button class="mode-selector-chip" id="mode-selector-chip" onclick="toggleModeMenu()">
+          <span id="current-mode-label">映画</span> ▼
+        </button>
       </div>
       <div class="profile-chip" onclick="onProfileChipTap()">
         <div class="avatar" id="header-avatar">?</div>
@@ -3125,15 +3291,29 @@
       </div>
     </div>
 
-    <!-- Mode selector: Header 下の Tab Bar（A案）
-         content-first な配置：content を見てから mode を選択できる -->
-    <div class="mode-tab-bar" id="mode-tab-bar">
-      <button class="mode-tab active" data-mode="movie" onclick="switchCatalogMode('movie')">映画</button>
-      <button class="mode-tab" data-mode="tv" onclick="switchCatalogMode('tv')">ドラマ</button>
-      <button class="mode-tab" data-mode="anime" onclick="switchCatalogMode('anime')">アニメ</button>
-      <button class="mode-tab" data-mode="manga" onclick="switchCatalogMode('manga')">漫画</button>
-      <button class="mode-tab" data-mode="novel" onclick="switchCatalogMode('novel')">小説</button>
-      <button class="mode-tab" data-mode="music" onclick="switchCatalogMode('music')">音楽</button>
+    <!-- Mode selector: Popover (desktop) -->
+    <div class="mode-selector-popover" id="mode-selector-popover">
+      <button class="mode-selector-item" data-mode="movie" onclick="selectModeAndClose('movie')">映画</button>
+      <button class="mode-selector-item" data-mode="tv" onclick="selectModeAndClose('tv')">ドラマ</button>
+      <button class="mode-selector-item" data-mode="anime" onclick="selectModeAndClose('anime')">アニメ</button>
+      <button class="mode-selector-item" data-mode="manga" onclick="selectModeAndClose('manga')">漫画</button>
+      <button class="mode-selector-item" data-mode="novel" onclick="selectModeAndClose('novel')">小説</button>
+      <button class="mode-selector-item" data-mode="music" onclick="selectModeAndClose('music')">音楽</button>
+    </div>
+
+    <!-- Mode selector: Bottom sheet (mobile) -->
+    <div class="mode-selector-sheet-backdrop" id="mode-selector-sheet-backdrop" onclick="closeModeMenu()"></div>
+    <div class="mode-selector-bottom-sheet" id="mode-selector-bottom-sheet">
+      <div class="mode-selector-sheet-handle"></div>
+      <div class="mode-selector-sheet-title">メディアを選択</div>
+      <div class="mode-selector-sheet-grid">
+        <button class="mode-selector-sheet-item" data-mode="movie" onclick="selectModeAndClose('movie')">映画</button>
+        <button class="mode-selector-sheet-item" data-mode="tv" onclick="selectModeAndClose('tv')">ドラマ</button>
+        <button class="mode-selector-sheet-item" data-mode="anime" onclick="selectModeAndClose('anime')">アニメ</button>
+        <button class="mode-selector-sheet-item" data-mode="manga" onclick="selectModeAndClose('manga')">漫画</button>
+        <button class="mode-selector-sheet-item" data-mode="novel" onclick="selectModeAndClose('novel')">小説</button>
+        <button class="mode-selector-sheet-item" data-mode="music" onclick="selectModeAndClose('music')">音楽</button>
+      </div>
     </div>
 
     <div class="featured-banner" id="featured-banner"></div>
@@ -17454,6 +17634,57 @@ function filterReviews(filter){
 }
 
 // 2026-11-02: スクロール位置保持機能
+// Mode Selector (Model 3)
+function toggleModeMenu(){
+  const isDesktop = window.innerWidth >= 860;
+  if(isDesktop){
+    const popover = document.getElementById('mode-selector-popover');
+    popover.classList.toggle('open');
+    document.addEventListener('click', closeModeMenuOnClickOutside);
+  } else {
+    const backdrop = document.getElementById('mode-selector-sheet-backdrop');
+    const sheet = document.getElementById('mode-selector-bottom-sheet');
+    backdrop.classList.add('open');
+    sheet.classList.add('open');
+    document.addEventListener('click', closeModeMenuOnClickOutside);
+  }
+}
+
+function closeModeMenu(){
+  const popover = document.getElementById('mode-selector-popover');
+  const backdrop = document.getElementById('mode-selector-sheet-backdrop');
+  const sheet = document.getElementById('mode-selector-bottom-sheet');
+
+  popover.classList.remove('open');
+  backdrop.classList.remove('open');
+  sheet.classList.remove('open');
+
+  document.removeEventListener('click', closeModeMenuOnClickOutside);
+}
+
+function closeModeMenuOnClickOutside(event){
+  const chip = document.getElementById('mode-selector-chip');
+  const popover = document.getElementById('mode-selector-popover');
+  const backdrop = document.getElementById('mode-selector-sheet-backdrop');
+  const sheet = document.getElementById('mode-selector-bottom-sheet');
+
+  const isClickOnChip = chip && chip.contains(event.target);
+  const isClickOnPopover = popover && popover.contains(event.target);
+  const isClickOnSheet = sheet && sheet.contains(event.target);
+
+  if(!isClickOnChip && !isClickOnPopover && !isClickOnSheet){
+    closeModeMenu();
+  }
+}
+
+function selectModeAndClose(mode){
+  switchCatalogMode(mode);
+  const modeNames = { movie: '映画', tv: 'ドラマ', anime: 'アニメ', manga: '漫画', novel: '小説', music: '音楽' };
+  document.getElementById('current-mode-label').textContent = modeNames[mode] || mode;
+  closeModeMenu();
+}
+
+// Page scroll position
 // ページリロード時に、以前のスクロール位置を復元
 window.addEventListener('load', () => {
   const savedScrollPos = sessionStorage.getItem('scroll-position');
