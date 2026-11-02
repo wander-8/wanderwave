@@ -4,6 +4,7 @@ import { createClient } from "jsr:@supabase/supabase-js@2";
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
+// Supabase Edge Functions auto-deployment enabled
 // Jikan API v4: https://jikan.moe/ (MyAnimeList の非公式 API)
 // 無料、認証不要、アニメのメタデータを豊富に提供
 const JIKAN_API = "https://api.jikan.moe/v4";
