@@ -82,14 +82,19 @@ Deno.serve(async (req) => {
   } = await req.json().catch(() => ({}));
 
   try {
-    // 既存のアニメを dedup 用に取得
-    const existingRows = await selectAllRows(supabase, "movies", "title, release_year, media_type");
+    // 既存のアニメを dedup 用に取得（anime のみ）
+    const { data: existingRows, error: fetchErr } = await supabase
+      .from("movies")
+      .select("title, release_year, external_ids")
+      .eq("media_type", "anime");
+    if (fetchErr) throw fetchErr;
+
     const existingKeys = new Set(
-      existingRows.map((r: any) => `${normalizeTitle(r.title)}|${r.release_year}|anime`),
+      (existingRows || []).map((r: any) => `${normalizeTitle(r.title)}|${r.release_year}|anime`),
     );
     const existingMalIds = new Set(
-      existingRows
-        .filter((r: any) => r.media_type === "anime" && r.external_ids?.mal_id)
+      (existingRows || [])
+        .filter((r: any) => r.external_ids?.mal_id)
         .map((r: any) => r.external_ids.mal_id),
     );
 
@@ -113,7 +118,7 @@ Deno.serve(async (req) => {
         candidates.push(...result.data);
       }
 
-      await sleep(1500); // Jikan のレート制限（1秒に複数リクエスト禁止）
+      await sleep(500); // Jikan のレート制限対応
     }
 
     // 既存作品との重複を除外
