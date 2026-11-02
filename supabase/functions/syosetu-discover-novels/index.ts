@@ -19,20 +19,19 @@ async function syosetuFetch(params: Record<string, string>) {
     url.searchParams.set(k, v);
   }
 
-  for (let attempt = 0; attempt < 3; attempt++) {
-    try {
-      const res = await fetch(url.toString());
-      if (res.ok) return await res.text();
-      if (res.status === 429) {
-        await sleep(2000);
-        continue;
-      }
-      return null;
-    } catch {
-      await sleep(1000 * (attempt + 1));
+  try {
+    const res = await fetch(url.toString());
+    if (res.ok) {
+      const text = await res.text();
+      console.log("Syosetu fetch success, length:", text.length);
+      return text;
     }
+    console.error("Syosetu HTTP error:", res.status, res.statusText);
+    return null;
+  } catch (e) {
+    console.error("Syosetu fetch error:", e.message);
+    return null;
   }
-  return null;
 }
 
 function normalizeTitle(s: string): string {
