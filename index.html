@@ -17,6 +17,14 @@
 <meta name="twitter:title" content="Wander ― 気になるものを拾いに行こう">
 <meta name="twitter:description" content="気分で作品を見つける、あなたのためのサイト">
 <meta name="twitter:image" content="https://wander-8.site/og-image.png">
+<!-- 2026-11-02: Google Analytics 4 -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-XL8GQJ6PYN"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+  gtag('config', 'G-XL8GQJ6PYN');
+</script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <!-- カタログ本体(movies等)を読むSupabase REST APIへの最初のリクエストは、
@@ -3098,6 +3106,7 @@
           <button class="catalog-mode-hamburger-btn" id="catalog-mode-hamburger-btn" onclick="toggleCatalogModeMenu()" aria-label="表示を切り替える" title="表示を切り替える">
             <svg viewBox="0 0 24 24" width="34" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="4" y1="7" x2="20" y2="7"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="17" x2="20" y2="17"/></svg>
           </button>
+          <span id="mode-label" style="font-size:13px; margin-left:8px; color:var(--ink); font-weight:500;">映画</span>
         </div>
       </div>
       <div class="profile-chip" onclick="onProfileChipTap()">
@@ -10950,6 +10959,13 @@ function updateCatalogModeToggleUI(){
   const mode = state.catalogMode;
   const landingActive = state.homeLandingActive;
   const current = CATALOG_MODES.find(([m]) => m === mode);
+
+  // 2026-11-02: トップバーの mode-label も更新（ユーザーが現在地を把握できるように）
+  const modeLabel = document.getElementById('mode-label');
+  if(modeLabel && current){
+    modeLabel.textContent = landingActive ? 'ホーム' : current[1];
+  }
+
   CATALOG_MODE_UI_INSTANCES.forEach(u => {
     if(u.label){
       const label = document.getElementById(u.label);
@@ -17387,6 +17403,22 @@ function filterReviews(filter){
   event.target.classList.add('active');
   loadCatalogReviews();
 }
+
+// 2026-11-02: スクロール位置保持機能
+// ページリロード時に、以前のスクロール位置を復元
+window.addEventListener('load', () => {
+  const savedScrollPos = sessionStorage.getItem('scroll-position');
+  if(savedScrollPos !== null){
+    setTimeout(() => {
+      window.scrollTo(0, parseInt(savedScrollPos, 10));
+    }, 100);
+  }
+});
+
+// ページを離れる前にスクロール位置を保存
+window.addEventListener('beforeunload', () => {
+  sessionStorage.setItem('scroll-position', window.scrollY);
+});
 
 init().catch(err => console.error('初期化に失敗しました', err));
 </script>
