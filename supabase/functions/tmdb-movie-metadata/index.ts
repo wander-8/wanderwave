@@ -140,15 +140,18 @@ async function fillMissingSynopsis(supabase: any, offset: number, limit: number,
 // (オーナー指摘:「常に情報は変動するから自動で削除追加できるように
 // しておいて」)。未確認(vod_checked_at IS NULL)を最優先し、その次に
 // 確認が一番古い行から順に回す。
+// media_type='movie'と、media_type='tv'かつis_drama=true(実写ドラマ)
+// 両方に対応。TVシリーズ(drama)は/tv/{id}/watch/providers、映画(movie)は
+// /movie/{id}/watch/providersを使い分ける。DBではdrama行も'tv'として格納されており、
+// is_dramaフラグで区別される。
 const RECHECK_INTERVAL_DAYS = 30;
 async function fillVodFlatrate(supabase: any, offset: number, limit: number, write: boolean) {
   const cutoff = new Date(Date.now() - RECHECK_INTERVAL_DAYS * 24 * 60 * 60 * 1000).toISOString();
   const { data, error } = await supabase
     .from("movies")
-    .select("id, title, tmdb_id")
-    .eq("media_type", "movie")
+    .select("id, title, tmdb_id, media_type, is_drama")
+    .or(`and(media_type.eq.movie,or(vod_checked_at.is.null,vod_checked_at.lt.${cutoff})),and(media_type.eq.tv,is_drama.eq.true,or(vod_checked_at.is.null,vod_checked_at.lt.${cutoff}))`)
     .not("tmdb_id", "is", null)
-    .or(`vod_checked_at.is.null,vod_checked_at.lt.${cutoff}`)
     .order("vod_checked_at", { ascending: true, nullsFirst: true })
     .range(offset, offset + limit - 1);
   if (error) throw error;
@@ -160,7 +163,8 @@ async function fillVodFlatrate(supabase: any, offset: number, limit: number, wri
     const chunk = todo.slice(i, i + CONCURRENCY);
     const chunkResults = await Promise.all(
       chunk.map(async (m: any) => {
-        const wp = await tmdbFetch(`/movie/${m.tmdb_id}/watch/providers`, {});
+        const endpoint = m.media_type === "tv" ? "/tv" : "/movie";
+        const wp = await tmdbFetch(`${endpoint}/${m.tmdb_id}/watch/providers`, {});
         const flatrate = (wp?.results?.JP?.flatrate || []).map((p: any) => p.provider_name);
         const watchLink = wp?.results?.JP?.link || null;
         if (write) {
@@ -170,7 +174,7 @@ async function fillVodFlatrate(supabase: any, offset: number, limit: number, wri
             vod_checked_at: new Date().toISOString(),
           }).eq("id", m.id);
         }
-        return { movie_id: m.id, title: m.title, tmdb_id: m.tmdb_id, flatrate, watchLink };
+        return { movie_id: m.id, title: m.title, tmdb_id: m.tmdb_id, media_type: m.media_type, is_drama: m.is_drama, flatrate, watchLink };
       }),
     );
     results.push(...chunkResults);
