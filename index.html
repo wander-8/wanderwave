@@ -7045,8 +7045,9 @@ function renderHomeRows(){
       })()
     : pickWithSeriesCap(newReleasesSorted, 12, 2);
   if(newReleases.length){
+    const modeLabel = (CATALOG_MODES.find(([mode]) => mode === catalogMode) || [])[1] || '';
     html += `
-      <div class="section-label">今話題の新作</div>
+      <div class="section-label">今話題の新作${modeLabel}</div>
       <div class="results">${newReleases.map(m => buildCardHTML(m, { forcePosterHide: true })).join('')}</div>
     `;
   }
@@ -7093,7 +7094,7 @@ function renderHomeRows(){
         const summary = buildPocketAnalysisSummary(tagWeights, genreWeights, pocketCreators, catalogMode);
         html += `
           <div class="section-label-row" style="align-items: center; gap: 8px;">
-            <div class="section-label">ポケットから見えた、あなた向けの</div>
+            <div class="section-label">ポケットから見えた、あなた向けの${modeLabel}</div>
             <button class="info-icon" data-summary="${escapeHtml(summary)}" onclick="showInfo('この棚について', this.dataset.summary)">ⓘ</button>
           </div>
           <div class="results">${personalPicks.map(x => buildCardHTML(x.m)).join('')}</div>
