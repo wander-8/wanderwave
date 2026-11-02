@@ -75,34 +75,9 @@ Deno.serve(async (req) => {
   } = await req.json().catch(() => ({}));
 
   try {
-    // 既存のアニメを pagination で取得（large table scan 回避）
-    const existingKeys = new Set<string>();
-    let offset = 0;
-    const pageSize = 1000; // larger batches = fewer roundtrips
-    let hasMore = true;
-    let pageCount = 0;
-
-    while (hasMore && pageCount < 50) { // safety limit: max 50 pages
-      const { data: rows, error: fetchErr } = await supabase
-        .from("movies")
-        .select("title, release_year")
-        .eq("media_type", "anime")
-        .range(offset, offset + pageSize - 1);
-      if (fetchErr) throw fetchErr;
-
-      if (!rows || rows.length === 0) {
-        hasMore = false;
-      } else {
-        rows.forEach((r: any) => {
-          existingKeys.add(`${normalizeTitle(r.title)}|${r.release_year}|anime`);
-        });
-        offset += pageSize;
-        pageCount++;
-        if (rows.length < pageSize) hasMore = false;
-      }
-    }
-
-    const existingMalIds = new Set();
+    // Skip bulk fetch: pagination of 15000+ anime was timing out
+    // Instead, do individual duplicate checks at insert time
+    const existingKeys = new Set<string>();tml
 
     const candidates: any[] = [];
 
@@ -175,8 +150,25 @@ Deno.serve(async (req) => {
     }
 
     if (!dry_run && rows.length > 0) {
-      const { error: insertErr } = await supabase.from("movies").insert(rows);
-      if (insertErr) throw insertErr;
+      // Check for existing titles before insert (avoid duplicate errors)
+      const toInsert = [];
+      for (const row of rows) {
+        const { data: existing, error: checkErr } = await supabase
+          .from("movies")
+          .select("id")
+          .eq("media_type", "anime")
+          .ilike("title", row.title)
+          .limit(1);
+        if (checkErr) throw checkErr;
+        if (!existing || existing.length === 0) {
+          toInsert.push(row);
+        }
+      }
+
+      if (toInsert.length > 0) {
+        const { error: insertErr } = await supabase.from("movies").insert(toInsert);
+        if (insertErr) throw insertErr;
+      }
     }
 
     return new Response(
