@@ -3752,14 +3752,6 @@
       <div class="results" id="d-recommended-anime"></div>
     </div>
 
-    <!-- 「ドラマ」欄はTVドラマのページでだけ出す(隠しプレビューフラグがある
-         端末限定)。ここから開くとサイト全体のモードが自動でドラマに
-         切り替わる(goDetailWithMode参照)。 -->
-    <div id="d-recommended-drama-wrap" style="display:none;">
-      <div class="section-label">こんなドラマもおすすめ</div>
-      <div class="results" id="d-recommended-drama"></div>
-    </div>
-
     <!-- 「漫画」欄は漫画のページでだけ出す(隠しプレビューフラグがある
          端末限定)。ここから開くとサイト全体のモードが自動で漫画に
          切り替わる(goDetailWithMode参照)。 -->
@@ -9610,24 +9602,6 @@ async function renderRecommended(currentMovie){
   // 「ドラマ」欄: TVドラマのページに加えて、普通の実写
   // 映画のページでも出す(ドラマと実写映画は視聴者層が近く、行き来したい
   // という要望のため)。TVアニメ・アニメ映画のページでは出さない。
-  const currentIsDrama = !!currentMovie.isDrama && currentMovie.mediaType === 'tv';
-  const currentIsRegularMovie = currentMovie.mediaType === 'movie' && !isAnimeWork(currentMovie);
-  const dramaWrap = document.getElementById('d-recommended-drama-wrap');
-  if(animePreview && (currentIsDrama || currentIsRegularMovie)){
-    const dramaPool = others.filter(m => m.isDrama);
-    const dramaList = await scoreAndPick(dramaPool, MIN_COUNT + 2, 'drama', 1, { intensityTarget: currentIntensityLevel });
-    if(myToken === renderRecommendedToken){
-      if(dramaList.length){
-        dramaWrap.style.display = 'block';
-        renderMovieCards(document.getElementById('d-recommended-drama'), dramaList, '', { forceMode: 'drama' });
-      } else {
-        dramaWrap.style.display = 'none';
-      }
-    }
-  } else {
-    dramaWrap.style.display = 'none';
-  }
-
   // 「漫画」欄: 漫画のページでだけ出す。ドラマと違い、
   // 漫画は実写映画と視聴者層が近いわけではないので、映画ページには混ぜない。
   const currentIsManga = !!currentMovie.isManga;
