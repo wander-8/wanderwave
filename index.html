@@ -11618,7 +11618,6 @@ async function loadMovieReviews(m){
     if(state.currentMovieId !== m.id) return; // 別の映画に移動していたら反映しない
 
     // ブロック済みユーザーのレビューを除外
-    const userId = await currentUserId();
     let blockedUserIds = new Set();
     if(userId){
       try{
