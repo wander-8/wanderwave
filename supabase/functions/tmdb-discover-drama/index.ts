@@ -148,9 +148,9 @@ Deno.serve(async (req: Request) => {
 
     const supabase = createClient(SUPABASE_URL, SERVICE_ROLE);
 
-    const existingRows = await selectAllRows(supabase, "movies", "title, release_year");
+    const existingRows = await selectAllRows(supabase, "movies", "title, release_year, media_type");
     const existingKeys = new Set(
-      existingRows.map((r: any) => `${normalizeTitle(r.title)}|${r.release_year}`),
+      existingRows.map((r: any) => `${normalizeTitle(r.title)}|${r.release_year}|${r.media_type}`),
     );
 
     // 1) TMDbのdiscover/tvでドラマ候補一覧を取得。
@@ -172,10 +172,10 @@ Deno.serve(async (req: Request) => {
       await sleep(150);
     }
 
-    // 2) 既存作品との重複を除外(タイトル+公開年で判定)
+    // 2) 既存作品との重複を除外(タイトル+公開年+media_typeで判定)
     const fresh = candidates.filter((c: any) => {
       const year = c.first_air_date ? parseInt(String(c.first_air_date).slice(0, 4), 10) : null;
-      const key = `${normalizeTitle(c.name)}|${year}`;
+      const key = `${normalizeTitle(c.name)}|${year}|drama`;
       return !existingKeys.has(key);
     });
 
@@ -256,7 +256,7 @@ Deno.serve(async (req: Request) => {
             series: null,
             series_checked_at: null,
             tmdb_id: c.id,
-            media_type: "tv",
+            media_type: "drama",
             is_anime: false,
             is_drama: true,
             tmdb_vote_count: c.vote_count,

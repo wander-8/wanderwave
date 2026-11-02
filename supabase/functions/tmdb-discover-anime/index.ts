@@ -161,9 +161,9 @@ Deno.serve(async (req: Request) => {
 
     const supabase = createClient(SUPABASE_URL, SERVICE_ROLE);
 
-    const existingRows = await selectAllRows(supabase, "movies", "title, release_year");
+    const existingRows = await selectAllRows(supabase, "movies", "title, release_year, media_type");
     const existingKeys = new Set(
-      existingRows.map((r: any) => `${normalizeTitle(r.title)}|${r.release_year}`),
+      existingRows.map((r: any) => `${normalizeTitle(r.title)}|${r.release_year}|${r.media_type}`),
     );
 
     // 1) TMDbのdiscoverでアニメ候補一覧を取得。
@@ -200,12 +200,13 @@ Deno.serve(async (req: Request) => {
       await sleep(150);
     }
 
-    // 2) 既存作品との重複を除外(タイトル+公開年で判定)
+    // 2) 既存作品との重複を除外(タイトル+公開年+media_typeで判定)
     const fresh = candidates.filter((c: any) => {
       const dateStr = media === "movie" ? c.release_date : c.first_air_date;
       const year = dateStr ? parseInt(String(dateStr).slice(0, 4), 10) : null;
       const title = media === "movie" ? c.title : c.name;
-      const key = `${normalizeTitle(title)}|${year}`;
+      const mediaType = media === "movie" ? "anime" : "anime";
+      const key = `${normalizeTitle(title)}|${year}|${mediaType}`;
       return !existingKeys.has(key);
     });
 
@@ -301,7 +302,7 @@ Deno.serve(async (req: Request) => {
             series,
             series_checked_at: media === "movie" ? new Date().toISOString() : null,
             tmdb_id: c.id,
-            media_type: media,
+            media_type: "anime",
             is_anime: true,
             tmdb_vote_count: c.vote_count,
             tmdb_vote_average: c.vote_average,

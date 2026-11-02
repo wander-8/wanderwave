@@ -202,9 +202,9 @@ Deno.serve(async (req: Request) => {
 
     const supabase = createClient(SUPABASE_URL, SERVICE_ROLE);
 
-    const existingRows = await selectAllRows(supabase, "movies", "title, release_year");
+    const existingRows = await selectAllRows(supabase, "movies", "title, release_year, media_type");
     const existingKeys = new Set(
-      existingRows.map((r: any) => `${normalizeTitle(r.title)}|${r.release_year}`),
+      existingRows.map((r: any) => `${normalizeTitle(r.title)}|${r.release_year}|${r.media_type}`),
     );
 
     const candidates: any[] = [];
@@ -241,7 +241,7 @@ const fresh = candidates.filter((c: any) => {
       const title = pickDisplayTitle(c);
       if (!title) return false;
       const year = c.startDate?.year || null;
-      const key = `${normalizeTitle(title)}|${year}`;
+      const key = `${normalizeTitle(title)}|${year}|manga`;
       return !existingKeys.has(key);
     });
 
@@ -252,7 +252,7 @@ const fresh = candidates.filter((c: any) => {
     for (const c of fresh) {
       const title = pickDisplayTitle(c);
       const year = c.startDate?.year || null;
-      const key = `${normalizeTitle(title)}|${year}`;
+      const key = `${normalizeTitle(title)}|${year}|manga`;
       if (seenInBatch.has(key)) {
         skipped.push({ id: c.id, title, reason: "duplicate_in_batch" });
         continue;
@@ -287,6 +287,7 @@ const fresh = candidates.filter((c: any) => {
 
       rows.push({
         title,
+        media_type: "manga",
         release_year: year,
         emotion_tags: emotionTags,
         genre: genreNames.length ? genreNames : null,

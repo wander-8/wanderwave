@@ -220,10 +220,10 @@ Deno.serve(async (req: Request) => {
 
     const supabase = createClient(SUPABASE_URL, SERVICE_ROLE);
 
-    // 重複チェック用に既存作品の(タイトル正規化, 公開年)を一度だけ取得しておく
-    const existingRows = await selectAllRows(supabase, "movies", "title, release_year, tmdb_id");
+    // 重複チェック用に既存作品の(タイトル正規化, 公開年, media_type)を一度だけ取得しておく
+    const existingRows = await selectAllRows(supabase, "movies", "title, release_year, media_type, tmdb_id");
     const existingKeys = new Set(
-      existingRows.map((r: any) => `${normalizeTitle(r.title)}|${r.release_year}`),
+      existingRows.map((r: any) => `${normalizeTitle(r.title)}|${r.release_year}|${r.media_type}`),
     );
     const existingTmdbIds = new Set(existingRows.map((r: any) => r.tmdb_id).filter((v: any) => v != null));
 
@@ -246,10 +246,10 @@ Deno.serve(async (req: Request) => {
       await sleep(150);
     }
 
-    // 2) 既存作品との重複を除外(タイトル+公開年で判定)
+    // 2) 既存作品との重複を除外(タイトル+公開年+media_typeで判定)
     const fresh = candidates.filter((c: any) => {
       const year = c.release_date ? parseInt(String(c.release_date).slice(0, 4), 10) : null;
-      const key = `${normalizeTitle(c.title)}|${year}`;
+      const key = `${normalizeTitle(c.title)}|${year}|movie`;
       return !existingKeys.has(key) && !existingTmdbIds.has(c.id);
     });
 
@@ -302,6 +302,7 @@ Deno.serve(async (req: Request) => {
 
           return {
             title: details.title || c.title,
+            media_type: "movie",
             release_year: year,
             emotion_tags: emotionTags,
             genre: genreNames.length ? genreNames : null,

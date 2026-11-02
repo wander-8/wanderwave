@@ -250,14 +250,14 @@ Deno.serve(async (req: Request) => {
 
     const supabase = createClient(SUPABASE_URL, SERVICE_ROLE);
 
-    const existingRows = await selectAllRows(supabase, "movies", "title, release_year");
+    const existingRows = await selectAllRows(supabase, "movies", "title, release_year, media_type");
     // 既存タイトルは、以前このstripVolumeSuffix修正が入る前に「（第9巻）」の
     // ような巻数付きのまま登録された行が混じっているため、素の文字列同士の
     // 比較だけでは「作品名（第9巻）」と後から入ってきた素の「作品名」を
     // 別作品と誤認して両方登録してしまう(実例:「ブッダ（第5巻）」と後発の
     // 「ブッダ」が重複登録された)。既存タイトル側もstripVolumeSuffixで
     // 正規化してから比較することで、この手のクロスバッチ重複を防ぐ。
-    const existingTitles = new Set(existingRows.map((r: any) => normalizeTitle(stripVolumeSuffix(r.title))));
+    const existingTitles = new Set(existingRows.map((r: any) => `${normalizeTitle(stripVolumeSuffix(r.title))}|manga`));
 
     const candidates: any[] = [];
     for (const page of pages) {
@@ -303,7 +303,7 @@ Deno.serve(async (req: Request) => {
       representatives.push({ key, item: list[0] });
     }
 
-    const fresh = representatives.filter((r) => !existingTitles.has(normalizeTitle(r.key)));
+    const fresh = representatives.filter((r) => !existingTitles.has(`${normalizeTitle(r.key)}|manga`));
 
     const now = new Date();
     const rows: any[] = [];
