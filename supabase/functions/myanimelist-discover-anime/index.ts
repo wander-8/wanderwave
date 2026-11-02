@@ -77,7 +77,6 @@ Deno.serve(async (req) => {
   try {
     // Skip bulk fetch: pagination of 15000+ anime was timing out
     // Instead, do individual duplicate checks at insert time
-    const existingKeys = new Set<string>();tml
 
     const candidates: any[] = [];
 
