@@ -113,15 +113,18 @@ Deno.serve(async (req) => {
       if (result) {
         try {
           const data = JSON.parse(result);
+          // Syosetu returns array of novels directly
           if (Array.isArray(data)) {
-            candidates.push(...data);
+            // Filter out the first metadata object if present
+            const novels = data.filter((item: any) => item?.ncode);
+            candidates.push(...novels);
           }
         } catch (e) {
-          console.error("Failed to parse Syosetu response:", e);
+          console.error("Syosetu parse error:", e.message);
         }
       }
 
-      await sleep(300); // Syosetu レート制限対応
+      await sleep(100); // Minimal rate limit
     }
 
     // 既存作品との重複を除外
