@@ -45,13 +45,13 @@ Deno.serve(async (req) => {
 
   const { media_type = "movie", limit = 100, dry_run = false } = await req.json().catch(() => ({}));
 
-  // Find movies with missing director/cast
+  // Find movies with missing director/cast (must have tmdb_id)
   const { data: movies, error } = await supabase
     .from("movies")
     .select("id, title, release_year, tmdb_id, media_type")
     .eq("media_type", media_type)
     .or(`director.is.null,cast_members.is.null`)
-    .is("tmdb_id", "null")
+    .not("tmdb_id", "is", null)
     .limit(limit);
 
   if (error) throw error;
@@ -61,11 +61,6 @@ Deno.serve(async (req) => {
   const skipped: any[] = [];
 
   for (const movie of movies || []) {
-    if (!movie.tmdb_id) {
-      skipped.push({ id: movie.id, title: movie.title, reason: "no_tmdb_id" });
-      continue;
-    }
-
     try {
       const [details, credits] = await Promise.all([
         tmdbFetch(`/movie/${movie.tmdb_id}`, { language: "ja-JP" }),
@@ -108,7 +103,7 @@ Deno.serve(async (req) => {
         skipped.push({ id: movie.id, title: movie.title, reason: "no_new_data" });
       }
 
-      await sleep(150);
+      await sleep(50);
     } catch (err) {
       failed.push({ id: movie.id, title: movie.title, error: err.message });
     }
