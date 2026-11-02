@@ -7,7 +7,7 @@ const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 // GitHub Actions auto-deployment pipeline enabled
 // 小説家になろう API: https://dev.syosetu.com/man/api/
 // 最も人気・最新の小説を取得。フリー API なので制限あり（30件/1リクエスト）
-const SYOSETU_API = "https://api.syosetu.com/novels/1_0/api/";
+const SYOSETU_API = "https://api.syosetu.com/novelapi/api/";
 
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -102,10 +102,10 @@ Deno.serve(async (req) => {
     // 各ページから小説を取得
     for (const page of pages) {
       const params: Record<string, string> = {
-        output: "json",
-        limit: "30",
+        out: "json", // Syosetu API uses 'out' not 'output'
+        lim: "30", // Also 'lim' not 'limit'
         st: page === 1 ? "1" : String((page - 1) * 30 + 1),
-        ...(genreCode && { genre: String(genreCode) }),
+        ...(genreCode && { gensou: String(genreCode) }), // 'gensou' is genre param
       };
 
       console.log("Syosetu request:", { page, params, genreCode, genre });
