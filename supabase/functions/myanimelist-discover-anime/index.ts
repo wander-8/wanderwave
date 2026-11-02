@@ -19,13 +19,31 @@ async function jikanFetch(endpoint: string, params: Record<string, string> = {})
     url.searchParams.set(k, v);
   }
 
-  try {
-    const res = await fetch(url.toString());
-    if (res.ok) return await res.json();
-    return null;
-  } catch {
-    return null;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      console.log(`Jikan fetch attempt ${attempt + 1}/3: ${url.toString()}`);
+      const res = await fetch(url.toString());
+      if (res.ok) {
+        const data = await res.json();
+        console.log("Jikan fetch success");
+        return data;
+      }
+      if (res.status === 429) {
+        const retryAfter = Number(res.headers.get("retry-after")) || 1;
+        console.warn(`Jikan rate limited, retrying after ${retryAfter}s`);
+        await sleep((retryAfter + 0.5) * 1000);
+        continue;
+      }
+      console.warn(`Jikan HTTP ${res.status}, retrying...`);
+      await sleep(500 * (attempt + 1));
+      continue;
+    } catch (e) {
+      console.error(`Jikan fetch error attempt ${attempt + 1}:`, e.message);
+      await sleep(500 * (attempt + 1));
+    }
   }
+  console.error("Jikan fetch failed after 3 attempts");
+  return null;
 }
 
 function normalizeTitle(s: string): string {
