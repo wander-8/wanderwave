@@ -61,9 +61,16 @@ Deno.serve(async (req) => {
   const { genre = "romance", limit = 100, dry_run = false, pages = [1] } = await req.json().catch(() => ({}));
 
   try {
-    // Skip bulk pagination fetch: too slow with 15000+ existing novels
-    // Instead, check duplicates at insert time per-row
-    const existingKeys = new Set<string>(); // empty, will skip initial filter
+    // Load existing titles once at start (O(1) lookup instead of O(n) per-row scan)
+    const { data: existingRecords, error: fetchErr } = await supabase
+      .from("movies")
+      .select("title")
+      .eq("media_type", "novel");
+    if (fetchErr) throw fetchErr;
+
+    const existingTitles = new Set(
+      (existingRecords || []).map((r: any) => normalizeTitle(r.title))
+    );
 
     const candidates: any[] = [];
 
@@ -112,9 +119,11 @@ Deno.serve(async (req) => {
       await sleep(100);
     }
 
-    // 既存作品との重複を除外
-    // Skip dedup filter: check at insert time instead (faster)
-    const fresh = candidates.filter((c: any) => !!c.title);
+    // Filter to fresh candidates only (using pre-cached titles)
+    const fresh = candidates.filter((c: any) => {
+      if (!c.title) return false;
+      return !existingTitles.has(normalizeTitle(c.title));
+    });
 
     // 詳細情報を組み立て
     const rows: any[] = [];
@@ -144,25 +153,8 @@ Deno.serve(async (req) => {
     }
 
     if (!dry_run && rows.length > 0) {
-      // Check for existing titles before insert (avoid duplicate errors)
-      const toInsert = [];
-      for (const row of rows) {
-        const { data: existing, error: checkErr } = await supabase
-          .from("movies")
-          .select("id")
-          .eq("media_type", "novel")
-          .ilike("title", row.title)
-          .limit(1);
-        if (checkErr) throw checkErr;
-        if (!existing || existing.length === 0) {
-          toInsert.push(row);
-        }
-      }
-
-      if (toInsert.length > 0) {
-        const { error: insertErr } = await supabase.from("movies").insert(toInsert);
-        if (insertErr) throw insertErr;
-      }
+      const { error: insertErr } = await supabase.from("movies").insert(rows);
+      if (insertErr) throw insertErr;
     }
 
     return new Response(
@@ -175,7 +167,7 @@ Deno.serve(async (req) => {
         inserted: !dry_run && rows.length > 0 ? rows.length : 0,
         rows: rows.slice(0, 5),
         _debug: {
-          existingKeysCount: existingKeys.size,
+          existingTitlesCount: existingTitles.size,
           genreCode,
           pagesRequested: pages,
         },

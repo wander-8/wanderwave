@@ -75,8 +75,16 @@ Deno.serve(async (req) => {
   } = await req.json().catch(() => ({}));
 
   try {
-    // Skip bulk fetch: pagination of 15000+ anime was timing out
-    // Instead, do individual duplicate checks at insert time
+    // Load existing titles once at start (O(1) lookup instead of O(n) per-row scan)
+    const { data: existingRecords, error: fetchErr } = await supabase
+      .from("movies")
+      .select("title")
+      .eq("media_type", "anime");
+    if (fetchErr) throw fetchErr;
+
+    const existingTitles = new Set(
+      (existingRecords || []).map((r: any) => normalizeTitle(r.title))
+    );
 
     const candidates: any[] = [];
 
@@ -100,8 +108,11 @@ Deno.serve(async (req) => {
       // removed sleep: retry logic was moved up, no rate limit needed here
     }
 
-    // Skip dedup filter: check at insert time instead (faster)
-    const fresh = candidates.filter((c: any) => !!c.title);
+    // Filter to fresh candidates only (using pre-cached titles)
+    const fresh = candidates.filter((c: any) => {
+      if (!c.title) return false;
+      return !existingTitles.has(normalizeTitle(c.title));
+    });
 
     // 詳細情報を組み立て
     const rows: any[] = [];
@@ -142,25 +153,8 @@ Deno.serve(async (req) => {
     }
 
     if (!dry_run && rows.length > 0) {
-      // Check for existing titles before insert (avoid duplicate errors)
-      const toInsert = [];
-      for (const row of rows) {
-        const { data: existing, error: checkErr } = await supabase
-          .from("movies")
-          .select("id")
-          .eq("media_type", "anime")
-          .ilike("title", row.title)
-          .limit(1);
-        if (checkErr) throw checkErr;
-        if (!existing || existing.length === 0) {
-          toInsert.push(row);
-        }
-      }
-
-      if (toInsert.length > 0) {
-        const { error: insertErr } = await supabase.from("movies").insert(toInsert);
-        if (insertErr) throw insertErr;
-      }
+      const { error: insertErr } = await supabase.from("movies").insert(rows);
+      if (insertErr) throw insertErr;
     }
 
     return new Response(
