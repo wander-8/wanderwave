@@ -20,7 +20,11 @@ async function syosetuFetch(params: Record<string, string>) {
   }
 
   try {
-    const res = await fetch(url.toString());
+    const res = await fetch(url.toString(), {
+      headers: {
+        "User-Agent": "Wander-Wave/1.0 (Anime Discovery Bot)"
+      }
+    });
     if (res.ok) {
       const text = await res.text();
       console.log("Syosetu fetch success, length:", text.length);
