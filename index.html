@@ -3298,12 +3298,12 @@
 
     <!-- Mode selector: Popover (desktop) -->
     <div class="mode-selector-popover" id="mode-selector-popover">
-      <button class="mode-selector-item" data-mode="movie" onclick="setCatalogMode('movie'); closeModeMenu();">映画</button>
-      <button class="mode-selector-item" data-mode="drama" onclick="setCatalogMode('drama'); closeModeMenu();">ドラマ</button>
-      <button class="mode-selector-item" data-mode="anime" onclick="setCatalogMode('anime'); closeModeMenu();">アニメ</button>
-      <button class="mode-selector-item" data-mode="manga" onclick="setCatalogMode('manga'); closeModeMenu();">漫画</button>
-      <button class="mode-selector-item" data-mode="novel" onclick="setCatalogMode('novel'); closeModeMenu();">小説</button>
-      <button class="mode-selector-item" data-mode="music" onclick="setCatalogMode('music'); closeModeMenu();">音楽</button>
+      <button class="mode-selector-item" data-mode="movie" onclick="setCatalogMode('movie'); updateModeSelectorChip('movie'); closeModeMenu();">映画</button>
+      <button class="mode-selector-item" data-mode="drama" onclick="setCatalogMode('drama'); updateModeSelectorChip('drama'); closeModeMenu();">ドラマ</button>
+      <button class="mode-selector-item" data-mode="anime" onclick="setCatalogMode('anime'); updateModeSelectorChip('anime'); closeModeMenu();">アニメ</button>
+      <button class="mode-selector-item" data-mode="manga" onclick="setCatalogMode('manga'); updateModeSelectorChip('manga'); closeModeMenu();">漫画</button>
+      <button class="mode-selector-item" data-mode="novel" onclick="setCatalogMode('novel'); updateModeSelectorChip('novel'); closeModeMenu();">小説</button>
+      <button class="mode-selector-item" data-mode="music" onclick="setCatalogMode('music'); updateModeSelectorChip('music'); closeModeMenu();">音楽</button>
     </div>
 
     <!-- Mode selector: Bottom sheet (mobile) -->
@@ -3312,12 +3312,12 @@
       <div class="mode-selector-sheet-handle"></div>
       <div class="mode-selector-sheet-title">メディアを選択</div>
       <div class="mode-selector-sheet-grid">
-        <button class="mode-selector-sheet-item" data-mode="movie" onclick="setCatalogMode('movie'); closeModeMenu();">映画</button>
-        <button class="mode-selector-sheet-item" data-mode="drama" onclick="setCatalogMode('drama'); closeModeMenu();">ドラマ</button>
-        <button class="mode-selector-sheet-item" data-mode="anime" onclick="setCatalogMode('anime'); closeModeMenu();">アニメ</button>
-        <button class="mode-selector-sheet-item" data-mode="manga" onclick="setCatalogMode('manga'); closeModeMenu();">漫画</button>
-        <button class="mode-selector-sheet-item" data-mode="novel" onclick="setCatalogMode('novel'); closeModeMenu();">小説</button>
-        <button class="mode-selector-sheet-item" data-mode="music" onclick="setCatalogMode('music'); closeModeMenu();">音楽</button>
+        <button class="mode-selector-sheet-item" data-mode="movie" onclick="setCatalogMode('movie'); updateModeSelectorChip('movie'); closeModeMenu();">映画</button>
+        <button class="mode-selector-sheet-item" data-mode="drama" onclick="setCatalogMode('drama'); updateModeSelectorChip('drama'); closeModeMenu();">ドラマ</button>
+        <button class="mode-selector-sheet-item" data-mode="anime" onclick="setCatalogMode('anime'); updateModeSelectorChip('anime'); closeModeMenu();">アニメ</button>
+        <button class="mode-selector-sheet-item" data-mode="manga" onclick="setCatalogMode('manga'); updateModeSelectorChip('manga'); closeModeMenu();">漫画</button>
+        <button class="mode-selector-sheet-item" data-mode="novel" onclick="setCatalogMode('novel'); updateModeSelectorChip('novel'); closeModeMenu();">小説</button>
+        <button class="mode-selector-sheet-item" data-mode="music" onclick="setCatalogMode('music'); updateModeSelectorChip('music'); closeModeMenu();">音楽</button>
       </div>
     </div>
 
