@@ -5,7 +5,7 @@ const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const TMDB_KEY = Deno.env.get("TMDB_API_KEY")!;
 
-// GitHub Actions auto-deployment test - retry
+// GitHub Actions auto-deployment with corrected Project ID
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
