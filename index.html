@@ -3296,12 +3296,12 @@
 
     <!-- Mode selector: Popover (desktop) -->
     <div class="mode-selector-popover" id="mode-selector-popover">
-      <button class="mode-selector-item" data-mode="movie" onclick="selectModeAndClose('movie')">映画</button>
-      <button class="mode-selector-item" data-mode="tv" onclick="selectModeAndClose('tv')">ドラマ</button>
-      <button class="mode-selector-item" data-mode="anime" onclick="selectModeAndClose('anime')">アニメ</button>
-      <button class="mode-selector-item" data-mode="manga" onclick="selectModeAndClose('manga')">漫画</button>
-      <button class="mode-selector-item" data-mode="novel" onclick="selectModeAndClose('novel')">小説</button>
-      <button class="mode-selector-item" data-mode="music" onclick="selectModeAndClose('music')">音楽</button>
+      <button class="mode-selector-item" data-mode="movie" onclick="setCatalogMode('movie'); closeModeMenu();">映画</button>
+      <button class="mode-selector-item" data-mode="tv" onclick="setCatalogMode('tv'); closeModeMenu();">ドラマ</button>
+      <button class="mode-selector-item" data-mode="anime" onclick="setCatalogMode('anime'); closeModeMenu();">アニメ</button>
+      <button class="mode-selector-item" data-mode="manga" onclick="setCatalogMode('manga'); closeModeMenu();">漫画</button>
+      <button class="mode-selector-item" data-mode="novel" onclick="setCatalogMode('novel'); closeModeMenu();">小説</button>
+      <button class="mode-selector-item" data-mode="music" onclick="setCatalogMode('music'); closeModeMenu();">音楽</button>
     </div>
 
     <!-- Mode selector: Bottom sheet (mobile) -->
@@ -3310,12 +3310,12 @@
       <div class="mode-selector-sheet-handle"></div>
       <div class="mode-selector-sheet-title">メディアを選択</div>
       <div class="mode-selector-sheet-grid">
-        <button class="mode-selector-sheet-item" data-mode="movie" onclick="selectModeAndClose('movie')">映画</button>
-        <button class="mode-selector-sheet-item" data-mode="tv" onclick="selectModeAndClose('tv')">ドラマ</button>
-        <button class="mode-selector-sheet-item" data-mode="anime" onclick="selectModeAndClose('anime')">アニメ</button>
-        <button class="mode-selector-sheet-item" data-mode="manga" onclick="selectModeAndClose('manga')">漫画</button>
-        <button class="mode-selector-sheet-item" data-mode="novel" onclick="selectModeAndClose('novel')">小説</button>
-        <button class="mode-selector-sheet-item" data-mode="music" onclick="selectModeAndClose('music')">音楽</button>
+        <button class="mode-selector-sheet-item" data-mode="movie" onclick="setCatalogMode('movie'); closeModeMenu();">映画</button>
+        <button class="mode-selector-sheet-item" data-mode="tv" onclick="setCatalogMode('tv'); closeModeMenu();">ドラマ</button>
+        <button class="mode-selector-sheet-item" data-mode="anime" onclick="setCatalogMode('anime'); closeModeMenu();">アニメ</button>
+        <button class="mode-selector-sheet-item" data-mode="manga" onclick="setCatalogMode('manga'); closeModeMenu();">漫画</button>
+        <button class="mode-selector-sheet-item" data-mode="novel" onclick="setCatalogMode('novel'); closeModeMenu();">小説</button>
+        <button class="mode-selector-sheet-item" data-mode="music" onclick="setCatalogMode('music'); closeModeMenu();">音楽</button>
       </div>
     </div>
 
@@ -11026,12 +11026,15 @@ function toggleCatalogModeMenu(){
 
 // Tab Bar: mode を切り替えて UI を更新
 function switchCatalogMode(mode){
-  // Model 3: Mode を切り替えて catalog を再描画
+  // Mode を切り替えて catalog を再描画
   const modeMap = { movie: 'movie', tv: 'tv', anime: 'anime', drama: 'drama', manga: 'manga', novel: 'novel', music: 'music' };
   if(!modeMap[mode]) return;
 
   // Current mode を更新
   window.currentCatalogMode = mode;
+
+  // Header chip label を更新
+  updateModeSelectorChip(mode);
 
   // Popover/Bottom sheet の active state を更新
   document.querySelectorAll('.mode-selector-item').forEach(item => {
@@ -17689,11 +17692,11 @@ function closeModeMenuOnClickOutside(event){
   }
 }
 
-function selectModeAndClose(mode){
-  switchCatalogMode(mode);
-  const modeNames = { movie: '映画', tv: 'ドラマ', anime: 'アニメ', manga: '漫画', novel: '小説', music: '音楽' };
-  document.getElementById('current-mode-label').textContent = modeNames[mode] || mode;
-  closeModeMenu();
+// Update header chip label when mode changes
+function updateModeSelectorChip(mode){
+  const modeNames = { movie: '映画', tv: 'ドラマ', anime: 'アニメ', manga: '漫画', novel: '小説', drama: 'ドラマ', music: '音楽' };
+  const chip = document.getElementById('current-mode-label');
+  if(chip) chip.textContent = modeNames[mode] || mode;
 }
 
 // Page scroll position
