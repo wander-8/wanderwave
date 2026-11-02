@@ -106,11 +106,11 @@ Deno.serve(async (req) => {
 
     const candidates: any[] = [];
 
-    // 各ページからアニメを取得
-    for (const page of pages) {
+    // 各ページからアニメを取得（ページング制限: 最初のページのみ）
+    for (const page of pages.slice(0, 1)) { // only first page
       const params: Record<string, string> = {
         page: String(page),
-        limit: "25", // Jikan の推奨値
+        limit: "10", // reduced from 25 for faster response
         order_by: order_by,
         sort: "desc",
       };
@@ -123,8 +123,7 @@ Deno.serve(async (req) => {
       if (result?.data && Array.isArray(result.data)) {
         candidates.push(...result.data);
       }
-
-      await sleep(100); // Minimal rate limit
+      // removed sleep: retry logic was moved up, no rate limit needed here
     }
 
     // 既存作品との重複を除外
