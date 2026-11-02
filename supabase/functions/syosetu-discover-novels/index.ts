@@ -102,29 +102,32 @@ Deno.serve(async (req) => {
     // 各ページから小説を取得
     for (const page of pages) {
       const params: Record<string, string> = {
-        gensou: "true",
         output: "json",
-        limit: "30", // Syosetu free API の最大値
-        st: page === 1 ? "1" : String((page - 1) * 30 + 1), // start number
+        limit: "30",
+        st: page === 1 ? "1" : String((page - 1) * 30 + 1),
         ...(genreCode && { genre: String(genreCode) }),
       };
 
+      console.log("Syosetu request:", { page, params, genreCode, genre });
       const result = await syosetuFetch(params);
+      console.log("Syosetu response:", result?.substring(0, 200));
+
       if (result) {
         try {
           const data = JSON.parse(result);
-          // Syosetu returns array of novels directly
           if (Array.isArray(data)) {
-            // Filter out the first metadata object if present
             const novels = data.filter((item: any) => item?.ncode);
+            console.log(`Page ${page}: found ${novels.length} novels`);
             candidates.push(...novels);
           }
         } catch (e) {
-          console.error("Syosetu parse error:", e.message);
+          console.error("Syosetu parse error:", e.message, "Input:", result?.substring(0, 200));
         }
+      } else {
+        console.warn(`Syosetu API returned null for page ${page}`);
       }
 
-      await sleep(100); // Minimal rate limit
+      await sleep(100);
     }
 
     // 既存作品との重複を除外
