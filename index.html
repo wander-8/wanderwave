@@ -3438,7 +3438,10 @@
 
   <!-- ============ DETAIL VIEW ============ -->
   <div class="view" id="view-detail">
-    <button class="back-btn" id="d-back-btn" onclick="goDetailBack()">← 一覧に戻る</button>
+    <div style="display: flex; align-items: center; gap: 8px; padding: 12px 16px; border-bottom: 1px solid var(--line);">
+      <div class="logo" onclick="goHome()" style="cursor: pointer; flex-shrink: 0;"><img src="logo.png" alt="Wander" style="width: 24px; height: 24px;"></div>
+      <button class="back-btn" id="d-back-btn" onclick="goDetailBack()" style="flex: 1; text-align: left; border: none; background: none; color: var(--ink-soft); cursor: pointer; font-size: 14px; padding: 0;">← 一覧に戻る</button>
+    </div>
 
     <div class="detail-poster" id="d-poster">
       <div class="poster-mood-blur" id="poster-mood-blur"></div>
@@ -3906,7 +3909,10 @@
 
   <!-- ============ PROFILE / REGISTER VIEW ============ -->
   <div class="view" id="view-profile">
-    <button class="back-btn" onclick="goHome()">← 一覧に戻る</button>
+    <div style="display: flex; align-items: center; gap: 8px; padding: 12px 16px; border-bottom: 1px solid var(--line);">
+      <div class="logo" onclick="goHome()" style="cursor: pointer; flex-shrink: 0;"><img src="logo.png" alt="Wander" style="width: 24px; height: 24px;"></div>
+      <button class="back-btn" onclick="goHome()" style="flex: 1; text-align: left; border: none; background: none; color: var(--ink-soft); cursor: pointer; font-size: 14px; padding: 0;">← 一覧に戻る</button>
+    </div>
 
     <div id="profile-summary" style="display:none; margin-bottom:20px;">
       <div style="display:flex; align-items:center; justify-content:space-between; gap:10px;">
