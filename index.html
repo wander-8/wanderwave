@@ -3059,23 +3059,26 @@
 
   /* ---- Mode Selector (Model 3: Header Chip + Popover/Bottom Sheet) ---- */
   .mode-selector-chip{
-    background: rgba(255,255,255,0.12);
-    border: 1px solid rgba(255,255,255,0.2);
-    color: var(--ink);
-    padding: 4px 10px;
-    border-radius: 12px;
-    font-size: 12px;
+    background: rgba(160, 132, 242, 0.25);
+    border: 1.5px solid var(--plum);
+    color: var(--plum-deep);
+    padding: 6px 14px;
+    border-radius: 14px;
+    font-size: 13px;
+    font-weight: 600;
     cursor: pointer;
-    margin-left: 8px;
+    margin-left: 10px;
     transition: all 0.2s ease;
     white-space: nowrap;
+    box-shadow: 0 0 12px rgba(160, 132, 242, 0.2);
   }
   .mode-selector-chip:hover{
-    background: rgba(255,255,255,0.16);
-    border-color: rgba(255,255,255,0.3);
+    background: rgba(160, 132, 242, 0.35);
+    border-color: var(--plum-deep);
+    box-shadow: 0 0 16px rgba(160, 132, 242, 0.35);
   }
   .mode-selector-chip:active{
-    transform: scale(0.92);
+    transform: scale(0.94);
   }
 
   /* Desktop: Popover */
@@ -3104,26 +3107,28 @@
     100%{ opacity: 1; transform: translateX(-50%) translateY(0) scale(1); }
   }
   .mode-selector-item{
-    padding: 8px 12px;
-    border-radius: 8px;
+    padding: 10px 12px;
+    border-radius: 10px;
     border: 1px solid var(--line);
-    background: rgba(255,255,255,0.03);
+    background: rgba(255,255,255,0.04);
     color: var(--ink);
-    font-size: 12px;
+    font-size: 13px;
+    font-weight: 500;
     cursor: pointer;
     transition: all 0.15s ease;
   }
   .mode-selector-item:hover{
-    background: rgba(255,255,255,0.08);
+    background: rgba(255,255,255,0.1);
     border-color: var(--plum);
   }
   .mode-selector-item:active{
-    transform: scale(0.96);
+    transform: scale(0.94);
   }
   .mode-selector-item.active{
     background: var(--plum);
     color: #fff;
     border-color: var(--plum);
+    box-shadow: 0 0 12px rgba(125, 95, 214, 0.4);
     animation: itemPop 0.3s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
   }
   @keyframes itemPop{
@@ -3188,27 +3193,29 @@
     gap: 12px;
   }
   .mode-selector-sheet-item{
-    padding: 16px 12px;
-    border-radius: 10px;
+    padding: 18px 14px;
+    border-radius: 12px;
     border: 1px solid var(--line);
-    background: rgba(255,255,255,0.03);
+    background: rgba(255,255,255,0.04);
     color: var(--ink);
-    font-size: 13px;
-    font-weight: 500;
+    font-size: 14px;
+    font-weight: 600;
     cursor: pointer;
     transition: all 0.15s ease;
     display: flex;
     align-items: center;
     justify-content: center;
     text-align: center;
+    min-height: 50px;
   }
   .mode-selector-sheet-item:active{
-    transform: scale(0.94);
+    transform: scale(0.92);
   }
   .mode-selector-sheet-item.active{
     background: var(--plum);
     color: #fff;
     border-color: var(--plum);
+    box-shadow: 0 0 12px rgba(125, 95, 214, 0.4);
     animation: itemPop 0.35s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
   }
 
@@ -11023,22 +11030,28 @@ function toggleCatalogModeMenu(){
 
 // Tab Bar: mode を切り替えて UI を更新
 function switchCatalogMode(mode){
-  // 既存の mode 切り替え logic を呼ぶ（catalog mode menu item click handler と同じ）
-  const modeMap = { movie: 0, tv: 1, anime: 2, drama: 3, manga: 4, novel: 5, music: 6 };
-  const idx = modeMap[mode];
-  if(idx === undefined) return;
+  // Model 3: Mode を切り替えて catalog を再描画
+  const modeMap = { movie: 'movie', tv: 'tv', anime: 'anime', drama: 'drama', manga: 'manga', novel: 'novel', music: 'music' };
+  if(!modeMap[mode]) return;
 
-  // Tab bar の active を更新
-  document.querySelectorAll('.mode-tab').forEach(tab => {
-    tab.classList.toggle('active', tab.dataset.mode === mode);
+  // Current mode を更新
+  currentCatalogMode = mode;
+
+  // Popover/Bottom sheet の active state を更新
+  document.querySelectorAll('.mode-selector-item').forEach(item => {
+    item.classList.toggle('active', item.dataset.mode === mode);
+  });
+  document.querySelectorAll('.mode-selector-sheet-item').forEach(item => {
+    item.classList.toggle('active', item.dataset.mode === mode);
   });
 
-  // 既存のメニュー item click を処理（現在の catalog-mode-menu-item と同じロジック）
-  const menuItem = document.querySelector(`.catalog-mode-menu-item[onclick*="handleSelectCatalogMode(${idx})"]`);
-  if(menuItem) menuItem.click();
+  // Catalog mode menu items も更新（side rail / drawer 用）
+  document.querySelectorAll('.catalog-mode-menu-item, .catalog-mode-drawer-item').forEach(btn => {
+    btn.classList.toggle('active', btn.getAttribute('onclick')?.includes(`'${mode}'`));
+  });
 
-  // Menu を閉じる
-  closeCatalogModeMenu();
+  // Content を再描画
+  renderVisibleResults();
 }
 
 // メニュー/ドロワーの外をタップ/クリックしたら閉じる。ドロワー本体は
