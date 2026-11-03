@@ -949,15 +949,23 @@
     width: max-content;
   }
   .poster-thumb{
-    width: 148px; height: 210px;
+    width: 148px;
     border-radius: 12px;
-    display:flex; align-items:center; justify-content:center;
+    display:flex; flex-direction:column; align-items:stretch;
     font-family:'M PLUS Rounded 1c', sans-serif;
     font-weight: 700;
     font-size: 34px; color: rgba(255,255,255,0.85);
-    margin-bottom: 10px;
+    margin-bottom: 0;
     position: relative;
+  }
+  .poster-thumb > img,
+  .poster-thumb > div:first-child {
+    width: 100%;
+    height: 210px;
+    border-radius: 12px;
+    display:flex; align-items:center; justify-content:center;
     overflow: hidden;
+    position: relative;
   }
   /* 人物名からの横断検索(goPersonSearch)のように、1つの一覧に映画・本・
      音楽等が混ざる時だけ、カードの左上にメディア種別を出す。 */
@@ -1081,8 +1089,7 @@
     object-fit: cover;
   }
   .poster-thumb-title{
-    position: relative;
-    padding: 2px 0 0;
+    padding: 3px 0 0;
     font-family:'M PLUS Rounded 1c', sans-serif;
     font-weight: 600;
     font-size: 9.5px;
@@ -1095,6 +1102,7 @@
     -webkit-box-orient: vertical;
     overflow: hidden;
     text-shadow: none;
+    flex: 0 0 auto;
   }
   .result-title{
     font-family:'M PLUS Rounded 1c', sans-serif;
@@ -1249,8 +1257,9 @@
   }
   .result-facet-sep{ font-size: 11px; color: var(--ink-soft); opacity:.6; }
   .result-love-row{
-    display:flex; align-items:center; gap:3px; margin: 2px 0 0;
+    display:flex; align-items:center; gap:3px; margin: 1px 0 0; padding: 0;
     font-size:11px; font-weight:700; color: var(--love);
+    flex: 0 0 auto;
   }
   .result-love-row svg{ width:9px; height:9px; }
   /* オーナー指摘:「全然まだ小さい。下につかない程度に大きくして」。
