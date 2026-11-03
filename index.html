@@ -2605,6 +2605,9 @@
   }
   .pocket-progress-done{ color: var(--gold); }
   .pocket-progress-pending{ color: var(--plum); }
+  .pocket-progress-bar-container{ height: 6px; background: rgba(255,255,255,0.1); border-radius: 3px; overflow: hidden; margin: 8px 0 6px; }
+  .pocket-progress-bar-fill{ height: 100%; background: linear-gradient(90deg, var(--plum), var(--love)); border-radius: 3px; transition: width 0.4s ease; }
+  .pocket-progress-msg{ font-size: 13px; color: var(--plum); margin-bottom: 4px; font-weight: 600; }
   .pocket-progress-sub{ font-size: 12px; color: var(--ink-soft); margin-bottom: 2px; }
   .pocket-diagnosis-note{
     font-size: 12px; color: var(--ink-soft); margin-top: 6px;
@@ -16730,19 +16733,20 @@ function renderPocketProgress(){
     return;
   }
 
-  // オーナー指摘:「この説明わかりにくいのと、上下合計2列にして欲しい」。
-  // 「次の節目まであと◯つ」だけだと今月何件入れたのかが分からず、かつ
-  // 「今月はあと◯日」「今週は◯件」が別行に分かれて3行になっていた。
-  // 1行目に今月の件数と次の節目までの差を一緒に、2行目に残り日数と
-  // 今週分をまとめて、合計2行にする。
-  const next = POCKET_MILESTONES.find(n => n > monthCount);
-  const mainLine = next != null
-    ? `今月${monthCount}件・次の節目まであと${next - monthCount}つ`
-    : `今月${monthCount}件`;
+  // 改善案A: 進捗を視覚的に表示。「今月：X / 10件」と次の節目までの残数を明示。
+  const next = POCKET_MILESTONES.find(n => n > monthCount) || POCKET_MILESTONES[POCKET_MILESTONES.length - 1];
+  const remaining = Math.max(0, next - monthCount);
+  const progress = Math.min(100, (monthCount / next) * 100);
+  const mainLine = `今月：${monthCount} / ${next}件`;
+  const subText = remaining > 0
+    ? `あと${remaining}作品で診断できます`
+    : `診断できます！`;
   const subParts = [`今月はあと${daysLeft}日`];
   if(weekCount > 0) subParts.push(`今週${weekCount}件`);
   el.innerHTML = `
     <div class="pocket-progress-line">${mainLine}</div>
+    <div class="pocket-progress-bar-container"><div class="pocket-progress-bar-fill" style="width: ${progress}%;"></div></div>
+    <div class="pocket-progress-msg">${subText}</div>
     <div class="pocket-progress-sub">${subParts.join('・')}</div>
   `;
 }
