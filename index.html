@@ -11715,11 +11715,22 @@ function loadAffiliateLinks(m){
   const linksList = document.getElementById('affiliate-links-list');
 
   const seen = new Set();
-  const affiliates = AFFILIATE_LINKS.filter(link => {
+  let affiliates = AFFILIATE_LINKS.filter(link => {
     if (seen.has(link.service_name)) return false;
     seen.add(link.service_name);
     return true;
   });
+
+  // Amazon Prime Video のアフィリエイトリンクを追加
+  if (m.vodFlatrate && m.vodFlatrate.includes('Amazon Prime Video')) {
+    const searchQuery = `${m.title}+${m.year || ''}`.trim();
+    const amazonSearchUrl = `https://www.amazon.co.jp/s?k=${encodeURIComponent(searchQuery)}`;
+    const amazonAffiliateUrl = `https://t.afi-b.com/visit.php?a=91573iP-2518098&p=N997123a&url=${encodeURIComponent(amazonSearchUrl)}`;
+    affiliates.push({
+      service_name: 'Amazon Prime',
+      url: amazonAffiliateUrl
+    });
+  }
 
   console.log('[DEBUG] Affiliate response:', affiliates);
 
