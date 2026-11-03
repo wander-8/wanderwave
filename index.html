@@ -950,7 +950,6 @@
   }
   .poster-thumb{
     width: 148px;
-    border-radius: 12px;
     display:flex; flex-direction:column; align-items:stretch;
     font-family:'M PLUS Rounded 1c', sans-serif;
     font-weight: 700;
@@ -958,8 +957,15 @@
     margin-bottom: 0;
     position: relative;
   }
-  .poster-thumb > img,
-  .poster-thumb > div:first-child {
+  .poster-thumb > img {
+    width: 100%;
+    height: 210px;
+    border-radius: 12px;
+    display:block;
+    overflow: hidden;
+    object-fit: cover;
+  }
+  .poster-thumb > span:first-child {
     width: 100%;
     height: 210px;
     border-radius: 12px;
