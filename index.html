@@ -3497,6 +3497,15 @@
       </div>
     </div>
 
+    <!-- おすすめ情報（絵本など） -->
+    <div id="recommended-service-section" style="display:none; margin: 24px 0; padding: 16px; background: linear-gradient(135deg, rgba(212,175,55,0.1), rgba(240,217,145,0.1)); border-radius: 8px; border-left: 3px solid #d4af37;">
+      <div class="detail-head" style="margin-bottom: 12px;">
+        <h3 style="margin: 0; font-size: 16px; color: #d4af37;">💡 おすすめ情報</h3>
+      </div>
+      <div id="recommended-service-text" style="font-size: 13px; color: #b3aee0; margin-bottom: 12px;"></div>
+      <a id="recommended-service-link" href="#" target="_blank" rel="nofollow" style="display: inline-block; padding: 10px 20px; background: linear-gradient(135deg, #d4af37, #f0d991); color: #000; text-decoration: none; font-weight: 700; border-radius: 6px; font-size: 14px; transition: all 0.3s;" onmouseover="this.style.transform='scale(1.05)'; this.style.boxShadow='0 4px 16px rgba(212,175,55,0.5)'" onmouseout="this.style.transform='scale(1)'; this.style.boxShadow='none'"></a>
+    </div>
+
     <!-- このサービスで見る -->
     <div id="service-links-section" style="display:none; margin: 24px 0; padding: 16px; background: rgba(160,132,242,0.1); border-radius: 8px;">
       <div class="detail-head" style="margin-bottom: 12px;">
@@ -4546,7 +4555,8 @@ const AFFILIATE_LINKS = [
   { media_id: '96732', media_type: 'music', service_name: 'music.jp', url: 'https://t.afi-b.com/visit.php?a=910480V-3352534i&p=N997123a' },
   { media_id: '96725', media_type: 'music', service_name: 'music.jp', url: 'https://t.afi-b.com/visit.php?a=910480V-3352534i&p=N997123a' },
   { media_id: '96722', media_type: 'music', service_name: 'music.jp', url: 'https://t.afi-b.com/visit.php?a=910480V-3352534i&p=N997123a' },
-  { media_id: '96720', media_type: 'music', service_name: 'music.jp', url: 'https://t.afi-b.com/visit.php?a=910480V-3352534i&p=N997123a' }
+  { media_id: '96720', media_type: 'music', service_name: 'music.jp', url: 'https://t.afi-b.com/visit.php?a=910480V-3352534i&p=N997123a' },
+  { media_id: null, media_type: 'novel', service_name: '定額制絵本配送サービス', url: 'https://t.afi-b.com/visit.php?a=91573iP-2518098&p=N997123a', is_recommended: true }
 ];
 
 const supabase = window.supabase.createClient(
@@ -11490,6 +11500,7 @@ async function goDetail(id){
   resetEpisodesUI(m);
   resetTracksUI(m);
   loadAffiliateLinks(m);
+  loadRecommendedService(m);
   resetReviewsUI();
   autoPlayAlbumPreview(m);
 
@@ -11744,6 +11755,27 @@ function loadAffiliateLinks(m){
       </a>
     `).join('');
     section.style.display = 'block';
+  } else {
+    section.style.display = 'none';
+  }
+}
+
+function loadRecommendedService(m){
+  const mediaType = m.mediaType || m.type || '';
+  const section = document.getElementById('recommended-service-section');
+
+  if (mediaType === 'novel') {
+    const recommendedService = AFFILIATE_LINKS.find(link => link.is_recommended && link.media_type === 'novel');
+
+    if (recommendedService) {
+      document.getElementById('recommended-service-text').textContent = 'お子様の成長に合わせた絵本が毎月届きます';
+      const link = document.getElementById('recommended-service-link');
+      link.href = recommendedService.url;
+      link.textContent = recommendedService.service_name;
+      section.style.display = 'block';
+    } else {
+      section.style.display = 'none';
+    }
   } else {
     section.style.display = 'none';
   }
