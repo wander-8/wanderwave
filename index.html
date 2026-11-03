@@ -4559,7 +4559,10 @@ const AFFILIATE_LINKS = [
   { media_id: null, media_type: 'novel', service_name: '定額制絵本配送サービス', url: 'https://t.afi-b.com/visit.php?a=91573iP-2518098&p=N997123a', is_recommended: true, for_picture_book: true },
   { media_id: null, media_type: 'novel', service_name: 'いつでも書店', url: 'https://t.afi-b.com/visit.php?a=7148491-X462867&p=N997123a', is_recommended: true, for_picture_book: false },
   { media_id: null, media_type: 'movie', service_name: 'mieru-TV', url: 'https://t.afi-b.com/visit.php?a=G148581-M462869&p=N997123a' },
-  { media_id: null, media_type: 'drama', service_name: 'mieru-TV', url: 'https://t.afi-b.com/visit.php?a=G148581-M462869&p=N997123a' }
+  { media_id: null, media_type: 'drama', service_name: 'mieru-TV', url: 'https://t.afi-b.com/visit.php?a=G148581-M462869&p=N997123a' },
+  { media_id: null, media_type: 'movie', service_name: 'クランクイン！ビデオ', url: 'https://t.afi-b.com/visit.php?a=Q163001-o524839&p=N997123a' },
+  { media_id: null, media_type: 'drama', service_name: 'クランクイン！ビデオ', url: 'https://t.afi-b.com/visit.php?a=Q163001-o524839&p=N997123a' },
+  { media_id: null, media_type: 'anime', service_name: 'クランクイン！ビデオ', url: 'https://t.afi-b.com/visit.php?a=Q163001-o524839&p=N997123a' }
 ];
 
 const supabase = window.supabase.createClient(
@@ -11746,15 +11749,28 @@ function loadAffiliateLinks(m){
     });
   }
 
-  // mieru-TV を映像作品に追加
-  if ((mediaType === 'movie' || mediaType === 'drama') && m.vodFlatrate && m.vodFlatrate.includes('mieru')) {
-    const mieruService = AFFILIATE_LINKS.find(link => link.service_name === 'mieru-TV' && link.media_type === mediaType);
-    if (mieruService && !seen.has('mieru-TV')) {
+  // mieru-TV とクランクイン！ビデオを映像作品に追加
+  if ((mediaType === 'movie' || mediaType === 'drama' || mediaType === 'anime') && m.vodFlatrate) {
+    // mieru-TV
+    if (m.vodFlatrate.includes('mieru')) {
+      const mieruService = AFFILIATE_LINKS.find(link => link.service_name === 'mieru-TV' && link.media_type === mediaType);
+      if (mieruService && !seen.has('mieru-TV')) {
+        affiliates.push({
+          service_name: 'mieru-TV',
+          url: mieruService.url
+        });
+        seen.add('mieru-TV');
+      }
+    }
+
+    // クランクイン！ビデオ
+    const crakuinService = AFFILIATE_LINKS.find(link => link.service_name === 'クランクイン！ビデオ' && link.media_type === mediaType);
+    if (crakuinService && !seen.has('クランクイン！ビデオ')) {
       affiliates.push({
-        service_name: 'mieru-TV',
-        url: mieruService.url
+        service_name: 'クランクイン！ビデオ',
+        url: crakuinService.url
       });
-      seen.add('mieru-TV');
+      seen.add('クランクイン！ビデオ');
     }
   }
 
