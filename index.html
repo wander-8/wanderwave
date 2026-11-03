@@ -12613,19 +12613,47 @@ function renderWatchLinks(m){
   const wrap = document.getElementById('watch-wrap');
   const toggleLabel = document.getElementById('watch-toggle-label');
   const links = document.getElementById('d-watch-links');
-  const providers = m.vodFlatrate || [];
+
+  // music型の場合はmusicServicesを使う、それ以外はvodFlatrateを使う
+  let providers = [];
+  if(m.isMusic && m.musicServices){
+    // music_servicesテーブルのデータを使用
+    providers = m.musicServices.map(svc => ({
+      provider: svc.service_name,
+      display_name: svc.service_name === 'music.jp' ? 'music.jp' : svc.service_name,
+      url: svc.service_url
+    }));
+  } else {
+    // ドラマ/映画のvod_flatrate使用
+    providers = m.vodFlatrate || [];
+  }
+
   const seen = new Set();
-  let chips = providers.map(p => {
-    const canonical = canonicalVodProviderName(p);
-    if(seen.has(canonical)) return '';
-    seen.add(canonical);
-    const href = vodProviderLink(canonical, m.title);
-    // Amazon Prime Videoの場合は提携リンクを明記（下線で視覚的に示唆）
-    if(canonical === 'Amazon Prime Video'){
-      return `<a class="watch-link affiliate-prime" href="${href}" target="_blank" rel="noopener" title="当サイトはAmazonアフィリエイト経由で紹介しています。あなたの支払額は変わりません。"><span class="dot"></span>${escapeHtml(canonical)}</a>`;
-    }
-    return `<a class="watch-link" href="${href}" target="_blank" rel="noopener"><span class="dot"></span>${escapeHtml(canonical)}</a>`;
-  }).join('');
+  let chips = '';
+
+  if(m.isMusic && m.musicServices){
+    // music型: music_servicesから直接URLを使う
+    chips = providers.map(p => {
+      const name = p.display_name || p.provider;
+      if(seen.has(name)) return '';
+      seen.add(name);
+      return `<a class="watch-link" href="${escapeHtml(p.url)}" target="_blank" rel="noopener"><span class="dot"></span>${escapeHtml(name)}</a>`;
+    }).join('');
+  } else {
+    // ドラマ/映画: 既存のロジック
+    chips = providers.map(p => {
+      const canonical = canonicalVodProviderName(p);
+      if(seen.has(canonical)) return '';
+      seen.add(canonical);
+      const href = vodProviderLink(canonical, m.title);
+      // Amazon Prime Videoの場合は提携リンクを明記（下線で視覚的に示唆）
+      if(canonical === 'Amazon Prime Video'){
+        return `<a class="watch-link affiliate-prime" href="${href}" target="_blank" rel="noopener" title="当サイトはAmazonアフィリエイト経由で紹介しています。あなたの支払額は変わりません。"><span class="dot"></span>${escapeHtml(canonical)}</a>`;
+      }
+      return `<a class="watch-link" href="${href}" target="_blank" rel="noopener"><span class="dot"></span>${escapeHtml(canonical)}</a>`;
+    }).join('');
+  }
+
   const safeOfficialUrl = m.officialUrl ? safeExternalUrl(m.officialUrl) : '';
   if(safeOfficialUrl){
     chips += `<a class="watch-link" href="${escapeHtml(safeOfficialUrl)}" target="_blank" rel="noopener"><span class="dot"></span>公式サイト</a>`;
@@ -12645,10 +12673,11 @@ function renderWatchLinks(m){
     return;
   }
   wrap.style.display = '';
-  toggleLabel.textContent = providers.length && hasBuyLink ? 'ここで観る・買う'
-    : providers.length ? 'ここで観る'
+  const providerCount = m.isMusic ? (m.musicServices ? m.musicServices.length : 0) : providers.length;
+  toggleLabel.textContent = providerCount && hasBuyLink ? 'ここで聴く・観る・買う'
+    : providerCount ? 'ここで聴く'
     : '購入・視聴はこちら';
-  links.innerHTML = chips + (providers.length ? '<div style="font-size:11px;color:var(--ink-soft);width:100%;margin-top:6px;">※配信状況は変動する場合があります</div>' : '');
+  links.innerHTML = chips + (providerCount ? '<div style="font-size:11px;color:var(--ink-soft);width:100%;margin-top:6px;">※配信状況は変動する場合があります</div>' : '');
 }
 
 let watchSectionOpen = false;
@@ -13048,6 +13077,16 @@ async function loadWatchLinksForMovie(movieId){
     movie.vodWatchLink = data.vod_watch_link || undefined;
     movie.officialUrl = data.official_url || undefined;
     movie.amazonUrl = data.amazon_url || undefined;
+
+    // music型の場合、music_servicesテーブルからストリーミングサービスを取得
+    if(movie.isMusic){
+      const { data: services, error: servicesError } = await supabase.from('music_services')
+        .select('service_name, service_url').eq('music_id', movieId);
+      if(!servicesError && services){
+        movie.musicServices = services; // [{service_name, service_url}, ...]
+      }
+    }
+
     if(state.currentMovieId === movieId && document.getElementById('view-detail').classList.contains('active')){
       renderWatchLinks(movie);
     }
