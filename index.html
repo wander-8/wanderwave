@@ -12614,45 +12614,33 @@ function renderWatchLinks(m){
   const toggleLabel = document.getElementById('watch-toggle-label');
   const links = document.getElementById('d-watch-links');
 
-  // music型の場合はmusicServicesを使う、それ以外はvodFlatrateを使う
-  let providers = [];
-  if(m.isMusic && m.musicServices){
-    // music_servicesテーブルのデータを使用
-    providers = m.musicServices.map(svc => ({
-      provider: svc.service_name,
-      display_name: svc.service_name === 'music.jp' ? 'music.jp' : svc.service_name,
-      url: svc.service_url
-    }));
-  } else {
-    // ドラマ/映画のvod_flatrate使用
-    providers = m.vodFlatrate || [];
-  }
-
+  // すべてのメディアタイプ対応: musicServices優先、なければvodFlatrate使用
   const seen = new Set();
   let chips = '';
 
-  if(m.isMusic && m.musicServices){
-    // music型: music_servicesから直接URLを使う
-    chips = providers.map(p => {
-      const name = p.display_name || p.provider;
+  // musicServices（music.jp等）を優先的に表示
+  if(m.musicServices){
+    chips += m.musicServices.map(svc => {
+      const name = svc.service_name === 'music.jp' ? 'music.jp' : svc.service_name;
       if(seen.has(name)) return '';
       seen.add(name);
-      return `<a class="watch-link" href="${escapeHtml(p.url)}" target="_blank" rel="noopener"><span class="dot"></span>${escapeHtml(name)}</a>`;
-    }).join('');
-  } else {
-    // ドラマ/映画: 既存のロジック
-    chips = providers.map(p => {
-      const canonical = canonicalVodProviderName(p);
-      if(seen.has(canonical)) return '';
-      seen.add(canonical);
-      const href = vodProviderLink(canonical, m.title);
-      // Amazon Prime Videoの場合は提携リンクを明記（下線で視覚的に示唆）
-      if(canonical === 'Amazon Prime Video'){
-        return `<a class="watch-link affiliate-prime" href="${href}" target="_blank" rel="noopener" title="当サイトはAmazonアフィリエイト経由で紹介しています。あなたの支払額は変わりません。"><span class="dot"></span>${escapeHtml(canonical)}</a>`;
-      }
-      return `<a class="watch-link" href="${href}" target="_blank" rel="noopener"><span class="dot"></span>${escapeHtml(canonical)}</a>`;
+      return `<a class="watch-link" href="${escapeHtml(svc.service_url)}" target="_blank" rel="noopener"><span class="dot"></span>${escapeHtml(name)}</a>`;
     }).join('');
   }
+
+  // vodFlatrate（VOD配信）も表示
+  const vodProviders = m.vodFlatrate || [];
+  chips += vodProviders.map(p => {
+    const canonical = canonicalVodProviderName(p);
+    if(seen.has(canonical)) return '';
+    seen.add(canonical);
+    const href = vodProviderLink(canonical, m.title);
+    // Amazon Prime Videoの場合は提携リンクを明記（下線で視覚的に示唆）
+    if(canonical === 'Amazon Prime Video'){
+      return `<a class="watch-link affiliate-prime" href="${href}" target="_blank" rel="noopener" title="当サイトはAmazonアフィリエイト経由で紹介しています。あなたの支払額は変わりません。"><span class="dot"></span>${escapeHtml(canonical)}</a>`;
+    }
+    return `<a class="watch-link" href="${href}" target="_blank" rel="noopener"><span class="dot"></span>${escapeHtml(canonical)}</a>`;
+  }).join('');
 
   const safeOfficialUrl = m.officialUrl ? safeExternalUrl(m.officialUrl) : '';
   if(safeOfficialUrl){
@@ -12673,9 +12661,10 @@ function renderWatchLinks(m){
     return;
   }
   wrap.style.display = '';
-  const providerCount = m.isMusic ? (m.musicServices ? m.musicServices.length : 0) : providers.length;
-  toggleLabel.textContent = providerCount && hasBuyLink ? 'ここで聴く・観る・買う'
-    : providerCount ? 'ここで聴く'
+  const providerCount = (m.musicServices ? m.musicServices.length : 0) + vodProviders.length;
+  const verb = m.isMusic ? '聴く' : '観る';
+  toggleLabel.textContent = providerCount && hasBuyLink ? `ここで${verb}・買う`
+    : providerCount ? `ここで${verb}`
     : '購入・視聴はこちら';
   links.innerHTML = chips + (providerCount ? '<div style="font-size:11px;color:var(--ink-soft);width:100%;margin-top:6px;">※配信状況は変動する場合があります</div>' : '');
 }
@@ -13078,13 +13067,11 @@ async function loadWatchLinksForMovie(movieId){
     movie.officialUrl = data.official_url || undefined;
     movie.amazonUrl = data.amazon_url || undefined;
 
-    // music型の場合、music_servicesテーブルからストリーミングサービスを取得
-    if(movie.isMusic){
-      const { data: services, error: servicesError } = await supabase.from('music_services')
-        .select('service_name, service_url').eq('music_id', movieId);
-      if(!servicesError && services){
-        movie.musicServices = services; // [{service_name, service_url}, ...]
-      }
+    // すべてのメディアタイプで music_services（汎用ストリーミングサービス）をサポート
+    const { data: services, error: servicesError } = await supabase.from('music_services')
+      .select('service_name, service_url').eq('music_id', movieId);
+    if(!servicesError && services){
+      movie.musicServices = services; // [{service_name, service_url}, ...]
     }
 
     if(state.currentMovieId === movieId && document.getElementById('view-detail').classList.contains('active')){
