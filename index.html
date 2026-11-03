@@ -1562,6 +1562,13 @@
     width: 7px; height: 7px; border-radius: 50%;
     background: var(--love);
   }
+  /* Amazon Prime Video用: 提携リンク表示（下線） */
+  .watch-link.affiliate-prime{
+    text-decoration:underline;
+    text-decoration-color:#146eb0;
+    text-decoration-thickness:2px;
+    text-underline-offset:3px;
+  }
   .mini-tag{
     font-size: 12px; padding: 3px 10px; border-radius: 999px;
     font-weight: 600;
@@ -12514,7 +12521,7 @@ function canonicalVodProviderName(name){
 // 空文字のままにしておく。登録: https://affiliate.amazon.co.jp/ 。審査には
 // 180日以内に3件以上の売上実績が必要なため、取得までは非アフィリエイトの
 // ままでリンク自体は出し続ける)。
-const AMAZON_ASSOCIATE_TAG = '';
+const AMAZON_ASSOCIATE_TAG = 'primesignup';
 function withAmazonAffiliateTag(url){
   if(!AMAZON_ASSOCIATE_TAG) return url;
   const sep = url.includes('?') ? '&' : '?';
@@ -12613,6 +12620,10 @@ function renderWatchLinks(m){
     if(seen.has(canonical)) return '';
     seen.add(canonical);
     const href = vodProviderLink(canonical, m.title);
+    // Amazon Prime Videoの場合は提携リンクを明記（下線で視覚的に示唆）
+    if(canonical === 'Amazon Prime Video'){
+      return `<a class="watch-link affiliate-prime" href="${href}" target="_blank" rel="noopener" title="当サイトはAmazonアフィリエイト経由で紹介しています。あなたの支払額は変わりません。"><span class="dot"></span>${escapeHtml(canonical)}</a>`;
+    }
     return `<a class="watch-link" href="${href}" target="_blank" rel="noopener"><span class="dot"></span>${escapeHtml(canonical)}</a>`;
   }).join('');
   const safeOfficialUrl = m.officialUrl ? safeExternalUrl(m.officialUrl) : '';
