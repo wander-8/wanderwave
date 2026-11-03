@@ -3623,21 +3623,6 @@
     <div class="card-tags" id="d-tags"></div>
     <div class="community-tags" id="d-community-tags"></div>
 
-    <!-- 配信情報は変動するため、常時表示はせずタップで開く形にする
-         (episodes-wrap/tracks-wrapと同じ折りたたみパターン、オーナー要望:
-         「ここで観るを押すと配信先が見れるようにして、普段は表示隠してて
-         いい」)。 -->
-    <div id="watch-wrap" style="display:none;">
-      <button class="filter-disclosure-btn" id="watch-toggle-btn" onclick="toggleWatchSection()">
-        <span id="watch-toggle-label">ここで観る</span>
-        <span class="filter-disclosure-chev" id="watch-chev">⌄</span>
-      </button>
-      <div class="filter-disclosure-body" id="watch-body">
-        <div class="filter-disclosure-inner">
-          <div class="watch-links" id="d-watch-links"></div>
-        </div>
-      </div>
-    </div>
 
     <!-- Wander本体のレビューとTMDB由来のレビューを統一して1本の一覧に
          表示するようになった分、件数が多い作品だと縦に際限なく伸びてしまう
@@ -11519,9 +11504,8 @@ async function goDetail(id){
   updateIntensityDisplay(mySliderVal);
   delete intensitySoundBandByTracker.review;
 
-  renderWatchLinks(m);
-  // loadMediaServiceLinks(m);
-  loadWatchLinksForMovie(id);
+  // 視聴方法は詳細ページ上部の「ここで見る/聞く」セクションに表示
+  // renderWatchLinks/loadWatchLinksForMovieは削除（詳細下セクション廃止）
   loadFullSynopsisForMovie(id);
   loadCastForMovie(id);
   loadExpressionEstimateForMovie(id);
@@ -12608,73 +12592,7 @@ function vodProviderLink(canonicalName, title){
 // ラベルからは外す(オーナー指摘)。中身は見放題のみという制約は変えない。
 // 普段は折りたたんでおき(episodes-wrap/tracks-wrapと同じ考え方)、
 // タップした時だけ配信先を見せる(オーナー指摘:「普段は表示隠してて
-// いい」)。
-function renderWatchLinks(m){
-  const wrap = document.getElementById('watch-wrap');
-  const toggleLabel = document.getElementById('watch-toggle-label');
-  const links = document.getElementById('d-watch-links');
-
-  // すべてのメディアタイプ対応: musicServices優先、なければvodFlatrate使用
-  const seen = new Set();
-  let chips = '';
-
-  // musicServices（music.jp等）を優先的に表示
-  if(m.musicServices){
-    chips += m.musicServices.map(svc => {
-      const name = svc.service_name === 'music.jp' ? 'music.jp' : svc.service_name;
-      if(seen.has(name)) return '';
-      seen.add(name);
-      return `<a class="watch-link" href="${escapeHtml(svc.service_url)}" target="_blank" rel="noopener"><span class="dot"></span>${escapeHtml(name)}</a>`;
-    }).join('');
-  }
-
-  // vodFlatrate（VOD配信）も表示
-  const vodProviders = m.vodFlatrate || [];
-  chips += vodProviders.map(p => {
-    const canonical = canonicalVodProviderName(p);
-    if(seen.has(canonical)) return '';
-    seen.add(canonical);
-    const href = vodProviderLink(canonical, m.title);
-    // Amazon Prime Videoの場合は提携リンクを明記（下線で視覚的に示唆）
-    if(canonical === 'Amazon Prime Video'){
-      return `<a class="watch-link affiliate-prime" href="${href}" target="_blank" rel="noopener" title="当サイトはAmazonアフィリエイト経由で紹介しています。あなたの支払額は変わりません。"><span class="dot"></span>${escapeHtml(canonical)}</a>`;
-    }
-    return `<a class="watch-link" href="${href}" target="_blank" rel="noopener"><span class="dot"></span>${escapeHtml(canonical)}</a>`;
-  }).join('');
-
-  const safeOfficialUrl = m.officialUrl ? safeExternalUrl(m.officialUrl) : '';
-  if(safeOfficialUrl){
-    chips += `<a class="watch-link" href="${escapeHtml(safeOfficialUrl)}" target="_blank" rel="noopener"><span class="dot"></span>公式サイト</a>`;
-  }
-  if(m.amazonUrl){
-    chips += `<a class="watch-link" href="${escapeHtml(withAmazonAffiliateTag(m.amazonUrl))}" target="_blank" rel="noopener"><span class="dot"></span>Amazonで購入</a>`;
-  }
-  const hasBuyLink = !!(safeOfficialUrl || m.amazonUrl);
-  // 別の作品の詳細ページに移動した時、前の作品で開いていた状態を
-  // 持ち越さないようにする(resetEpisodesUI/resetTracksUIと同じ考え方)。
-  watchSectionOpen = false;
-  document.getElementById('watch-toggle-btn').classList.remove('open');
-  document.getElementById('watch-body').classList.remove('open');
-  if(!chips){
-    wrap.style.display = 'none';
-    links.innerHTML = '';
-    return;
-  }
-  wrap.style.display = '';
-  const providerCount = (m.musicServices ? m.musicServices.length : 0) + vodProviders.length;
-  const verb = m.isMusic ? '聴く' : '観る';
-  toggleLabel.textContent = providerCount && hasBuyLink ? `ここで${verb}・買う`
-    : providerCount ? `ここで${verb}`
-    : '購入・視聴はこちら';
-  links.innerHTML = chips + (providerCount ? '<div style="font-size:11px;color:var(--ink-soft);width:100%;margin-top:6px;">※配信状況は変動する場合があります</div>' : '');
-}
-
-let watchSectionOpen = false;
-function toggleWatchSection(){
-  watchSectionOpen = !watchSectionOpen;
-  document.getElementById('watch-toggle-btn').classList.toggle('open', watchSectionOpen);
-  document.getElementById('watch-body').classList.toggle('open', watchSectionOpen);
-}
+// 詳細下「ここで観る」セクション廃止（詳細ページ上部に統合）
 
 const PLATFORM_INFO = {
   "Netflix": (title) => `https://www.netflix.com/search?q=${encodeURIComponent(title)}`,
@@ -13054,33 +12972,7 @@ function applyBigFieldsPatch(movie, row){
 
 // 配信先(vod_flatrate)・視聴リンク・公式サイト・Amazon購入リンクは検索に
 // 使わないため全件一括取得をやめ、詳細ページを開いた作品1件分だけを
-// その場で取得する(goDetail参照)。取得が終わるまでrenderWatchLinks()は
-// 「配信情報なし」の見た目のままで、届き次第静かに差し替える。
-async function loadWatchLinksForMovie(movieId){
-  try{
-    const { data, error } = await supabase.from('movies').select(WATCH_LINK_COLUMNS).eq('id', movieId).single();
-    if(error) throw error;
-    const movie = MOVIES.find(m => m.id === movieId);
-    if(!movie) return;
-    movie.vodFlatrate = data.vod_flatrate || undefined;
-    movie.vodWatchLink = data.vod_watch_link || undefined;
-    movie.officialUrl = data.official_url || undefined;
-    movie.amazonUrl = data.amazon_url || undefined;
-
-    // すべてのメディアタイプで music_services（汎用ストリーミングサービス）をサポート
-    const { data: services, error: servicesError } = await supabase.from('music_services')
-      .select('service_name, service_url').eq('music_id', movieId);
-    if(!servicesError && services){
-      movie.musicServices = services; // [{service_name, service_url}, ...]
-    }
-
-    if(state.currentMovieId === movieId && document.getElementById('view-detail').classList.contains('active')){
-      renderWatchLinks(movie);
-    }
-  }catch(err){
-    console.error('配信・購入リンクの取得に失敗しました', err);
-  }
-}
+// 詳細下「ここで観る」セクション廃止に伴い削除
 
 // あらすじは全件一括取得だと先頭200文字の要約(synopsis_excerpt、検索用)
 // しか持っていないため、詳細ページを開いた作品だけ本物の全文を1件取得して
