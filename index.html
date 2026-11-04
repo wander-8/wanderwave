@@ -49,18 +49,18 @@
     --surface: radial-gradient(ellipse at 30% 0%, rgba(16, 24, 36, 0.6) 0%, #0a0e16 60%);
     --ink: #fdf8f0;
     --ink-soft: #b3aee0;
-    --plum: #7d5fd6;
-    --plum-btn: #8a4f6b;
-    --plum-deep: #e3b6cc;
+    --plum: #6b7fd6;
+    --plum-btn: #7a7fd6;
+    --plum-deep: #d4a8d9;
     --gold: #a084f2;
-    --love: #e8899e;
-    --terracotta: #e8a06a;
+    --love: #d48aaa;
+    --terracotta: #c9a8d9;
     --line: #202c3d;
 
-    --safe: #4f9d89;
-    --mild: #e0ac4f;
-    --unsafe: #d9836a;
-    --danger: #b8536a;
+    --safe: #5db3c1;
+    --mild: #c9a8d9;
+    --unsafe: #d48a9f;
+    --danger: #a8598d;
   }
 
   *{ box-sizing: border-box; }
@@ -1045,9 +1045,9 @@
     padding:12px; border-radius:8px; border-left:4px solid;
     background:rgba(125, 95, 214, 0.1); animation:cardFadeIn 0.4s ease-out both;
   }
-  .bug-item.security{ border-left-color:#e8899e; }
+  .bug-item.security{ border-left-color:#d48aaa; }
   .bug-item.performance{ border-left-color:#a084f2; }
-  .bug-item.edge_function_error{ border-left-color:#e8a06a; }
+  .bug-item.edge_function_error{ border-left-color:#c9a8d9; }
   .bug-item.critical{ border-left-color:#ff0000; }
   .bug-item.high{ border-left-color:#ff6b6b; }
   .bug-title{
@@ -5771,10 +5771,10 @@ function riskCategoryUpperBound(v){
 }
 
 function riskCategoryColor(v){
-  if(v <= 25) return "#4f9d89";
-  if(v <= 50) return "#e0ac4f";
-  if(v <= 75) return "#d9836a";
-  return "#b8536a";
+  if(v <= 25) return "#5db3c1";
+  if(v <= 50) return "#c9a8d9";
+  if(v <= 75) return "#d48a9f";
+  return "#a8598d";
 }
 
 // 表現度の4段階(控えめ/軽度/やや強い/強い)に合わせて表情が変わるアイコン。
@@ -10037,7 +10037,7 @@ function renderIntensityGauge(m){
   const breakdownBars = m.isMusic
     ? `<div class="reason-bar-row"><span class="reason-bar-label">露骨な表現</span><div class="reason-bar-track"><div class="reason-bar-fill" style="width:${pct.explicit}%; background:#b98aa6;"></div></div><span class="reason-bar-pct">${pct.explicit}%</span></div>`
     : `
-        <div class="reason-bar-row"><span class="reason-bar-label">暴力</span><div class="reason-bar-track"><div class="reason-bar-fill" style="width:${pct.violence}%; background:#d9836a;"></div></div><span class="reason-bar-pct">${pct.violence}%</span></div>
+        <div class="reason-bar-row"><span class="reason-bar-label">暴力</span><div class="reason-bar-track"><div class="reason-bar-fill" style="width:${pct.violence}%; background:#d48a9f;"></div></div><span class="reason-bar-pct">${pct.violence}%</span></div>
         <div class="reason-bar-row"><span class="reason-bar-label">性的</span><div class="reason-bar-track"><div class="reason-bar-fill" style="width:${pct.sexual}%; background:#b98aa6;"></div></div><span class="reason-bar-pct">${pct.sexual}%</span></div>
         <div class="reason-bar-row"><span class="reason-bar-label">恐怖</span><div class="reason-bar-track"><div class="reason-bar-fill" style="width:${pct.fear}%; background:#6b8cae;"></div></div><span class="reason-bar-pct">${pct.fear}%</span></div>
       `;
@@ -12567,11 +12567,11 @@ function renderFormPlatforms(){
 }
 
 const POSTER_PALETTE = [
-  "linear-gradient(160deg, #4f9d89, #e0ac4f)",
-  "linear-gradient(160deg, #e0ac4f, #d9836a)",
-  "linear-gradient(160deg, #d9836a, #05080f)",
-  "linear-gradient(160deg, #b98aa6, #4f9d89)",
-  "linear-gradient(160deg, #e2647f, #e0ac4f)"
+  "linear-gradient(160deg, #5db3c1, #c9a8d9)",
+  "linear-gradient(160deg, #c9a8d9, #d48a9f)",
+  "linear-gradient(160deg, #d48a9f, #05080f)",
+  "linear-gradient(160deg, #b98aa6, #5db3c1)",
+  "linear-gradient(160deg, #e2647f, #c9a8d9)"
 ];
 
 // TMDbのwatch/providersは同じサービスでも表記が複数ある
@@ -13774,7 +13774,7 @@ async function loadDiagnosisHistory(){
 }
 
 
-const AVATAR_COLORS = ['#a084f2', '#e2647f', '#b98aa6', '#4f9d89', '#d9836a'];
+const AVATAR_COLORS = ['#a084f2', '#e2647f', '#b98aa6', '#5db3c1', '#d48a9f'];
 let pendingAvatarColor = AVATAR_COLORS[0];
 let pendingAvatarPhoto = null;
 let pendingAge = 20;
