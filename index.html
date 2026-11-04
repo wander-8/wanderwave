@@ -9631,8 +9631,10 @@ async function renderRecommended(currentMovie){
     if(myToken === renderRecommendedToken){
       if(mangaList.length){
         renderMovieCards(document.getElementById('d-recommended-manga'), mangaList, '', { forceMode: 'manga' });
+        mangaWrap.style.display = 'block';
+      } else {
+        mangaWrap.style.display = 'none';
       }
-      mangaWrap.style.display = mangaList.length ? 'block' : 'none';
     }
   } else {
     mangaWrap.style.display = 'none';
@@ -9647,8 +9649,10 @@ async function renderRecommended(currentMovie){
     if(myToken === renderRecommendedToken){
       if(novelList.length){
         renderMovieCards(document.getElementById('d-recommended-novel'), novelList, '', { forceMode: 'novel' });
+        novelWrap.style.display = 'block';
+      } else {
+        novelWrap.style.display = 'none';
       }
-      novelWrap.style.display = novelList.length ? 'block' : 'none';
     }
   } else {
     novelWrap.style.display = 'none';
@@ -9667,8 +9671,10 @@ async function renderRecommended(currentMovie){
     if(myToken === renderRecommendedToken){
       if(musicList.length){
         renderMovieCards(document.getElementById('d-recommended-music'), musicList, '', { forceMode: 'music', inlinePreview: true });
+        musicWrap.style.display = 'block';
+      } else {
+        musicWrap.style.display = 'none';
       }
-      musicWrap.style.display = musicList.length ? 'block' : 'none';
     }
   } else {
     musicWrap.style.display = 'none';
@@ -9716,8 +9722,10 @@ async function renderRecommended(currentMovie){
     if(myToken === renderRecommendedToken){
       if(animeList.length){
         renderMovieCards(document.getElementById('d-recommended-anime'), animeList, '', { forceMode: 'anime' });
+        animeWrap.style.display = 'block';
+      } else {
+        animeWrap.style.display = 'none';
       }
-      animeWrap.style.display = animeList.length ? 'block' : 'none';
     }
   } else {
     animeWrap.style.display = 'none';
