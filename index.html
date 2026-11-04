@@ -3747,7 +3747,7 @@
     <!-- 「映画」欄はTVアニメのページでは出さない(ジャンルを跨がない方針)。
          アニメ映画のページの時だけ、この欄にもアニメ映画を少し混ぜる
          (映画とアニメの橋渡し役として、そのページでだけ例外的に混在させる)。 -->
-    <div id="d-recommended-movie-wrap">
+    <div id="d-recommended-movie-wrap" style="display:none;">
       <div class="section-label">こんな映画もおすすめ</div>
       <div class="results" id="d-recommended"></div>
     </div>
@@ -9630,11 +9630,9 @@ async function renderRecommended(currentMovie){
     const mangaList = await scoreAndPick(mangaPool, MIN_COUNT + 2, 'manga', 1, { intensityTarget: currentIntensityLevel });
     if(myToken === renderRecommendedToken){
       if(mangaList.length){
-        mangaWrap.style.display = 'block';
         renderMovieCards(document.getElementById('d-recommended-manga'), mangaList, '', { forceMode: 'manga' });
-      } else {
-        mangaWrap.style.display = 'none';
       }
+      mangaWrap.style.display = mangaList.length ? 'block' : 'none';
     }
   } else {
     mangaWrap.style.display = 'none';
@@ -9648,11 +9646,9 @@ async function renderRecommended(currentMovie){
     const novelList = await scoreAndPick(novelPool, MIN_COUNT + 2, 'novel', 0, { intensityTarget: currentIntensityLevel });
     if(myToken === renderRecommendedToken){
       if(novelList.length){
-        novelWrap.style.display = 'block';
         renderMovieCards(document.getElementById('d-recommended-novel'), novelList, '', { forceMode: 'novel' });
-      } else {
-        novelWrap.style.display = 'none';
       }
+      novelWrap.style.display = novelList.length ? 'block' : 'none';
     }
   } else {
     novelWrap.style.display = 'none';
@@ -9670,11 +9666,9 @@ async function renderRecommended(currentMovie){
     const musicList = await scoreAndPick(musicPool, MUSIC_REC_COUNT, 'music', 0, { intensityTarget: currentIntensityLevel, sceneWeights: currentSceneWeights });
     if(myToken === renderRecommendedToken){
       if(musicList.length){
-        musicWrap.style.display = 'block';
         renderMovieCards(document.getElementById('d-recommended-music'), musicList, '', { forceMode: 'music', inlinePreview: true });
-      } else {
-        musicWrap.style.display = 'none';
       }
+      musicWrap.style.display = musicList.length ? 'block' : 'none';
     }
   } else {
     musicWrap.style.display = 'none';
@@ -9721,11 +9715,9 @@ async function renderRecommended(currentMovie){
     const animeList = await scoreAndPick(animePool, MIN_COUNT + 2, 'anime', 0, { intensityTarget: currentIntensityLevel });
     if(myToken === renderRecommendedToken){
       if(animeList.length){
-        animeWrap.style.display = 'block';
         renderMovieCards(document.getElementById('d-recommended-anime'), animeList, '', { forceMode: 'anime' });
-      } else {
-        animeWrap.style.display = 'none';
       }
+      animeWrap.style.display = animeList.length ? 'block' : 'none';
     }
   } else {
     animeWrap.style.display = 'none';
