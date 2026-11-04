@@ -11734,6 +11734,13 @@ function loadAffiliateLinks(m){
   const seen = new Set();
   let affiliates = AFFILIATE_LINKS.filter(link => {
     if (seen.has(link.service_name)) return false;
+    // music.jp はすべてのメディアタイプで表示
+    if (link.service_name === 'music.jp') {
+      seen.add(link.service_name);
+      return true;
+    }
+    // 他のサービスは mediaType が一致する場合のみ表示
+    if (link.media_type && link.media_type !== mediaType) return false;
     seen.add(link.service_name);
     return true;
   });
