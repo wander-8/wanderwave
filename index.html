@@ -5771,10 +5771,10 @@ function riskCategoryUpperBound(v){
 }
 
 function riskCategoryColor(v){
-  if(v <= 25) return "#5db3c1";
-  if(v <= 50) return "#c9a8d9";
-  if(v <= 75) return "#d48a9f";
-  return "#a8598d";
+  if(v <= 25) return "#4f9d89";
+  if(v <= 50) return "#e0ac4f";
+  if(v <= 75) return "#d9836a";
+  return "#b8536a";
 }
 
 // 表現度の4段階(控えめ/軽度/やや強い/強い)に合わせて表情が変わるアイコン。
@@ -10037,7 +10037,7 @@ function renderIntensityGauge(m){
   const breakdownBars = m.isMusic
     ? `<div class="reason-bar-row"><span class="reason-bar-label" style="color:#b98aa6;">露骨な表現</span><div class="reason-bar-track"><div class="reason-bar-fill" style="width:${pct.explicit}%; background:#b98aa6;"></div></div><span class="reason-bar-pct">${pct.explicit}%</span></div>`
     : `
-        <div class="reason-bar-row"><span class="reason-bar-label" style="color:#d48a9f;">暴力</span><div class="reason-bar-track"><div class="reason-bar-fill" style="width:${pct.violence}%; background:#d48a9f;"></div></div><span class="reason-bar-pct">${pct.violence}%</span></div>
+        <div class="reason-bar-row"><span class="reason-bar-label" style="color:#d9836a;">暴力</span><div class="reason-bar-track"><div class="reason-bar-fill" style="width:${pct.violence}%; background:#d9836a;"></div></div><span class="reason-bar-pct">${pct.violence}%</span></div>
         <div class="reason-bar-row"><span class="reason-bar-label" style="color:#b98aa6;">性的</span><div class="reason-bar-track"><div class="reason-bar-fill" style="width:${pct.sexual}%; background:#b98aa6;"></div></div><span class="reason-bar-pct">${pct.sexual}%</span></div>
         <div class="reason-bar-row"><span class="reason-bar-label" style="color:#6b8cae;">恐怖</span><div class="reason-bar-track"><div class="reason-bar-fill" style="width:${pct.fear}%; background:#6b8cae;"></div></div><span class="reason-bar-pct">${pct.fear}%</span></div>
       `;
