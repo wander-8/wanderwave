@@ -10035,11 +10035,11 @@ function renderIntensityGauge(m){
   const showBreakdown = m.intensityCount > 0 || m.expressionEstimated;
 
   const breakdownBars = m.isMusic
-    ? `<div class="reason-bar-row"><span class="reason-bar-label">露骨な表現</span><div class="reason-bar-track"><div class="reason-bar-fill" style="width:${pct.explicit}%; background:#b98aa6;"></div></div><span class="reason-bar-pct">${pct.explicit}%</span></div>`
+    ? `<div class="reason-bar-row"><span class="reason-bar-label" style="color:#b98aa6;">露骨な表現</span><div class="reason-bar-track"><div class="reason-bar-fill" style="width:${pct.explicit}%; background:#b98aa6;"></div></div><span class="reason-bar-pct">${pct.explicit}%</span></div>`
     : `
-        <div class="reason-bar-row"><span class="reason-bar-label">暴力</span><div class="reason-bar-track"><div class="reason-bar-fill" style="width:${pct.violence}%; background:#d48a9f;"></div></div><span class="reason-bar-pct">${pct.violence}%</span></div>
-        <div class="reason-bar-row"><span class="reason-bar-label">性的</span><div class="reason-bar-track"><div class="reason-bar-fill" style="width:${pct.sexual}%; background:#b98aa6;"></div></div><span class="reason-bar-pct">${pct.sexual}%</span></div>
-        <div class="reason-bar-row"><span class="reason-bar-label">恐怖</span><div class="reason-bar-track"><div class="reason-bar-fill" style="width:${pct.fear}%; background:#6b8cae;"></div></div><span class="reason-bar-pct">${pct.fear}%</span></div>
+        <div class="reason-bar-row"><span class="reason-bar-label" style="color:#d48a9f;">暴力</span><div class="reason-bar-track"><div class="reason-bar-fill" style="width:${pct.violence}%; background:#d48a9f;"></div></div><span class="reason-bar-pct">${pct.violence}%</span></div>
+        <div class="reason-bar-row"><span class="reason-bar-label" style="color:#b98aa6;">性的</span><div class="reason-bar-track"><div class="reason-bar-fill" style="width:${pct.sexual}%; background:#b98aa6;"></div></div><span class="reason-bar-pct">${pct.sexual}%</span></div>
+        <div class="reason-bar-row"><span class="reason-bar-label" style="color:#6b8cae;">恐怖</span><div class="reason-bar-track"><div class="reason-bar-fill" style="width:${pct.fear}%; background:#6b8cae;"></div></div><span class="reason-bar-pct">${pct.fear}%</span></div>
       `;
 
   root.innerHTML = `
