@@ -11736,6 +11736,8 @@ function loadAffiliateLinks(m){
 
   for (const link of AFFILIATE_LINKS) {
     if (seen.has(link.service_name)) continue;
+    // 絵本と書店は除外（loadRecommendedService で処理）
+    if (link.service_name === '定額制絵本配送サービス' || link.service_name === 'いつでも書店') continue;
 
     // music.jp はすべてのメディアタイプで表示
     if (link.service_name === 'music.jp') {
@@ -11744,11 +11746,8 @@ function loadAffiliateLinks(m){
       continue;
     }
 
-    // novel（小説）のサービスは除外（loadRecommendedService で処理）
-    if (link.media_type === 'novel') continue;
-
     // mediaType が一致する場合のみ表示
-    if (!link.media_type || link.media_type !== mediaType) continue;
+    if (link.media_type && link.media_type !== mediaType) continue;
 
     affiliates.push(link);
     seen.add(link.service_name);
