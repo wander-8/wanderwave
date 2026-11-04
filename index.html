@@ -11732,25 +11732,27 @@ function loadAffiliateLinks(m){
   const linksList = document.getElementById('affiliate-links-list');
 
   const seen = new Set();
-  let affiliates = AFFILIATE_LINKS.filter(link => {
-    if (seen.has(link.service_name)) return false;
+  let affiliates = [];
+
+  for (const link of AFFILIATE_LINKS) {
+    if (seen.has(link.service_name)) continue;
 
     // music.jp はすべてのメディアタイプで表示
     if (link.service_name === 'music.jp') {
+      affiliates.push(link);
       seen.add(link.service_name);
-      return true;
+      continue;
     }
 
-    // 他のサービスはメディアタイプに基づいて表示制限
-    // novel（小説）のサービスは novel の場合のみ、後で loadRecommendedService で処理するので除外
-    if (link.media_type === 'novel') return false;
+    // novel（小説）のサービスは除外（loadRecommendedService で処理）
+    if (link.media_type === 'novel') continue;
 
     // mediaType が一致する場合のみ表示
-    if (link.media_type && link.media_type !== mediaType) return false;
+    if (!link.media_type || link.media_type !== mediaType) continue;
 
+    affiliates.push(link);
     seen.add(link.service_name);
-    return true;
-  });
+  }
 
   // Amazon Prime Video のアフィリエイトリンクを追加
   if (m.vodFlatrate && m.vodFlatrate.includes('Amazon Prime Video')) {
