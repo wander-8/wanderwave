@@ -11735,8 +11735,9 @@ function loadAffiliateLinks(m){
 
   for (const link of AFFILIATE_LINKS) {
     if (seen.has(link.service_name)) continue;
-    // 絵本と書店は除外（loadRecommendedService で処理）
-    if (link.service_name === '定額制絵本配送サービス' || link.service_name === 'いつでも書店') continue;
+    // いつでも書店は除外（削除済み）
+    if (link.service_name === 'いつでも書店') continue;
+    // 絵本は通常のアフィリエイトリンクとして表示
 
     // music.jp はすべてのメディアタイプで表示
     if (link.service_name === 'music.jp') {
