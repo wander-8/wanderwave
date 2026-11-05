@@ -15380,13 +15380,45 @@ function todaysGiftMode(diagnosedMovies){
 // 一覧で選ばせる「おすすめ」ではなく、傾向が近い未選択の作品から1本だけを
 // おみくじのように差し出す。日付+選んだ作品IDをシードにしているので、
 // 同じ日にページを開き直しても結果は変わらない(日が変われば新しい1本になる)。
-// タグ1個の一致だけで選ぶ軽量版。embeddingがまだ無い(pickHomeGiftCandidates
-// 参照)場合のフォールバックとしてのみ使う。
+// フェーズ1: topTag(感情タグ)とgenre/niche_tagsを掛け合わせて多様性を確保。
+// 日替わりでローテーション。掛け合わせで候補がない場合はtopTagだけで絞る。
 function pickOmikujiMovie(mode, topTag, secondTag, excludeIds){
-  const candidates = MOVIES.filter(m =>
-    !excludeIds.includes(m.id) && isInCatalogMode(m, mode)
-    && (m.tags.includes(topTag) || (secondTag && m.tags.includes(secondTag)))
-  );
+  // 別タグ候補（genre と niche_tags）を日付シードで選択
+  const allMovies = MOVIES.filter(m => !excludeIds.includes(m.id) && isInCatalogMode(m, mode));
+  const genreList = [...new Set(allMovies.map(m => m.genre).filter(g => g))];
+  const nicherList = [...new Set(allMovies.flatMap(m => m.niche_tags || []))];
+  const availableTags = [...genreList, ...nicherList];
+
+  if(availableTags.length === 0){
+    // フォールバック: 別タグがない場合は topTag だけで選ぶ
+    const candidates = allMovies.filter(m =>
+      m.tags.includes(topTag) || (secondTag && m.tags.includes(secondTag))
+    );
+    if(!candidates.length) return null;
+    const seedKey = `movie-omikuji:${excludeIds.slice().sort((a, b) => a - b).join(',')}`;
+    const rand = mulberry32(todaySeed(seedKey));
+    return candidates[Math.floor(rand() * candidates.length)].id;
+  }
+
+  // 日付シードで別タグを選択
+  const tagSeedKey = `omikuji-tag:${mode}`;
+  const tagRand = mulberry32(todaySeed(tagSeedKey));
+  const selectedTag = availableTags[Math.floor(tagRand() * availableTags.length)];
+
+  // topTag AND selectedTag で掛け合わせ
+  let candidates = allMovies.filter(m => {
+    const hasTopTag = m.tags.includes(topTag);
+    const hasSelectedTag = m.genre === selectedTag || (m.niche_tags && m.niche_tags.includes(selectedTag));
+    return hasTopTag && hasSelectedTag;
+  });
+
+  // 掛け合わせで候補がない場合は topTag だけで絞る
+  if(!candidates.length){
+    candidates = allMovies.filter(m =>
+      m.tags.includes(topTag) || (secondTag && m.tags.includes(secondTag))
+    );
+  }
+
   if(!candidates.length) return null;
   const seedKey = `movie-omikuji:${excludeIds.slice().sort((a, b) => a - b).join(',')}`;
   const rand = mulberry32(todaySeed(seedKey));
@@ -15399,10 +15431,32 @@ function pickOmikujiMovie(mode, topTag, secondTag, excludeIds){
 // 引くので、1件目は必ずpickOmikujiMovie()の結果と一致する(その上で続けて
 // 2件目以降も引く)。診断結果画面(view-pocket)側は今まで通り1件固定。
 function pickOmikujiCandidates(mode, topTag, secondTag, excludeIds, count){
-  const candidates = MOVIES.filter(m =>
-    !excludeIds.includes(m.id) && isInCatalogMode(m, mode)
-    && (m.tags.includes(topTag) || (secondTag && m.tags.includes(secondTag)))
-  );
+  // 別タグ候補を日付シードで選択（pickOmikujiMovieと同じロジック）
+  const allMovies = MOVIES.filter(m => !excludeIds.includes(m.id) && isInCatalogMode(m, mode));
+  const genreList = [...new Set(allMovies.map(m => m.genre).filter(g => g))];
+  const nicherList = [...new Set(allMovies.flatMap(m => m.niche_tags || []))];
+  const availableTags = [...genreList, ...nicherList];
+
+  let candidates = [];
+  if(availableTags.length > 0){
+    const tagSeedKey = `omikuji-tag:${mode}`;
+    const tagRand = mulberry32(todaySeed(tagSeedKey));
+    const selectedTag = availableTags[Math.floor(tagRand() * availableTags.length)];
+
+    candidates = allMovies.filter(m => {
+      const hasTopTag = m.tags.includes(topTag);
+      const hasSelectedTag = m.genre === selectedTag || (m.niche_tags && m.niche_tags.includes(selectedTag));
+      return hasTopTag && hasSelectedTag;
+    });
+  }
+
+  // 掛け合わせで候補がない場合は topTag だけで絞る
+  if(!candidates.length){
+    candidates = allMovies.filter(m =>
+      m.tags.includes(topTag) || (secondTag && m.tags.includes(secondTag))
+    );
+  }
+
   if(!candidates.length) return [];
   const seedKey = `movie-omikuji:${excludeIds.slice().sort((a, b) => a - b).join(',')}`;
   const rand = mulberry32(todaySeed(seedKey));
